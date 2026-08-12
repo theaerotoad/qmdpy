@@ -2,6 +2,7 @@ import os
 import json
 import httpx
 from typing import List, Dict, Optional
+from tqdm import tqdm
 
 class LLMClient:
     def __init__(
@@ -10,7 +11,8 @@ class LLMClient:
         api_key: Optional[str] = None,
         embed_model: str = "EmbeddingGemma 300m",
         rerank_model: str = "Qwen Rerank 0.6B",
-        generate_model: str = "Gemma4 26A4B"
+        generate_model: str = "Gemma4 26A4B",
+        timeout: float = 120.0
     ):
         # Default to local server if not set. 
         self.base_url = base_url or os.environ.get("QMD_LLM_URL", "http://127.0.0.1:8888")
@@ -18,11 +20,12 @@ class LLMClient:
         self.embed_model = embed_model
         self.rerank_model = rerank_model
         self.generate_model = generate_model
+        self.timeout = timeout
         
         self.client = httpx.Client(
             base_url=self.base_url,
             headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=60.0
+            timeout=httpx.Timeout(self.timeout, connect=10.0)
         )
 
     def format_doc_for_embedding(self, title: str, text: str) -> str:
@@ -34,23 +37,42 @@ class LLMClient:
         """Formats query text according to Nomic/Gemma rules."""
         return f"task: search result | query: {query}"
 
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(
+        self, 
+        texts: List[str], 
+        batch_size: int = 16, 
+        show_progress: bool = False, 
+        desc: str = "Embedding chunks"
+    ) -> List[List[float]]:
         """
-        Calls /v1/embeddings.
+        Calls /v1/embeddings in batches to prevent timeouts on slow hardware or large files.
         """
         if not texts:
             return []
 
-        response = self.client.post("/v1/embeddings", json={
-            "input": texts,
-            "model": self.embed_model
-        })
-        response.raise_for_status()
-        data = response.json()
-        
-        # Sort by index to ensure order matches input
-        data["data"].sort(key=lambda x: x["index"])
-        return [item["embedding"] for item in data["data"]]
+        batches = [texts[i:i + batch_size] for i in range(0, len(texts), batch_size)]
+        all_embeddings = []
+
+        batch_iter = tqdm(batches, desc=desc, leave=False, unit="batch") if (show_progress and len(batches) > 1) else batches
+
+        for batch in batch_iter:
+            try:
+                response = self.client.post("/v1/embeddings", json={
+                    "input": batch,
+                    "model": self.embed_model
+                })
+                response.raise_for_status()
+                data = response.json()
+                items = data.get("data", [])
+                items.sort(key=lambda x: x["index"])
+                all_embeddings.extend([item["embedding"] for item in items])
+            except httpx.TimeoutException as e:
+                raise RuntimeError(
+                    f"Embedding request timed out for a batch of {len(batch)} item(s). "
+                    f"Consider increasing 'request_timeout' (current: {self.timeout}s) or decreasing 'embed_batch_size'."
+                ) from e
+
+        return all_embeddings
 
     def rerank(self, query: str, documents: List[str]) -> List[Dict]:
         """
@@ -60,13 +82,19 @@ class LLMClient:
         if not documents:
             return []
 
-        response = self.client.post("/v1/rerank", json={
-            "query": query,
-            "documents": documents,
-            "model": self.rerank_model
-        })
-        response.raise_for_status()
-        data = response.json()
+        try:
+            response = self.client.post("/v1/rerank", json={
+                "query": query,
+                "documents": documents,
+                "model": self.rerank_model
+            })
+            response.raise_for_status()
+            data = response.json()
+        except httpx.TimeoutException as e:
+            raise RuntimeError(
+                f"Rerank request timed out for {len(documents)} document(s). "
+                f"Consider increasing 'request_timeout' (current: {self.timeout}s)."
+            ) from e
         
         raw_results = data.get("results", [])
         normalized = []

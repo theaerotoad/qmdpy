@@ -96,7 +96,8 @@ class Store:
             base_url=config.llm_url,
             embed_model=config.embed_model,
             rerank_model=config.rerank_model,
-            generate_model=config.generate_model
+            generate_model=config.generate_model,
+            timeout=getattr(config, "request_timeout", 120.0)
         )
 
     def _get_collection_files(self, base_path: Path, collection_cfg: CollectionConfig) -> List[Path]:
@@ -142,9 +143,12 @@ class Store:
         found_rel_paths = set()
 
         # Wrap the file iterator with tqdm for a progress bar
-        for file_path in tqdm(files, desc=f"Processing {name}", unit="file"):
+        file_pbar = tqdm(files, desc=f"Processing {name}", unit="file")
+        for file_path in file_pbar:
             rel_path = str(file_path.relative_to(base_path))
             found_rel_paths.add(rel_path)
+            disp_path = rel_path if len(rel_path) <= 30 else "..." + rel_path[-27:]
+            file_pbar.set_postfix_str(disp_path)
             try:
                 if self._process_file(name, base_path, file_path, force=force):
                     count_processed += 1
@@ -340,7 +344,15 @@ class Store:
             chunk_headers.append(context_str)
 
         # 4. Generate Embeddings
-        embeddings = self.llm.embed_batch(embedding_texts)
+        batch_size = getattr(self.config, "embed_batch_size", 16)
+        disp_name = rel_path if rel_path else title
+        desc_str = f"  Chunking {disp_name[:25]}" if len(disp_name) > 25 else f"  Chunking {disp_name}"
+        embeddings = self.llm.embed_batch(
+            embedding_texts, 
+            batch_size=batch_size, 
+            show_progress=True, 
+            desc=desc_str
+        )
         if not embeddings:
             return
 

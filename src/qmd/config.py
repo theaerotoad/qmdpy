@@ -22,6 +22,8 @@ class Config:
     
     # Core LLM Settings
     llm_url: str = "http://127.0.0.1:8888"
+    request_timeout: float = 120.0
+    embed_batch_size: int = 16
     
     # Model Configurations
     embed_model: str = "EmbeddingGemma 300m"
@@ -77,6 +79,12 @@ class Config:
         # Priority: Environment Var > YAML > Default
         llm_url = os.environ.get("QMD_LLM_URL") or data.get("llm_url") or "http://127.0.0.1:8888"
         
+        req_timeout_env = os.environ.get("QMD_REQUEST_TIMEOUT")
+        request_timeout = float(req_timeout_env) if req_timeout_env else float(data.get("request_timeout", 120.0))
+        
+        batch_size_env = os.environ.get("QMD_EMBED_BATCH_SIZE")
+        embed_batch_size = int(batch_size_env) if batch_size_env else int(data.get("embed_batch_size", 16))
+
         embed_model = os.environ.get("EMBED_MODEL") or data.get("embed_model") or "EmbeddingGemma 300m"
         rerank_model = os.environ.get("RERANK_MODEL") or data.get("rerank_model") or "Qwen Rerank 0.6B"
         generate_model = os.environ.get("GENERATE_MODEL") or data.get("generate_model") or "Gemma4 26A4B"
@@ -88,6 +96,8 @@ class Config:
             db_path=db_path,
             config_path=str(config_path.resolve()) if config_path else None,
             llm_url=llm_url,
+            request_timeout=request_timeout,
+            embed_batch_size=embed_batch_size,
             embed_model=embed_model,
             rerank_model=rerank_model,
             generate_model=generate_model,
