@@ -326,3 +326,16 @@ hyde: {complete hypothetical document passage from Step 2 on a SINGLE LINE}
 </format>
 
 ```
+
+## Ideas for making this more useful down the line
+
+- [ ] Persistent search sessions (both for CLI, web, and an MCP version)
+- [ ] Chunk-level seen-state in requests (e.g. --exclude seen)
+- [ ] Novelty-aware follow-up retrieval (option to not share content that's been shared in earlier related searches)
+- [ ] Explicit chunk or chunk-fetch by ID
+- [ ] Cursor based paging (not sure yet how to best handle this)
+- [ ] Return document structure (e.g. markdown headings and sizes)
+- [ ] Return collection tree or subtree (for search narrowing)
+- [ ] Straight-up keyword level searching or filtering for documents (grep style?)
+- [ ] Allow (if available) additional document level or directory level summary / classification and metadata that could be used in searching or revealed when sharing results and documents ("File is a review document for XXXX..." "Directory contains PDF assembly drawings..." "Directory is listing of non-fiction books concerning epidemiological issues
+
