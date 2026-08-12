@@ -94,6 +94,11 @@ class Store:
 
         self.llm = LLMClient(
             base_url=config.llm_url,
+            api_key=getattr(config, "api_key", None),
+            embed_url=getattr(config, "embed_url", None),
+            rerank_url=getattr(config, "rerank_url", None),
+            embed_api_key=getattr(config, "embed_api_key", None),
+            rerank_api_key=getattr(config, "rerank_api_key", None),
             embed_model=config.embed_model,
             rerank_model=config.rerank_model,
             generate_model=config.generate_model,

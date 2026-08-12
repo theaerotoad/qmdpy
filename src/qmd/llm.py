@@ -9,6 +9,10 @@ class LLMClient:
         self, 
         base_url: Optional[str] = None, 
         api_key: Optional[str] = None,
+        embed_url: Optional[str] = None,
+        rerank_url: Optional[str] = None,
+        embed_api_key: Optional[str] = None,
+        rerank_api_key: Optional[str] = None,
         embed_model: str = "EmbeddingGemma 300m",
         rerank_model: str = "Qwen Rerank 0.6B",
         generate_model: str = "Gemma4 26A4B",
@@ -17,6 +21,13 @@ class LLMClient:
         # Default to local server if not set. 
         self.base_url = base_url or os.environ.get("QMD_LLM_URL", "http://127.0.0.1:8888")
         self.api_key = api_key or os.environ.get("QMD_LLM_API_KEY", "sk-no-key-required")
+        
+        self.embed_url = embed_url or os.environ.get("QMD_EMBED_URL") or self.base_url
+        self.embed_api_key = embed_api_key or os.environ.get("QMD_EMBED_API_KEY") or self.api_key
+        
+        self.rerank_url = rerank_url or os.environ.get("QMD_RERANK_URL") or self.base_url
+        self.rerank_api_key = rerank_api_key or os.environ.get("QMD_RERANK_API_KEY") or self.api_key
+
         self.embed_model = embed_model
         self.rerank_model = rerank_model
         self.generate_model = generate_model
@@ -27,6 +38,26 @@ class LLMClient:
             headers={"Authorization": f"Bearer {self.api_key}"},
             timeout=httpx.Timeout(self.timeout, connect=10.0)
         )
+
+        if self.embed_url == self.base_url and self.embed_api_key == self.api_key:
+            self.embed_client = self.client
+        else:
+            self.embed_client = httpx.Client(
+                base_url=self.embed_url,
+                headers={"Authorization": f"Bearer {self.embed_api_key}"},
+                timeout=httpx.Timeout(self.timeout, connect=10.0)
+            )
+
+        if self.rerank_url == self.base_url and self.rerank_api_key == self.api_key:
+            self.rerank_client = self.client
+        elif self.rerank_url == self.embed_url and self.rerank_api_key == self.embed_api_key:
+            self.rerank_client = self.embed_client
+        else:
+            self.rerank_client = httpx.Client(
+                base_url=self.rerank_url,
+                headers={"Authorization": f"Bearer {self.rerank_api_key}"},
+                timeout=httpx.Timeout(self.timeout, connect=10.0)
+            )
 
     def format_doc_for_embedding(self, title: str, text: str) -> str:
         """Formats document text according to Nomic/Gemma rules."""
@@ -57,7 +88,7 @@ class LLMClient:
 
         for batch in batch_iter:
             try:
-                response = self.client.post("/v1/embeddings", json={
+                response = self.embed_client.post("/v1/embeddings", json={
                     "input": batch,
                     "model": self.embed_model
                 })
@@ -83,7 +114,7 @@ class LLMClient:
             return []
 
         try:
-            response = self.client.post("/v1/rerank", json={
+            response = self.rerank_client.post("/v1/rerank", json={
                 "query": query,
                 "documents": documents,
                 "model": self.rerank_model

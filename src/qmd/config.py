@@ -22,6 +22,11 @@ class Config:
     
     # Core LLM Settings
     llm_url: str = "http://127.0.0.1:8888"
+    api_key: Optional[str] = None
+    embed_url: Optional[str] = None
+    rerank_url: Optional[str] = None
+    embed_api_key: Optional[str] = None
+    rerank_api_key: Optional[str] = None
     request_timeout: float = 120.0
     embed_batch_size: int = 16
     
@@ -78,6 +83,12 @@ class Config:
 
         # Priority: Environment Var > YAML > Default
         llm_url = os.environ.get("QMD_LLM_URL") or data.get("llm_url") or "http://127.0.0.1:8888"
+        api_key = os.environ.get("QMD_LLM_API_KEY") or data.get("api_key")
+
+        embed_url = os.environ.get("QMD_EMBED_URL") or data.get("embed_url")
+        rerank_url = os.environ.get("QMD_RERANK_URL") or data.get("rerank_url")
+        embed_api_key = os.environ.get("QMD_EMBED_API_KEY") or data.get("embed_api_key")
+        rerank_api_key = os.environ.get("QMD_RERANK_API_KEY") or data.get("rerank_api_key")
         
         req_timeout_env = os.environ.get("QMD_REQUEST_TIMEOUT")
         request_timeout = float(req_timeout_env) if req_timeout_env else float(data.get("request_timeout", 120.0))
@@ -96,6 +107,11 @@ class Config:
             db_path=db_path,
             config_path=str(config_path.resolve()) if config_path else None,
             llm_url=llm_url,
+            api_key=api_key,
+            embed_url=embed_url,
+            rerank_url=rerank_url,
+            embed_api_key=embed_api_key,
+            rerank_api_key=rerank_api_key,
             request_timeout=request_timeout,
             embed_batch_size=embed_batch_size,
             embed_model=embed_model,

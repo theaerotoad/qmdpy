@@ -2,6 +2,14 @@ vector_quantization: int8  # Options: "none", "int8", "bit" (or "binary")
 db_path: "./example.db"
 
 llm_url: "http://127.0.0.1:9888" # Default: http://127.0.0.1:8888
+# api_key: "sk-..."              # Optional API key for primary LLM endpoint
+
+# --- Optional Independent Service Endpoints & Keys ---
+# embed_url: "http://127.0.0.1:8889"     # Separate URL for embeddings
+# embed_api_key: "sk-..."               # API key for embedding endpoint
+# rerank_url: "http://127.0.0.1:8890"    # Separate URL for reranking
+# rerank_api_key: "sk-..."              # API key for reranker endpoint
+
 strip_links: true                # Simplify [text](url) to just "text"
 target_chunk_size: 1024          # Optimal character count per chunk
 max_chunk_size: 2048             # Hard limit before forcing a split
