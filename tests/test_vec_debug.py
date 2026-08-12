@@ -1,0 +1,1 @@
+# DELETED - No longer relevant without sqlite-vec extension

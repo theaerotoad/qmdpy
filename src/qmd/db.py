@@ -1,0 +1,236 @@
+import sqlite3
+from pathlib import Path
+from typing import Optional
+
+from qmd.utils import decompress_text
+
+try:
+    import sqlite_vec
+    HAS_SQLITE_VEC = True
+except ImportError:
+    HAS_SQLITE_VEC = False
+
+def register_functions(conn: sqlite3.Connection):
+    try:
+        conn.create_function("decompress_text", 1, decompress_text, deterministic=True)
+    except Exception:
+        pass
+
+def load_sqlite_vec(conn: sqlite3.Connection) -> bool:
+    if not HAS_SQLITE_VEC:
+        return False
+    try:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        return True
+    except Exception as e:
+        print(f"Warning: Failed to load sqlite-vec extension: {e}")
+        return False
+
+def is_sqlite_vec_active(conn: sqlite3.Connection) -> bool:
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT vec_version()")
+        return cursor.fetchone() is not None
+    except Exception:
+        return False
+
+def get_db_meta(conn: sqlite3.Connection, key: str) -> Optional[str]:
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM db_meta WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+def set_db_meta(conn: sqlite3.Connection, key: str, value: str):
+    conn.execute("""
+        INSERT INTO db_meta (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    """, (key, str(value)))
+
+def ensure_vector_table(conn: sqlite3.Connection, dim: int, quant_type: str = "none"):
+    quant_type = (quant_type or "none").lower()
+    set_db_meta(conn, "vector_quantization", quant_type)
+    set_db_meta(conn, "vector_dim", str(dim))
+
+    if is_sqlite_vec_active(conn):
+        if quant_type in ("bit", "binary"):
+            col_type = f"bit[{dim}] distance_metric=hamming"
+        elif quant_type in ("int8",):
+            col_type = f"int8[{dim}] distance_metric=cosine"
+        else:
+            col_type = f"float[{dim}] distance_metric=cosine"
+
+        conn.execute(f"""
+        CREATE VIRTUAL TABLE IF NOT EXISTS vectors USING vec0(
+            rowid INTEGER PRIMARY KEY,
+            embedding {col_type}
+        );
+        """)
+    else:
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS vectors (
+            rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+            embedding BLOB NOT NULL
+        );
+        """)
+
+def get_connection(db_path: Path) -> sqlite3.Connection:
+    """
+    Connects to SQLite database.
+    Sets isolation_level=None to disable Python's implicit transaction management.
+    Enables WAL mode for performance.
+    """
+    if db_path.parent and not db_path.parent.exists():
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    conn = sqlite3.connect(str(db_path), isolation_level=None)
+    
+    # Standard performance pragmas
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA foreign_keys = ON;")
+    
+    register_functions(conn)
+    load_sqlite_vec(conn)
+    return conn
+
+def init_schema(conn: sqlite3.Connection):
+    """
+    Idempotent creation of tables.
+    """
+    register_functions(conn)
+    cursor = conn.cursor()
+
+    # 0. Database Metadata Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS db_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    """)
+
+    # 1. CAS: Content Addressable Storage
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS content (
+        hash TEXT PRIMARY KEY,
+        body TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    """)
+
+    # 2. Metadata: File locations and status
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        collection TEXT NOT NULL,
+        path TEXT NOT NULL,
+        title TEXT NOT NULL,
+        hash TEXT NOT NULL REFERENCES content(hash),
+        modified_at TEXT NOT NULL,
+        active INTEGER DEFAULT 1,
+        UNIQUE(collection, path)
+    );
+    """)
+
+    # 3. View for FTS5 External Content
+    cursor.execute("DROP VIEW IF EXISTS document_search_view;")
+    cursor.execute("""
+    CREATE VIEW document_search_view AS
+    SELECT 
+        d.id AS id,
+        d.collection AS collection,
+        d.path AS filepath,
+        d.title AS title,
+        decompress_text(c.body) AS body
+    FROM documents d
+    JOIN content c ON d.hash = c.hash;
+    """)
+
+    # 4. FTS Index (BM25 with External Content Table)
+    cursor.execute("SELECT sql FROM sqlite_master WHERE name='documents_fts';")
+    sql_row = cursor.fetchone()
+
+    # Drop table if schema does not use document_search_view
+    if sql_row and sql_row[0] and "document_search_view" not in sql_row[0]:
+        cursor.execute("DROP TABLE documents_fts;")
+
+    cursor.execute("""
+    CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+        collection,
+        filepath, 
+        title, 
+        body, 
+        content='document_search_view',
+        content_rowid='id',
+        tokenize='porter unicode61'
+    );
+    """)
+
+    # 4. Vector Storage Initialization
+    stored_dim = get_db_meta(conn, "vector_dim")
+    stored_quant = get_db_meta(conn, "vector_quantization") or "none"
+    if stored_dim:
+        ensure_vector_table(conn, int(stored_dim), stored_quant)
+    else:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS vectors (
+            rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+            embedding BLOB NOT NULL
+        );
+        """)
+
+    # 5. Chunk Metadata
+    cursor.execute("SELECT sql FROM sqlite_master WHERE name='chunk_metadata';")
+    cm_sql = cursor.fetchone()
+    if cm_sql and cm_sql[0] and "start_offset" in cm_sql[0]:
+        cursor.execute("DROP TABLE chunk_metadata;")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chunk_metadata (
+        rowid INTEGER PRIMARY KEY, -- FK to vectors.rowid
+        doc_hash TEXT NOT NULL,
+        seq_id INTEGER NOT NULL,
+        chunk_text BLOB NOT NULL,
+        FOREIGN KEY (rowid) REFERENCES vectors(rowid) ON DELETE CASCADE
+    );
+    """)
+
+    # 6. Chunk-Level FTS5 Virtual Table
+    cursor.execute("""
+    CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+        collection,
+        filepath,
+        title,
+        body,
+        headers,
+        tokenize='porter unicode61'
+    );
+    """)
+
+    # Populate chunks_fts automatically if empty but chunk_metadata has entries
+    try:
+        cursor.execute("SELECT COUNT(*) FROM chunks_fts;")
+        fts_count = cursor.fetchone()[0]
+        if fts_count == 0:
+            cursor.execute("""
+            INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers)
+            SELECT 
+                m.rowid, 
+                d.collection, 
+                d.path, 
+                d.title, 
+                decompress_text(m.chunk_text), 
+                COALESCE(m.headers, '')
+            FROM chunk_metadata m
+            JOIN (
+                SELECT hash, collection, path, title, MIN(id) 
+                FROM documents 
+                GROUP BY hash
+            ) d ON m.doc_hash = d.hash;
+            """)
+    except Exception:
+        pass

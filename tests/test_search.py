@@ -1,0 +1,265 @@
+import pytest
+import struct
+from qmd.store import Store, Result
+from qmd.config import Config
+
+def test_rrf_logic_manual(db_conn):
+    """Verify RRF bonus math and ranking."""
+    store = Store(Config(db_path=":memory:"), connection=db_conn)
+    
+    # Mock result sets
+    list_a = [
+        Result(path="doc1", title="T1", text="text1", score=1.0, source="fts"),
+        Result(path="doc2", title="T2", text="text2", score=0.8, source="fts"),
+    ]
+    list_b = [
+        Result(path="doc2", title="T2", text="text2", score=0.9, source="vec"),
+        Result(path="doc3", title="T3", text="text3", score=0.7, source="vec"),
+    ]
+    
+    # We manually simulate what hybrid_search does
+    rrf_scores = {}
+    k = 60
+    
+    def score_list(l):
+        for rank, res in enumerate(l):
+            key = res.path
+            if key not in rrf_scores: rrf_scores[key] = 0.0
+            s = 1.0 / (k + rank)
+            if rank == 0: s += 0.05
+            elif rank < 3: s += 0.02
+            rrf_scores[key] += s
+
+    score_list(list_a)
+    score_list(list_b)
+    
+    # Doc 2 appeared in both: 
+    # List A rank 1 (idx 1): 1/61 + 0.02
+    # List B rank 0 (idx 0): 1/60 + 0.05
+    expected_doc2 = (1/61 + 0.02) + (1/60 + 0.05)
+    assert pytest.approx(rrf_scores["doc2"], 0.0001) == expected_doc2
+
+def test_doc_view_candidate_limit_consistency():
+    from argparse import Namespace
+    from unittest.mock import MagicMock
+    from qmd.main import handle_search
+
+    mock_store = MagicMock()
+    mock_store.hybrid_search.return_value = []
+
+    args = Namespace(
+        query=["python"],
+        limit=10,
+        doc=True,
+        verbose=False,
+        rerank=False,
+        rerank_only=False,
+        collection=None,
+        lex=None,
+        title=None,
+        path=None,
+        json=False,
+        w2n=False,
+    )
+
+    handle_search(args, mock_store)
+
+    # Verify hybrid_search was called with limit=10, not limit=30
+    mock_store.hybrid_search.assert_called_once()
+    assert mock_store.hybrid_search.call_args.kwargs["limit"] == 10
+
+def test_group_results_by_doc_fts_normalization():
+    from qmd.main import group_results_by_doc
+    from qmd.store import Result
+
+    results = [
+        Result(path="doc1.md", title="Doc 1", text="Chunk 0 text", score=0.9, source="vec", seq_id=0),
+        Result(path="doc1.md", title="Doc 1", text="Chunk 1 text", score=0.8, source="vec", seq_id=1),
+        Result(path="doc1.md", title="Doc 1", text="FTS preview text", score=0.95, source="fts", seq_id=-1),
+    ]
+
+    grouped = group_results_by_doc(results)
+    assert len(grouped) == 1
+    assert grouped[0]["path"] == "doc1.md"
+    # Chunk 0 text should come before Chunk 1 text in reading order
+    assert "Chunk 0 text" in grouped[0]["snippets"][0]
+
+def test_wide_to_narrow_search(db_conn):
+    config = Config(db_path=":memory:")
+    store = Store(config, connection=db_conn)
+    
+    cursor = db_conn.cursor()
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'python programming language', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('code', 'docs/python/guide.md', 'Python Guide', 'h1', 'now')")
+    doc_id = cursor.lastrowid
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'code', 'docs/python/guide.md', 'Python Guide', 'python programming language')", (doc_id,))
+    db_conn.commit()
+
+    results = store.wide_to_narrow_search("python programming", limit=5)
+    assert len(results) > 0
+    assert results[0].path == "docs/python/guide.md"
+
+def test_spacy_fts_expansion():
+    from qmd.utils import extract_tiered_fts_terms, build_spacy_fts_queries
+
+    query = "How does Elon Musk feel about NASA given his daughter's recent lawsuit?"
+    terms = extract_tiered_fts_terms(query)
+    assert isinstance(terms, dict)
+    assert "primary" in terms
+    assert "secondary" in terms
+
+    queries = build_spacy_fts_queries(query)
+    assert isinstance(queries, list)
+    assert len(queries) > 0
+
+def test_fts_retrieval(db_conn):
+    store = Store(Config(db_path=":memory:"), connection=db_conn)
+    cursor = db_conn.cursor()
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h_test', 'The quick brown fox jumps over the lazy dog', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('', 'test.md', 'Test Title', 'h_test', 'now')")
+    doc_id = cursor.lastrowid
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, ?, ?, ?, ?)",
+                   (doc_id, "", "test.md", "Test Title", "The quick brown fox jumps over the lazy dog"))
+    db_conn.commit()
+    
+    # Test basic retrieval
+    results = store.search_fts("fox")
+    assert len(results) == 1
+    assert results[0].path == "test.md"
+    
+    # Test stop word filtering ("the" and "is" should be ignored, searching only for "fox")
+    results_stopwords = store.search_fts("the fox is")
+    assert len(results_stopwords) == 1
+    assert results_stopwords[0].path == "test.md"
+
+def test_vector_cosine_calc(db_conn, monkeypatch):
+    config = Config(db_path=":memory:")
+    store = Store(config, connection=db_conn)
+    
+    # Mock LLM to return specific embedding
+    class MockLLM:
+        def format_query_for_embedding(self, q): return q
+        def embed_batch(self, texts):
+            # Return a simple 2D vector [1, 0]
+            return [[1.0, 0.0]] * len(texts)
+    
+    monkeypatch.setattr(store, "llm", MockLLM())
+    
+    # Setup DB with a matching and a non-matching vector
+    # Matching: [1, 0]
+    # Non-matching: [0, 1]
+    vec_match = struct.pack('2f', 1.0, 0.0)
+    vec_no = struct.pack('2f', 0.0, 1.0)
+    
+    cursor = db_conn.cursor()
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'match', 'now')")
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'no', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'm.md', 'M', 'h1', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'n.md', 'N', 'h2', 'now')")
+    
+    from qmd.utils import compress_text
+    cursor.execute("INSERT INTO vectors (embedding) VALUES (?)", (vec_match,))
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (1, 'h1', 0, ?)", (compress_text("match text"),))
+    
+    cursor.execute("INSERT INTO vectors (embedding) VALUES (?)", (vec_no,))
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (2, 'h2', 0, ?)", (compress_text("no text"),))
+    db_conn.commit()
+    
+    results = store.search_vec("query")
+    assert results[0].path == "m.md"
+    assert results[0].score == pytest.approx(1.0)
+    assert results[1].path == "n.md"
+    assert results[1].score == pytest.approx(0.0)
+
+def test_search_collection_filter(db_conn, monkeypatch):
+    config = Config(db_path=":memory:")
+    store = Store(config, connection=db_conn)
+    
+    # Setup DB with two identical entries but different collections
+    cursor = db_conn.cursor()
+    
+    # Insert into content first to satisfy foreign key constraints
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'python test', 'now')")
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'python test', 'now')")
+    
+    # Insert into documents
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('coll_a', 'doc_a.md', 'A', 'h1', 'now')")
+    id_a = cursor.lastrowid
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('coll_b', 'doc_b.md', 'B', 'h2', 'now')")
+    id_b = cursor.lastrowid
+
+    # Insert into documents_fts
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, ?, ?, ?, ?)", (id_a, "coll_a", "doc_a.md", "A", "python test"))
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, ?, ?, ?, ?)", (id_b, "coll_b", "doc_b.md", "B", "python test"))
+    
+    db_conn.commit()
+    
+    # Without filter, should return both
+    res_all = store.search_fts("python")
+    assert len(res_all) == 2
+    
+    # With filter, should return only coll_a
+    res_a = store.search_fts("python", collection="coll_a")
+    assert len(res_a) == 1
+    assert res_a[0].collection == "coll_a"
+    assert res_a[0].path == "doc_a.md"
+
+def test_search_metadata_filters(db_conn, monkeypatch):
+    config = Config(db_path=":memory:")
+    store = Store(config, connection=db_conn)
+    
+    cursor = db_conn.cursor()
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h3', 'metadata test', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('docs', 'src/api/auth.md', 'Authentication API', 'h3', 'now')")
+    doc_id = cursor.lastrowid
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, ?, ?, ?, ?)", (doc_id, "docs", "src/api/auth.md", "Authentication API", "metadata test"))
+    db_conn.commit()
+    
+    # Substring match on title
+    res_title = store.search_fts("metadata", title="Auth")
+    assert len(res_title) == 1
+    assert res_title[0].title == "Authentication API"
+    
+    # Substring match on path
+    res_path = store.search_fts("metadata", path="api/auth")
+    assert len(res_path) == 1
+    assert res_path[0].path == "src/api/auth.md"
+    
+    # Failed match
+    res_fail = store.search_fts("metadata", title="Unknown")
+    assert len(res_fail) == 0
+
+
+def test_search_vec_quantization(db_conn, monkeypatch):
+    """Verify search_vec behavior under int8 quantization."""
+    config = Config(db_path=":memory:", vector_quantization="int8")
+    store = Store(config, connection=db_conn)
+
+    class MockLLM:
+        def format_query_for_embedding(self, q): return q
+        def embed_batch(self, texts):
+            return [[1.0, 0.0]] * len(texts)
+
+    monkeypatch.setattr(store, "llm", MockLLM())
+
+    from qmd.db import set_db_meta, ensure_vector_table
+    from qmd.store import encode_vector
+
+    set_db_meta(db_conn, "vector_quantization", "int8")
+    ensure_vector_table(db_conn, dim=2, quant_type="int8")
+
+    cursor = db_conn.cursor()
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'match', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'm.md', 'M', 'h1', 'now')")
+
+    vec_blob = encode_vector([1.0, 0.0], quant_type="int8")
+    from qmd.utils import compress_text
+    cursor.execute("INSERT INTO vectors (embedding) VALUES (?)", (vec_blob,))
+    rowid = cursor.lastrowid
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (?, 'h1', 0, ?)", (rowid, compress_text("match text")))
+    db_conn.commit()
+
+    results = store.search_vec("query")
+    assert len(results) == 1
+    assert results[0].path == "m.md"
+    assert results[0].score > 0.8

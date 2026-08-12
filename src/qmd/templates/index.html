@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QMD Web Search</title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* Custom styling for rendered markdown content */
+        .prose pre { background-color: #1f2937; padding: 1rem; border-radius: 0.375rem; overflow-x: auto; margin-top: 0.5rem; margin-bottom: 0.5rem;}
+        .prose code { font-family: monospace; color: #a5b4fc; }
+        .prose p { margin-bottom: 0.75rem; }
+        .prose h1, .prose h2, .prose h3 { font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: #f3f4f6; }
+        .prose a { color: #60a5fa; text-decoration: underline; }
+        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem;}
+        .prose table { width: 100%; border-collapse: collapse; margin-top: 1rem; margin-bottom: 1rem; text-align: left; }
+        .prose th, .prose td { border: 1px solid #4b5563; padding: 0.5rem; }
+        .prose th { background-color: #374151; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 min-h-screen p-8">
+    <div class="max-w-5xl mx-auto space-y-8">
+        
+        <div class="flex justify-between items-end border-b border-gray-700 pb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-white">QMD Web Search</h1>
+                <p class="text-gray-400 mt-1 text-sm">Semantic & FTS Local Knowledge Base</p>
+            </div>
+            <div id="collections-container" class="flex gap-2">
+                </div>
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+            <form id="search-form" class="space-y-4">
+                <div class="flex gap-4">
+                    <input type="text" id="query" class="flex-1 bg-gray-700 text-white rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search your knowledge base..." required>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md transition duration-150">Search</button>
+                </div>
+                
+                <div class="flex flex-wrap gap-4 text-sm mt-4 items-center">
+                    <label class="flex items-center gap-1">
+                        <input type="checkbox" id="doc-view" class="rounded bg-gray-700" checked>
+                        <span>Document View</span>
+                    </label>
+                    <label class="flex items-center gap-1">
+                        <input type="checkbox" id="rerank" class="rounded bg-gray-700">
+                        <span>Rerank</span>
+                    </label>
+                    <div class="flex items-center gap-2 border-l border-gray-600 pl-4">
+                        <span>Limit:</span>
+                        <input type="number" id="limit" value="10" class="w-16 bg-gray-700 rounded px-2 py-1 text-center">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span>Collection:</span>
+                        <select id="collection-filter" class="bg-gray-700 rounded px-2 py-1">
+                            <option value="">All</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <button type="button" id="toggle-advanced" class="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition">
+                        <svg class="w-3 h-3 transition-transform" id="advanced-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        Advanced Options
+                    </button>
+                </div>
+                
+                <div id="advanced-options" class="hidden mt-4 pt-4 border-t border-gray-700 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Lexical Override (FTS)</label>
+                        <input type="text" id="lex" class="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g. strict exact terms">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Title Filter</label>
+                        <input type="text" id="title" class="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g. config">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Path Filter</label>
+                        <input type="text" id="path" class="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g. src/utils">
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="flex justify-between items-center hidden" id="results-toolbar">
+            <span class="text-gray-400 text-sm" id="result-stats"></span>
+            <div class="flex gap-2">
+                <button id="copy-json" class="bg-gray-700 hover:bg-gray-600 text-sm py-1 px-4 rounded transition">
+                    Copy JSON for LLM
+                </button>
+                <button id="copy-prompt" class="bg-blue-600 hover:bg-blue-500 text-white text-sm py-1 px-4 rounded transition">
+                    Copy Question & References
+                </button>
+            </div>
+        </div>
+
+        <div id="results" class="space-y-6 pb-20">
+            </div>
+
+    </div>
+
+    <div id="slide-over" class="fixed inset-0 overflow-hidden z-50 pointer-events-none hidden">
+        <div class="absolute inset-0 overflow-hidden">
+            <div id="slide-backdrop" class="absolute inset-0 bg-gray-900 bg-opacity-75 transition-opacity opacity-0 pointer-events-auto duration-300"></div>
+            <div class="fixed inset-y-0 right-0 max-w-3xl w-full flex">
+                <div id="slide-panel" class="w-full bg-gray-900 border-l border-gray-700 shadow-2xl transform transition-transform translate-x-full pointer-events-auto flex flex-col duration-300">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800">
+                        <h2 id="slide-title" class="text-xl font-semibold text-white truncate">Document Title</h2>
+                        <button id="close-slide" class="text-gray-400 hover:text-white transition focus:outline-none">
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+                    <div id="slide-content" class="flex-1 overflow-y-auto p-8 prose prose-invert max-w-none">
+                        </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let lastRawJson = null;
+
+        // Fetch collections on load
+        async function loadCollections() {
+            const res = await fetch('/api/collections');
+            const data = await res.json();
+            
+            const filterEl = document.getElementById('collection-filter');
+            const containerEl = document.getElementById('collections-container');
+            
+            data.forEach(c => {
+                // Populate dropdown
+                const opt = document.createElement('option');
+                opt.value = c.name;
+                opt.textContent = c.name;
+                filterEl.appendChild(opt);
+
+                // Populate fast update buttons
+                const btn = document.createElement('button');
+                btn.className = "text-xs bg-gray-800 border border-gray-600 hover:bg-gray-700 text-gray-300 py-1 px-2 rounded flex items-center gap-1 transition";
+                btn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> ${c.name}`;
+                btn.onclick = () => updateCollection(c.name, btn);
+                containerEl.appendChild(btn);
+            });
+        }
+
+        async function updateCollection(name, btn) {
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = `Updating...`;
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ collection: name, force: false })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    btn.classList.add('border-green-500', 'text-green-400');
+                    setTimeout(() => btn.classList.remove('border-green-500', 'text-green-400'), 2000);
+                } else {
+                    alert(data.message);
+                }
+            } catch(e) {
+                alert("Update failed.");
+            }
+            btn.innerHTML = originalHTML;
+            btn.disabled = false;
+        }
+
+        // Handle Advanced Toggle
+        document.getElementById('toggle-advanced').addEventListener('click', () => {
+            const panel = document.getElementById('advanced-options');
+            const icon = document.getElementById('advanced-icon');
+            panel.classList.toggle('hidden');
+            icon.classList.toggle('rotate-180');
+        });
+
+        // Handle Form Submission
+        document.getElementById('search-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const resultsEl = document.getElementById('results');
+            const statsEl = document.getElementById('result-stats');
+            const toolbarEl = document.getElementById('results-toolbar');
+            
+            resultsEl.innerHTML = '<div class="text-center text-gray-500 mt-10">Searching...</div>';
+            toolbarEl.classList.add('hidden');
+
+            const payload = {
+                query: document.getElementById('query').value,
+                doc: document.getElementById('doc-view').checked,
+                rerank: document.getElementById('rerank').checked,
+                limit: parseInt(document.getElementById('limit').value),
+                collection: document.getElementById('collection-filter').value,
+                lex: document.getElementById('lex').value.trim() || null,
+                title: document.getElementById('title').value.trim() || null,
+                path: document.getElementById('path').value.trim() || null
+            };
+
+            try {
+                const res = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await res.json();
+                
+                if (!res.ok) {
+                    throw new Error(data.error || "Server returned an error");
+                }
+
+                lastRawJson = data.results;
+                
+                statsEl.textContent = `Found ${data.results.length} ${data.type === 'doc' ? 'documents' : 'chunks'}.`;
+                toolbarEl.classList.remove('hidden');
+                
+                renderResults(data.results, data.type);
+            } catch (err) {
+                resultsEl.innerHTML = `<div class="text-red-400 mt-10 text-center font-mono bg-gray-800 p-4 rounded border border-red-900 shadow-md">Error executing search:<br>${err.message}</div>`;
+            }
+        });
+
+        // Copy JSON logic
+        document.getElementById('copy-json').addEventListener('click', (e) => {
+            if(!lastRawJson) return;
+            navigator.clipboard.writeText(JSON.stringify(lastRawJson, null, 2)).then(() => {
+                const btn = e.target;
+                const originalText = btn.textContent;
+                btn.textContent = "Copied!";
+                btn.classList.add("bg-green-600", "text-white");
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove("bg-green-600", "text-white");
+                }, 2000);
+            });
+        });
+
+        // Copy Prompt + References logic
+        document.getElementById('copy-prompt').addEventListener('click', (e) => {
+            if(!lastRawJson) return;
+            const query = document.getElementById('query').value;
+            const payload = `Task / Question: ${query}\n\nContext / References:\n${JSON.stringify(lastRawJson, null, 2)}`;
+            
+            navigator.clipboard.writeText(payload).then(() => {
+                const btn = e.target;
+                const originalText = btn.textContent;
+                btn.textContent = "Copied!";
+                btn.classList.replace("bg-blue-600", "bg-green-600");
+                btn.classList.replace("hover:bg-blue-500", "hover:bg-green-500");
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.replace("bg-green-600", "bg-blue-600");
+                    btn.classList.replace("hover:bg-green-500", "hover:bg-blue-500");
+                }, 2000);
+            });
+        });
+
+        function renderResults(results, type) {
+            const container = document.getElementById('results');
+            container.innerHTML = '';
+
+            if (results.length === 0) {
+                container.innerHTML = '<div class="text-gray-500 italic mt-4">No results found.</div>';
+                return;
+            }
+
+            results.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = type === 'doc' 
+                    ? "bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-md" 
+                    : "bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-md cursor-pointer hover:border-blue-500 transition duration-200 group";
+                
+                if (type !== 'doc') {
+                    card.onclick = () => openDocument(item.collection, item.path, item.text);
+                }
+
+                const header = document.createElement('div');
+                header.className = "flex justify-between items-start border-b border-gray-700 pb-3 mb-4";
+                
+                const pathStr = item.collection ? `qmd://${item.collection}/${item.path}` : item.path;
+                
+                const titleClass = type === 'doc' 
+                    ? "text-lg font-semibold text-blue-400 hover:text-blue-300 transition flex items-center gap-2 cursor-pointer" 
+                    : "text-lg font-semibold text-blue-400 group-hover:text-blue-300 transition flex items-center gap-2";
+                
+                header.innerHTML = `
+                    <div>
+                        <h3 class="${titleClass}" ${type === 'doc' ? `onclick="openDocument('${item.collection}', '${item.path}', '')"` : ''}>
+                            <span class="text-gray-500 text-sm font-mono">#${index + 1}</span> 
+                            ${item.title}
+                        </h3>
+                        <p class="text-xs text-gray-400 font-mono mt-1">${pathStr}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs font-mono bg-gray-900 px-2 py-1 rounded text-gray-300">Score: ${item.score.toFixed(4)}</span>
+                        ${item.source ? `<div class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">${item.source}</div>` : ''}
+                    </div>
+                `;
+                card.appendChild(header);
+
+                const body = document.createElement('div');
+                body.className = "prose prose-invert max-w-none text-sm text-gray-300";
+                
+                if (type === 'doc') {
+                    // Document view: make individual snippets clickable
+                    item.snippets.forEach((snip, i) => {
+                        const snipDiv = document.createElement('div');
+                        snipDiv.className = "cursor-pointer hover:bg-gray-700/30 p-3 -mx-3 rounded transition border border-transparent hover:border-gray-600";
+                        snipDiv.onclick = (e) => {
+                            e.stopPropagation();
+                            openDocument(item.collection, item.path, snip);
+                        };
+                        snipDiv.innerHTML = marked.parse(snip);
+                        body.appendChild(snipDiv);
+                        
+                        if (i < item.snippets.length - 1) {
+                            const hr = document.createElement('hr');
+                            hr.className = "border-gray-700 my-4 border-dashed";
+                            body.appendChild(hr);
+                        }
+                    });
+                } else {
+                    // Chunk view
+                    body.innerHTML = marked.parse(item.text);
+                }
+
+                card.appendChild(body);
+                container.appendChild(card);
+            });
+        }
+
+        // Document Viewer Logic
+        async function openDocument(collection, path, targetText) {
+            const slideOver = document.getElementById('slide-over');
+            const backdrop = document.getElementById('slide-backdrop');
+            const panel = document.getElementById('slide-panel');
+            const contentEl = document.getElementById('slide-content');
+            const titleEl = document.getElementById('slide-title');
+
+            contentEl.innerHTML = '<div class="text-center text-gray-500 mt-10">Loading document...</div>';
+            
+            // Unhide container and trigger reflow
+            slideOver.classList.remove('hidden');
+            void slideOver.offsetWidth; 
+            
+            // Animate in
+            backdrop.classList.remove('opacity-0');
+            panel.classList.remove('translate-x-full');
+
+            try {
+                const res = await fetch(`/api/document?collection=${encodeURIComponent(collection)}&path=${encodeURIComponent(path)}`);
+                if (!res.ok) throw new Error("Document not found or error loading.");
+                const data = await res.json();
+
+                titleEl.textContent = data.title || path;
+
+                let rawMd = data.content;
+                
+                if (targetText && targetText.length > 10) {
+                    let searchStr = targetText.trim();
+                    let index = rawMd.indexOf(searchStr);
+                    
+                    if (index === -1) {
+                        // Fallback: Try matching first 40 chars to avoid whitespace/truncation issues
+                        index = rawMd.indexOf(searchStr.substring(0, 40));
+                    }
+                    
+                    if (index !== -1) {
+                        // Inject anchor safely AFTER markdown block syntax (like #, -, |)
+                        // by finding the first alphanumeric char from the match point.
+                        const remainder = rawMd.substring(index);
+                        const match = remainder.match(/[a-zA-Z0-9]/);
+                        const offset = match ? match.index : 0;
+                        
+                        rawMd = rawMd.substring(0, index + offset) + 
+                                '<span id="scroll-target"></span>' + 
+                                rawMd.substring(index + offset);
+                    }
+                }
+
+                // Ensure tables and breaks are parsed correctly
+                marked.setOptions({ gfm: true, breaks: true });
+                
+                // Render the modified markdown
+                contentEl.innerHTML = marked.parse(rawMd);
+
+                // Auto-scroll to the injected anchor
+                setTimeout(() => {
+                    const targetSpan = document.getElementById('scroll-target');
+                    if (targetSpan) {
+                        targetSpan.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        
+                        // Flash the parent block element (p, td, li, h1, etc)
+                        const parent = targetSpan.parentElement;
+                        if (parent) {
+                            const originalBg = parent.style.backgroundColor;
+                            const originalTransition = parent.style.transition;
+                            
+                            parent.style.transition = 'background-color 0.5s ease-out';
+                            parent.style.backgroundColor = 'rgba(59, 130, 246, 0.3)'; // blue-500/30
+                            
+                            setTimeout(() => { 
+                                parent.style.backgroundColor = originalBg; 
+                                setTimeout(() => { parent.style.transition = originalTransition; }, 500);
+                            }, 1500);
+                        }
+                    }
+                }, 300);
+
+            } catch (err) {
+                contentEl.innerHTML = `<div class="text-red-400">Failed to load document: ${err.message}</div>`;
+            }
+        }
+
+        function closeDocument() {
+            const backdrop = document.getElementById('slide-backdrop');
+            const panel = document.getElementById('slide-panel');
+            
+            // Animate out
+            backdrop.classList.add('opacity-0');
+            panel.classList.add('translate-x-full');
+            
+            setTimeout(() => {
+                document.getElementById('slide-over').classList.add('hidden');
+                document.getElementById('slide-content').innerHTML = ''; // clear memory
+            }, 300);
+        }
+
+        document.getElementById('close-slide').addEventListener('click', closeDocument);
+        document.getElementById('slide-backdrop').addEventListener('click', closeDocument);
+
+        // Escape key to close
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !document.getElementById('slide-over').classList.contains('hidden')) {
+                closeDocument();
+            }
+        });
+
+        // Initialize
+        loadCollections();
+    </script>
+</body>
+</html>

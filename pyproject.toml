@@ -1,0 +1,28 @@
+[project]
+name = "qmdpy"
+version = "0.1.0"
+description = "Quick Markdown Search - Python Adaptation"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx",
+    "PyYAML",
+    "tqdm",
+    "Flask",
+    "python-docx",
+    "python-pptx",
+    "openpyxl",
+    "beautifulsoup4",
+    "pypdf",
+    "sqlite-vec",
+]
+
+[project.scripts]
+qmd = "qmd.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

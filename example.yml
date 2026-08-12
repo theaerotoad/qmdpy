@@ -1,0 +1,25 @@
+vector_quantization: int8  # Options: "none", "int8", "bit" (or "binary")
+db_path: "./example.db"
+
+llm_url: "http://127.0.0.1:9888" # Default: http://127.0.0.1:8888
+strip_links: true                # Simplify [text](url) to just "text"
+target_chunk_size: 1024          # Optimal character count per chunk
+max_chunk_size: 2048             # Hard limit before forcing a split
+
+# --- Search Sizing & Limit Configurations ---
+fts_limit: 200          # Max lexical (FTS) candidates fetched per query pass (Default: 50)
+vec_limit: 200          # Max vector (semantic) candidates fetched per query pass (Default: 50)
+rerank_candidates: 40   # Number of fused RRF candidates passed to the reranker (Default: 20)
+default_limit: 10       # Default number of final results returned if --limit isn't passed (Default: 10)
+
+
+#rerank_model: "Qwen Rerank 0.6B"
+rerank_model: "Ettin Reranker"
+embed_model: "EmbeddingGemma 300m"
+
+collections:
+  # Option 2: Explicit list of allowed file extensions
+  Books:
+    path: "/home/user/Documents/Books"
+    file_extensions:
+      - .md
