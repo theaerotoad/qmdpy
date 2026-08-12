@@ -1,5 +1,24 @@
 import sys
 import re
+
+PLAIN_MODE = False
+
+def set_plain_mode(enabled: bool = True):
+    global PLAIN_MODE, RESET, BOLD, DIM, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN
+    PLAIN_MODE = enabled
+    if enabled:
+        RESET = ""
+        BOLD = ""
+        DIM = ""
+        RED = ""
+        GREEN = ""
+        YELLOW = ""
+        BLUE = ""
+        CYAN = ""
+        MAGENTA = ""
+
+def strip_ansi(text: str) -> str:
+    return re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
 from typing import List, Dict
 
 # ANSI Escape Codes

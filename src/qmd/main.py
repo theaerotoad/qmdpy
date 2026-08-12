@@ -8,7 +8,8 @@ from typing import List, Dict, Tuple
 
 from qmd.config import load_config
 from qmd.store import Store, Result
-from qmd.formatting import format_results_cli, format_doc_results_cli, format_results_json, format_doc_results_json, RED, GREEN, RESET
+from qmd.formatting import format_results_cli, format_doc_results_cli, format_results_json, format_doc_results_json, set_plain_mode, RED, GREEN, RESET
+from qmd.utils import redact_pii
 
 def _clean_header_part(part: str) -> str:
     """Strips leading/trailing markdown hashes, whitespace, and formatting."""
@@ -209,6 +210,9 @@ def group_results_by_doc(results: List[Result]) -> List[Dict]:
     return sorted(output_list, key=lambda x: x['score'], reverse=True)
 
 def handle_search(args, store: Store):
+    if getattr(args, "plain", False):
+        set_plain_mode(True)
+
     query = " ".join(args.query)
     limit = args.limit if getattr(args, "limit", None) is not None else getattr(store.config, "default_limit", 10)
     fts_limit = getattr(args, "fts_limit", None)
@@ -246,6 +250,12 @@ def handle_search(args, store: Store):
             rerank_candidates=rerank_candidates
         )
     
+    if getattr(args, "redact_pii", False):
+        for r in results:
+            r.text = redact_pii(r.text)
+            if hasattr(r, "title") and r.title:
+                r.title = redact_pii(r.title)
+
     if args.doc:
         grouped = group_results_by_doc(results)
         grouped = grouped[:args.limit]
@@ -313,6 +323,8 @@ def main():
     search_parser.add_argument("-p", "--path", type=str, help="Filter results by a specific path (substring match)")
     search_parser.add_argument("--lex", type=str, help="Override the lexical (FTS) search terms")
     search_parser.add_argument("-w", "--w2n", action="store_true", help="Use Wide-to-Narrow hierarchical search")
+    search_parser.add_argument("--redact-pii", "--redact", action="store_true", help="Redact email addresses and phone numbers from search results")
+    search_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
 
     update_parser = subparsers.add_parser("update", help="Update the index", parents=[parent_parser])
     update_parser.add_argument("--pull", action="store_true", help="Run 'git pull' before indexing")

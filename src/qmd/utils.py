@@ -201,6 +201,17 @@ def compute_hash(content: Union[str, bytes]) -> str:
         content_bytes = content
     return hashlib.sha256(content_bytes).hexdigest()
 
+EMAIL_REGEX = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+PHONE_REGEX = re.compile(r'\b(?:\+\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b')
+
+def redact_pii(text: str) -> str:
+    """Replaces email addresses and phone numbers in text with <redacted>."""
+    if not text:
+        return text
+    text = EMAIL_REGEX.sub('<redacted>', text)
+    text = PHONE_REGEX.sub('<redacted>', text)
+    return text
+
 def handelize(path: str) -> str:
     """
     Normalizes paths for indexing (lowercase, safe chars).
