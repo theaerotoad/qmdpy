@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify, render_template, g
 from qmd.config import load_config
 from qmd.store import Store
 from qmd.main import group_results_by_doc
-from qmd.utils import decompress_text
+from qmd.utils import decompress_text, redact_pii
 
 app = Flask(__name__)
 
@@ -41,6 +41,12 @@ def search():
             title=data.get('title') if data.get('title') else None,
             path=data.get('path') if data.get('path') else None,
         )
+
+        if data.get('redact_pii', False) or data.get('redact', False):
+            for r in results:
+                r.text = redact_pii(r.text)
+                if hasattr(r, 'title') and r.title:
+                    r.title = redact_pii(r.title)
         
         if doc_view:
             grouped = group_results_by_doc(results)[:limit]
@@ -66,6 +72,7 @@ def search():
 def get_document():
     collection = request.args.get('collection')
     path = request.args.get('path')
+    should_redact = request.args.get('redact_pii') == 'true' or request.args.get('redact') == 'true'
     if not collection or not path:
         return jsonify({"error": "Missing params"}), 400
 
@@ -79,7 +86,12 @@ def get_document():
     row = cursor.fetchone()
 
     if row:
-        return jsonify({"title": row[1], "content": decompress_text(row[0])})
+        title = row[1]
+        content = decompress_text(row[0])
+        if should_redact:
+            title = redact_pii(title)
+            content = redact_pii(content)
+        return jsonify({"title": title, "content": content})
     return jsonify({"error": "Not found"}), 404
 
 @app.route('/api/collections', methods=['GET'])

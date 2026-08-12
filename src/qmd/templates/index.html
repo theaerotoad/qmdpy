@@ -47,6 +47,10 @@
                         <input type="checkbox" id="rerank" class="rounded bg-gray-700">
                         <span>Rerank</span>
                     </label>
+                    <label class="flex items-center gap-1">
+                        <input type="checkbox" id="redact-pii" class="rounded bg-gray-700">
+                        <span>Redact PII</span>
+                    </label>
                     <div class="flex items-center gap-2 border-l border-gray-600 pl-4">
                         <span>Limit:</span>
                         <input type="number" id="limit" value="10" class="w-16 bg-gray-700 rounded px-2 py-1 text-center">
@@ -192,6 +196,7 @@
                 query: document.getElementById('query').value,
                 doc: document.getElementById('doc-view').checked,
                 rerank: document.getElementById('rerank').checked,
+                redact_pii: document.getElementById('redact-pii').checked,
                 limit: parseInt(document.getElementById('limit').value),
                 collection: document.getElementById('collection-filter').value,
                 lex: document.getElementById('lex').value.trim() || null,
@@ -350,8 +355,9 @@
             backdrop.classList.remove('opacity-0');
             panel.classList.remove('translate-x-full');
 
+            const redactPii = document.getElementById('redact-pii').checked;
             try {
-                const res = await fetch(`/api/document?collection=${encodeURIComponent(collection)}&path=${encodeURIComponent(path)}`);
+                const res = await fetch(`/api/document?collection=${encodeURIComponent(collection)}&path=${encodeURIComponent(path)}${redactPii ? '&redact_pii=true' : ''}`);
                 if (!res.ok) throw new Error("Document not found or error loading.");
                 const data = await res.json();
 
