@@ -34,23 +34,62 @@ RED = "\033[31m"
 MAGENTA = "\033[35m"
 DIM = "\033[90m"
 
-def highlight_keywords(text: str, query: str) -> str:
-    """Highlights query terms in text using ANSI bold/yellow."""
-    if not query:
-        return text
-        
+def extract_lexical_terms(query: str) -> List[str]:
+    """Extracts lexical (FTS) search terms from query or FTS expression."""
+    if not query or not query.strip():
+        return []
+
+    # If query is an explicit FTS syntax expression (contains quotes, AND, OR, NOT)
+    if '"' in query or ' AND ' in query or ' OR ' in query or ' NOT ' in query:
+        quoted = re.findall(r'"([^"]+)"', query)
+        unquoted_raw = re.sub(r'"[^"]+"', ' ', query)
+        fts_ops = {"and", "or", "not", "near"}
+        unquoted = [
+            w for w in re.findall(r'\b\w+\b', unquoted_raw)
+            if w.lower() not in fts_ops and len(w) > 1
+        ]
+        terms = quoted + unquoted
+        return [t.strip() for t in terms if t.strip()]
+
+    # Otherwise use spaCy FTS term extraction from qmd.utils
+    try:
+        from qmd.utils import extract_tiered_fts_terms
+        tiered = extract_tiered_fts_terms(query)
+        terms = []
+        for item in tiered:
+            if isinstance(item, (list, tuple)):
+                for term in item:
+                    if term and term not in terms:
+                        terms.append(term)
+            elif isinstance(item, str) and item not in terms:
+                terms.append(item)
+        if terms:
+            return terms
+    except Exception:
+        pass
+
+    # Fallback stopword filtering
     stop_words = {
         "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "if", 
         "in", "into", "is", "it", "no", "not", "of", "on", "or", "such", 
         "that", "the", "their", "then", "there", "these", "they", "this", 
         "to", "was", "will", "with"
     }
-    
-    keywords = [re.escape(k) for k in query.split() if len(k) > 2 and k.lower() not in stop_words]
-    if not keywords:
-        keywords = [re.escape(query)]
-        
-    pattern = re.compile(f"({'|'.join(keywords)})", re.IGNORECASE)
+    raw_words = re.findall(r'\b\w+\b', query)
+    return [w for w in raw_words if w.lower() not in stop_words and len(w) > 1]
+
+def highlight_keywords(text: str, query: str) -> str:
+    """Highlights Lexical (FTS) terms in text using ANSI bold/yellow."""
+    if not query or not text:
+        return text
+
+    terms = extract_lexical_terms(query)
+    if not terms:
+        return text
+
+    # Sort longer terms first so phrases match before sub-words
+    keywords = sorted(set(terms), key=len, reverse=True)
+    pattern = re.compile(f"({'|'.join(re.escape(k) for k in keywords)})", re.IGNORECASE)
     return pattern.sub(f"{YELLOW}{BOLD}\\1{RESET}", text)
 
 def format_results_cli(results: List, query: str = "", verbose: bool = False):
