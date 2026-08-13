@@ -18,6 +18,7 @@ class CollectionConfig:
 class Config:
     collections: Dict[str, CollectionConfig] = field(default_factory=dict)
     db_path: Optional[str] = None 
+    history_db_path: Optional[str] = None
     config_path: Optional[str] = None
     
     # Core LLM Settings
@@ -81,6 +82,19 @@ class Config:
         else:
             db_path = str((Path.home() / ".config" / "qmd" / "qmd.db").resolve())
 
+        # Priority for history_db_path: Environment Var > YAML > Default
+        history_db_path_raw = os.environ.get("QMD_HISTORY_DB_PATH") or data.get('history_db_path')
+        if history_db_path_raw:
+            p = Path(history_db_path_raw).expanduser()
+            if not p.is_absolute() and config_path:
+                history_db_path = str((config_path.parent / p).resolve())
+            else:
+                history_db_path = str(p.resolve())
+        elif config_path and config_path.resolve() != DEFAULT_CONFIG_PATH.resolve():
+            history_db_path = str((config_path.parent / "qmd-history.db").resolve())
+        else:
+            history_db_path = str((Path.home() / ".config" / "qmd" / "qmd-history.db").resolve())
+
         # Priority: Environment Var > YAML > Default
         llm_url = os.environ.get("QMD_LLM_URL") or data.get("llm_url") or "http://127.0.0.1:8888"
         api_key = os.environ.get("QMD_LLM_API_KEY") or data.get("api_key")
@@ -105,6 +119,7 @@ class Config:
         return cls(
             collections=collections,
             db_path=db_path,
+            history_db_path=history_db_path,
             config_path=str(config_path.resolve()) if config_path else None,
             llm_url=llm_url,
             api_key=api_key,

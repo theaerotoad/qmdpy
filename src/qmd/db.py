@@ -1,6 +1,8 @@
 import sqlite3
+import struct
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from qmd.utils import decompress_text
 
@@ -97,6 +99,61 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
     register_functions(conn)
     load_sqlite_vec(conn)
     return conn
+
+def init_history_schema(conn: sqlite3.Connection):
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS query_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query_text TEXT NOT NULL,
+        embed_model TEXT NOT NULL,
+        embedding BLOB NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(query_text, embed_model)
+    );
+    """)
+
+def get_history_connection(history_db_path: Path) -> sqlite3.Connection:
+    if history_db_path.parent and not history_db_path.parent.exists():
+        history_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    conn = sqlite3.connect(str(history_db_path), isolation_level=None)
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA foreign_keys = ON;")
+
+    init_history_schema(conn)
+    return conn
+
+def get_cached_query_embedding(conn: sqlite3.Connection, query_text: str, embed_model: str) -> Optional[List[float]]:
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT embedding FROM query_history WHERE query_text = ? AND embed_model = ?", (query_text, embed_model))
+        row = cursor.fetchone()
+        if row and row[0]:
+            now = datetime.now().isoformat()
+            conn.execute("UPDATE query_history SET updated_at = ? WHERE query_text = ? AND embed_model = ?", (now, query_text, embed_model))
+            blob = row[0]
+            dim = len(blob) // 4
+            return list(struct.unpack(f'{dim}f', blob))
+    except Exception as e:
+        print(f"Warning: Failed to fetch cached query embedding: {e}")
+    return None
+
+def save_query_embedding(conn: sqlite3.Connection, query_text: str, embed_model: str, vec: List[float]):
+    try:
+        now = datetime.now().isoformat()
+        blob = struct.pack(f'{len(vec)}f', *vec)
+        conn.execute("""
+            INSERT INTO query_history (query_text, embed_model, embedding, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(query_text, embed_model) DO UPDATE SET
+                embedding = excluded.embedding,
+                updated_at = excluded.updated_at
+        """, (query_text, embed_model, blob, now, now))
+    except Exception as e:
+        print(f"Warning: Failed to save query embedding: {e}")
 
 def init_schema(conn: sqlite3.Connection):
     """

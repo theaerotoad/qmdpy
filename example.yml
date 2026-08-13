@@ -1,5 +1,6 @@
 vector_quantization: int8  # Options: "none", "int8", "bit" (or "binary")
 db_path: "./example.db"
+history_db_path: "./qmd-history.db"
 
 llm_url: "http://127.0.0.1:9888" # Default: http://127.0.0.1:8888
 # api_key: "sk-..."              # Optional API key for primary LLM endpoint

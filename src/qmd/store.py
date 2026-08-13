@@ -11,7 +11,10 @@ from dataclasses import dataclass
 
 from tqdm import tqdm
 
-from qmd.db import get_connection, init_schema, is_sqlite_vec_active, get_db_meta, ensure_vector_table, register_functions
+from qmd.db import (
+    get_connection, init_schema, is_sqlite_vec_active, get_db_meta, ensure_vector_table,
+    register_functions, get_history_connection, get_cached_query_embedding, save_query_embedding
+)
 from qmd.config import Config, CollectionConfig
 from qmd.llm import LLMClient
 from qmd.utils import compute_hash, build_spacy_fts_queries, compress_text, decompress_text
@@ -84,6 +87,9 @@ class Store:
             self.conn = get_connection(db_path)
             init_schema(self.conn)
         
+        history_db_path = Path(config.history_db_path) if config.history_db_path else Path.home() / ".config" / "qmd" / "qmd-history.db"
+        self.history_conn = get_history_connection(history_db_path)
+
         register_functions(self.conn)
 
         try:
@@ -473,9 +479,23 @@ class Store:
 
         return results
 
+    def get_query_embedding(self, formatted_query: str) -> List[float]:
+        embed_model = getattr(self.config, "embed_model", "EmbeddingGemma 300m")
+        cached_vec = get_cached_query_embedding(self.history_conn, formatted_query, embed_model)
+        if cached_vec is not None:
+            return cached_vec
+
+        vecs = self.llm.embed_batch([formatted_query])
+        if vecs:
+            save_query_embedding(self.history_conn, formatted_query, embed_model, vecs[0])
+            return vecs[0]
+        return []
+
     def search_vec(self, query: str, limit: int = 20, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None) -> List[Result]:
         query_text = self.llm.format_query_for_embedding(query)
-        query_vec = self.llm.embed_batch([query_text])[0]
+        query_vec = self.get_query_embedding(query_text)
+        if not query_vec:
+            return []
         
         cursor = self.conn.cursor()
         stored_quant = get_db_meta(self.conn, "vector_quantization")
