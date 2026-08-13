@@ -1,7 +1,7 @@
 import sys
 import re
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 PLAIN_MODE = False
 
