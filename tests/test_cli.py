@@ -26,7 +26,11 @@ def test_arg_parsing_search(monkeypatch):
             collection=None,
             lexical_query=None,
             title=None,
-            path=None
+            path=None,
+            fts_limit=None,
+            vec_limit=None,
+            rerank_candidates=None,
+            exclude_seen_set=set()
         )
 
 def test_git_pull_trigger(monkeypatch, tmp_path):
