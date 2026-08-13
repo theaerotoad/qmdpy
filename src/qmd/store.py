@@ -13,7 +13,8 @@ from tqdm import tqdm
 
 from qmd.db import (
     get_connection, init_schema, is_sqlite_vec_active, get_db_meta, ensure_vector_table,
-    register_functions, get_history_connection, get_cached_query_embedding, save_query_embedding
+    register_functions, get_history_connection, get_cached_query_embedding, save_query_embedding,
+    update_db_last_updated, check_db_compatibility, CURRENT_SCHEMA_VERSION
 )
 from qmd.config import Config, CollectionConfig
 from qmd.llm import LLMClient
@@ -82,6 +83,7 @@ class Store:
         
         if connection:
             self.conn = connection
+            check_db_compatibility(self.conn)
         else:
             db_path = Path(config.db_path) if config.db_path else Path.home() / ".config" / "qmd" / "qmd.db"
             self.conn = get_connection(db_path)
@@ -186,6 +188,9 @@ class Store:
             self.conn.commit()
             self._cleanup_orphaned_data()
 
+        if count_processed > 0 or stale_paths:
+            update_db_last_updated(self.conn)
+
         print(f"Done. Processed: {count_processed}, Skipped/Unchanged: {count_skipped}")
 
     def prune_orphaned_collections(self, active_collections: List[str]):
@@ -219,6 +224,7 @@ class Store:
             
         self.conn.commit()
         self._cleanup_orphaned_data()
+        update_db_last_updated(self.conn)
         print(f"Pruned {len(orphans)} collection(s).")
 
     def _cleanup_orphaned_data(self):

@@ -12,6 +12,26 @@ try:
 except ImportError:
     HAS_SQLITE_VEC = False
 
+CURRENT_SCHEMA_VERSION = 2
+
+def check_db_compatibility(conn: sqlite3.Connection):
+    version_str = get_db_meta(conn, "schema_version")
+    if version_str is not None:
+        try:
+            version = int(version_str)
+            if version > CURRENT_SCHEMA_VERSION:
+                raise ValueError(
+                    f"Unsupported database schema version {version}. "
+                    f"Current supported version is {CURRENT_SCHEMA_VERSION}."
+                )
+        except ValueError as e:
+            if "Unsupported database schema version" in str(e):
+                raise
+
+def update_db_last_updated(conn: sqlite3.Connection):
+    now = datetime.utcnow().isoformat() + "Z"
+    set_db_meta(conn, "last_updated", now)
+
 def register_functions(conn: sqlite3.Connection):
     try:
         conn.create_function("decompress_text", 1, decompress_text, deterministic=True)
@@ -169,6 +189,14 @@ def init_schema(conn: sqlite3.Connection):
         value TEXT NOT NULL
     );
     """)
+
+    check_db_compatibility(conn)
+
+    if get_db_meta(conn, "schema_version") is None:
+        set_db_meta(conn, "schema_version", str(CURRENT_SCHEMA_VERSION))
+
+    if get_db_meta(conn, "last_updated") is None:
+        update_db_last_updated(conn)
 
     # 1. CAS: Content Addressable Storage
     cursor.execute("""
