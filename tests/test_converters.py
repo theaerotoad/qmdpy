@@ -10,6 +10,7 @@ def test_supported_extensions():
     assert is_supported_file("page.html")
     assert is_supported_file("notes.md")
     assert is_supported_file("document.pdf")
+    assert is_supported_file("book.epub")
 
 def test_format_matrix_to_md_table():
     matrix = [
@@ -36,6 +37,48 @@ def test_convert_html(tmp_path):
     assert "# Title" in md
     assert "Hello world" in md
     assert "- Item 1" in md
+
+def test_convert_epub(tmp_path):
+    import zipfile
+    epub_file = tmp_path / "test.epub"
+
+    container_xml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+
+    content_opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Test Book Title</dc:title>
+  </metadata>
+  <manifest>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="ch1"/>
+  </spine>
+</package>"""
+
+    ch1_xhtml = """<!DOCTYPE html>
+<html>
+<head><title>Chapter 1</title></head>
+<body>
+  <h1>Chapter 1</h1>
+  <p>This is a test paragraph in the EPUB.</p>
+</body>
+</html>"""
+
+    with zipfile.ZipFile(epub_file, 'w') as z:
+        z.writestr("META-INF/container.xml", container_xml)
+        z.writestr("OEBPS/content.opf", content_opf)
+        z.writestr("OEBPS/ch1.xhtml", ch1_xhtml)
+
+    md = convert_to_markdown(epub_file)
+    assert "Test Book Title" in md or "Chapter 1" in md
+    assert "This is a test paragraph in the EPUB." in md
 
 def test_convert_text_file(tmp_path):
     txt_file = tmp_path / "test.txt"

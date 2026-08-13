@@ -16,7 +16,8 @@ SUPPORTED_EXTENSIONS = {
     ".pptx",
     ".xlsx",
     ".csv",
-    ".html", ".htm"
+    ".html", ".htm",
+    ".epub"
 }
 
 
@@ -59,6 +60,8 @@ def convert_to_markdown(file_path: Union[str, Path]) -> str:
         raw_md = _convert_csv(path)
     elif ext in {".html", ".htm"}:
         raw_md = _convert_html(path)
+    elif ext == ".epub":
+        raw_md = _convert_epub(path)
     else:
         raw_md = _convert_text(path)
 
@@ -246,6 +249,14 @@ def _convert_csv(path: Path) -> str:
     return _format_matrix_to_md_table(matrix)
 
 
+def _convert_epub(path: Path) -> str:
+    from qmd.epub import convert_epub_to_markdown
+    try:
+        return convert_epub_to_markdown(path)
+    except Exception as e:
+        raise ValueError(f"Failed to parse EPUB file '{path.name}': {e}")
+
+
 def _convert_html(path: Path) -> str:
     try:
         content = path.read_text(encoding="utf-8")
@@ -346,7 +357,7 @@ def main():
         sys.path.insert(0, src_dir)
 
     parser = argparse.ArgumentParser(
-        description="Convert a document (.docx, .pptx, .xlsx, .csv, .html, .md) to Markdown and inspect parsed blocks/chunks."
+        description="Convert a document (.docx, .pptx, .xlsx, .csv, .html, .epub, .md) to Markdown and inspect parsed blocks/chunks."
     )
     parser.add_argument("file_path", type=str, help="Path to the document to convert")
     parser.add_argument("-o", "--output", type=str, help="Optional output path to save the Markdown content")
