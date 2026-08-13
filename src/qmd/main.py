@@ -2,12 +2,14 @@ import argparse
 import sys
 import subprocess
 import os
+import secrets
 import re
 from pathlib import Path
 from typing import List, Dict, Tuple
 
 from qmd.config import load_config
 from qmd.store import Store, Result
+from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
 from qmd.formatting import format_results_cli, format_doc_results_cli, format_results_json, format_doc_results_json, set_plain_mode, RED, GREEN, RESET
 from qmd.utils import redact_pii
 
@@ -219,6 +221,15 @@ def handle_search(args, store: Store):
     vec_limit = getattr(args, "vec_limit", None)
     rerank_candidates = getattr(args, "rerank_candidates", None)
     
+    session_id = getattr(args, "session", None)
+    if not session_id:
+        session_id = secrets.token_hex(4)
+
+    exclude_seen = getattr(args, "exclude_seen", False)
+    exclude_seen_set = set()
+    if exclude_seen:
+        exclude_seen_set = get_seen_chunks_for_session(store.history_conn, session_id)
+
     if getattr(args, "w2n", False):
         results = store.wide_to_narrow_search(
             query,
@@ -232,7 +243,8 @@ def handle_search(args, store: Store):
             path=args.path,
             fts_limit=fts_limit,
             vec_limit=vec_limit,
-            rerank_candidates=rerank_candidates
+            rerank_candidates=rerank_candidates,
+            exclude_seen_set=exclude_seen_set
         )
     else:
         results = store.hybrid_search(
@@ -247,7 +259,8 @@ def handle_search(args, store: Store):
             path=args.path,
             fts_limit=fts_limit,
             vec_limit=vec_limit,
-            rerank_candidates=rerank_candidates
+            rerank_candidates=rerank_candidates,
+            exclude_seen_set=exclude_seen_set
         )
     
     if getattr(args, "redact_pii", False):
@@ -256,17 +269,45 @@ def handle_search(args, store: Store):
             if hasattr(r, "title") and r.title:
                 r.title = redact_pii(r.title)
 
+    event_type = "doc_view" if args.doc else "search"
+    db_last_updated = get_db_meta(store.conn, "last_updated")
+    event_id = record_session_event(
+        store.history_conn,
+        session_id,
+        event_type,
+        query,
+        getattr(args, "lex", None),
+        str(store.config.db_path),
+        db_last_updated
+    )
+
     if args.doc:
         grouped = group_results_by_doc(results)
         grouped = grouped[:args.limit]
+        
+        # Record session results at chunk level
+        shown_chunks = []
+        for doc in grouped:
+            for c in doc.get("chunks", []):
+                shown_chunks.append({
+                    "collection": doc.get("collection", ""),
+                    "path": doc.get("path", ""),
+                    "seq_id": c.get("seq_id", 0),
+                    "rank": c.get("rank", 0),
+                    "score": c.get("score", 0.0)
+                })
+        record_session_results(store.history_conn, session_id, event_id, shown_chunks)
+
         if args.json:
-            format_doc_results_json(grouped)
+            format_doc_results_json(grouped, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
         else:
-            format_doc_results_cli(grouped, query=query, verbose=args.verbose)
-    elif args.json:
-        format_results_json(results, verbose=args.verbose)
+            format_doc_results_cli(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
     else:
-        format_results_cli(results, query=query, verbose=args.verbose)
+        record_session_results(store.history_conn, session_id, event_id, results)
+        if args.json:
+            format_results_json(results, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
+        else:
+            format_results_cli(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
 
 def handle_update(args, store: Store):
     config = store.config
@@ -325,6 +366,8 @@ def main():
     search_parser.add_argument("-w", "--w2n", action="store_true", help="Use Wide-to-Narrow hierarchical search")
     search_parser.add_argument("--redact-pii", "--redact", action="store_true", help="Redact email addresses and phone numbers from search results")
     search_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
+    search_parser.add_argument("--session", type=str, help="Session ID for tracking history and excluding seen results")
+    search_parser.add_argument("--exclude-seen", action="store_true", help="Exclude previously seen chunks from the active session")
 
     update_parser = subparsers.add_parser("update", help="Update the index", parents=[parent_parser])
     update_parser.add_argument("--pull", action="store_true", help="Run 'git pull' before indexing")

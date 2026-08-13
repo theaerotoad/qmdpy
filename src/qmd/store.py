@@ -91,6 +91,7 @@ class Store:
         
         history_db_path = Path(config.history_db_path) if config.history_db_path else Path.home() / ".config" / "qmd" / "qmd-history.db"
         self.history_conn = get_history_connection(history_db_path)
+        self.last_exclusion_stats: Dict[str, int] = {"excluded_chunks": 0, "excluded_docs": 0}
 
         register_functions(self.conn)
 
@@ -395,7 +396,7 @@ class Store:
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (vector_rowid, collection_name, rel_path, title, chunk_text, context_str))
 
-    def search_fts(self, query: str, limit: int = 20, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None) -> List[Result]:
+    def search_fts(self, query: str, limit: int = 20, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
         """Lexical search directly on chunks using chunks_fts."""
         # Allow pre-formatted FTS query expressions (quotes, AND, OR, NOT) to pass through directly
         if '"' in query or ' AND ' in query or ' OR ' in query or ' NOT ' in query:
@@ -465,6 +466,12 @@ class Store:
         for idx, row in enumerate(rows):
             doc_path, doc_title, chunk_text, rank, coll, rowid, seq_id, headers = row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]
             
+            key = (coll or "", doc_path, seq_id)
+            if exclude_seen_set and key in exclude_seen_set:
+                if excluded_chunks_tracker is not None:
+                    excluded_chunks_tracker.add(key)
+                continue
+            
             # Convert SQLite FTS5 BM25 negative rank into a positive score
             raw_bm25 = -float(rank) if float(rank) < 0 else float(rank)
             calculated_fts_score = max(0.0001, raw_bm25)
@@ -497,7 +504,7 @@ class Store:
             return vecs[0]
         return []
 
-    def search_vec(self, query: str, limit: int = 20, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None) -> List[Result]:
+    def search_vec(self, query: str, limit: int = 20, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
         query_text = self.llm.format_query_for_embedding(query)
         query_vec = self.get_query_embedding(query_text)
         if not query_vec:
@@ -535,6 +542,11 @@ class Store:
                 cursor.execute(query_sql, tuple(params))
                 candidates = []
                 for rowid, dist, text_blob, doc_path, doc_title, coll, seq_id, hdrs in cursor.fetchall():
+                    key = (coll or "", doc_path, seq_id)
+                    if exclude_seen_set and key in exclude_seen_set:
+                        if excluded_chunks_tracker is not None:
+                            excluded_chunks_tracker.add(key)
+                        continue
                     if quant_type in ("bit", "binary"):
                         score = 1.0 / (1.0 + float(dist))
                     else:
@@ -580,6 +592,11 @@ class Store:
         dim = len(query_vec)
         candidates = []
         for emb_blob, text_blob, doc_path, doc_title, coll, seq_id, hdrs in cursor.fetchall():
+            key = (coll or "", doc_path, seq_id)
+            if exclude_seen_set and key in exclude_seen_set:
+                if excluded_chunks_tracker is not None:
+                    excluded_chunks_tracker.add(key)
+                continue
             vec = decode_vector(emb_blob, dim, quant_type)
             
             dot_prod = sum(a * b for a, b in zip(query_vec, vec))
@@ -611,8 +628,10 @@ class Store:
         path: Optional[str] = None,
         fts_limit: Optional[int] = None,
         vec_limit: Optional[int] = None,
-        rerank_candidates: Optional[int] = None
+        rerank_candidates: Optional[int] = None,
+        exclude_seen_set: Optional[set] = None
     ) -> List[Result]:
+        excluded_chunks_tracker: set = set()
         
         fts_lim = fts_limit if fts_limit is not None else getattr(self.config, 'fts_limit', 50)
         vec_lim = vec_limit if vec_limit is not None else getattr(self.config, 'vec_limit', 50)
@@ -639,7 +658,7 @@ class Store:
 
         # Gated FTS Execution: Run strict conjunctions first; stop if quorum reached
         for q_idx, lq in enumerate(lex_queries):
-            tier_results = self.search_fts(lq, limit=fts_lim, collection=collection, title=title, path=path)
+            tier_results = self.search_fts(lq, limit=fts_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker)
             
             for r in tier_results:
                 key = (r.collection, r.path, r.seq_id)
@@ -669,7 +688,7 @@ class Store:
             terms = [t for t in clean_q.split() if t not in stop_words and len(t) > 1]
             if len(terms) > 1:
                 or_query = " OR ".join([f'"{t}"' for t in terms])
-                or_results = self.search_fts(or_query, limit=fts_lim, collection=collection, title=title, path=path)
+                or_results = self.search_fts(or_query, limit=fts_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker)
                 for r in or_results:
                     key = (r.collection, r.path, r.seq_id)
                     if key not in seen_fts_keys:
@@ -682,7 +701,12 @@ class Store:
 
         vec_results = []
         for vq in vec_queries:
-            vec_results.extend(self.search_vec(vq, limit=vec_lim, collection=collection, title=title, path=path))
+            vec_results.extend(self.search_vec(vq, limit=vec_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker))
+
+        self.last_exclusion_stats = {
+            "excluded_chunks": len(excluded_chunks_tracker),
+            "excluded_docs": len({(coll, p) for (coll, p, seq) in excluded_chunks_tracker})
+        }
 
         if verbose:
             print(f"{DIM}Candidates found -> FTS: {len(fts_results)} | Vector: {len(vec_results)}{RESET}")
@@ -817,7 +841,8 @@ class Store:
         top_containers: int = 3,
         fts_limit: Optional[int] = None,
         vec_limit: Optional[int] = None,
-        rerank_candidates: Optional[int] = None
+        rerank_candidates: Optional[int] = None,
+        exclude_seen_set: Optional[set] = None
     ) -> List[Result]:
         """
         Hierarchical Wide-to-Narrow (W2N) Search:
@@ -839,7 +864,8 @@ class Store:
             path=path,
             fts_limit=fts_limit,
             vec_limit=vec_limit,
-            rerank_candidates=rerank_candidates
+            rerank_candidates=rerank_candidates,
+            exclude_seen_set=exclude_seen_set
         )
 
         if not wide_results:

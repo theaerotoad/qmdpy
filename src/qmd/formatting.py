@@ -100,8 +100,16 @@ def highlight_keywords(text: str, query: str) -> str:
     pattern = re.compile(f"({'|'.join(re.escape(k) for k in keywords)})", re.IGNORECASE)
     return pattern.sub(f"{YELLOW}{BOLD}\\1{RESET}", text)
 
-def format_results_cli(results: List, query: str = "", verbose: bool = False):
+def format_results_cli(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
     """Prints standard search results (snippets)."""
+    if session_id:
+        stats_str = ""
+        if exclusion_stats and exclusion_stats.get("excluded_chunks", 0) > 0:
+            c_count = exclusion_stats["excluded_chunks"]
+            d_count = exclusion_stats.get("excluded_docs", 0)
+            stats_str = f" | Excluded {c_count} previously seen chunk(s) across {d_count} document(s)"
+        print(f"{DIM}[Session: {session_id}{stats_str}]{RESET}")
+
     if not results:
         print(f"\n{RED}No results found.{RESET}")
         return
@@ -135,8 +143,16 @@ def format_results_cli(results: List, query: str = "", verbose: bool = False):
             print(f"   {CYAN}↳ Ranking Details -> FTS: {fts_str} | Vector: {vec_str} | RRF: {rrf_str}{RESET}")
         print()
 
-def format_doc_results_cli(grouped_results: List[Dict], query: str = "", verbose: bool = False):
+def format_doc_results_cli(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
     """Prints results grouped by document with combined snippets."""
+    if session_id:
+        stats_str = ""
+        if exclusion_stats and exclusion_stats.get("excluded_chunks", 0) > 0:
+            c_count = exclusion_stats["excluded_chunks"]
+            d_count = exclusion_stats.get("excluded_docs", 0)
+            stats_str = f" | Excluded {c_count} previously seen chunk(s) across {d_count} document(s)"
+        print(f"{DIM}[Session: {session_id}{stats_str}]{RESET}")
+
     if not grouped_results:
         print(f"\n{RED}No documents found.{RESET}")
         return
@@ -178,7 +194,7 @@ def format_doc_results_cli(grouped_results: List[Dict], query: str = "", verbose
         
         print("\n\n".join(rendered_blocks) + "\n")
 
-def format_results_json(results: List, verbose: bool = False):
+def format_results_json(results: List, verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
     """Outputs results as JSON for piping."""
     import json
     data = []
@@ -193,6 +209,10 @@ def format_results_json(results: List, verbose: bool = False):
             "seq_id": res.seq_id,
             "headers": getattr(res, "headers", "")
         }
+        if session_id:
+            item["session_id"] = session_id
+        if exclusion_stats:
+            item["excluded_count"] = exclusion_stats.get("excluded_chunks", 0)
         if verbose or getattr(res, "fts_rank", None) is not None or getattr(res, "vec_rank", None) is not None:
             item["fts_score"] = getattr(res, "fts_score", None)
             item["fts_rank"] = getattr(res, "fts_rank", None)
@@ -203,7 +223,13 @@ def format_results_json(results: List, verbose: bool = False):
         data.append(item)
     print(json.dumps(data, indent=2))
 
-def format_doc_results_json(grouped_results: List[Dict]):
+def format_doc_results_json(grouped_results: List[Dict], session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
     """Outputs document-grouped results as JSON for piping."""
     import json
+    if session_id or exclusion_stats:
+        for doc in grouped_results:
+            if session_id:
+                doc["session_id"] = session_id
+            if exclusion_stats:
+                doc["excluded_count"] = exclusion_stats.get("excluded_chunks", 0)
     print(json.dumps(grouped_results, indent=2))

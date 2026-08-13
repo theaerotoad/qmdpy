@@ -233,6 +233,74 @@ def save_query_embedding(conn: sqlite3.Connection, query_text: str, embed_model:
     except Exception as e:
         print(f"Warning: Failed to save query embedding: {e}")
 
+def touch_session(conn: sqlite3.Connection, session_id: str, db_path: str, db_last_updated: Optional[str] = None):
+    now = datetime.utcnow().isoformat() + "Z"
+    cursor = conn.cursor()
+    cursor.execute("SELECT session_id FROM sessions WHERE session_id = ?", (session_id,))
+    if cursor.fetchone():
+        cursor.execute("""
+            UPDATE sessions 
+            SET last_active_at = ?, db_path = ?, db_last_updated = COALESCE(?, db_last_updated)
+            WHERE session_id = ?
+        """, (now, db_path, db_last_updated, session_id))
+    else:
+        cursor.execute("""
+            INSERT INTO sessions (session_id, db_path, db_last_updated, created_at, last_active_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (session_id, db_path, db_last_updated, now, now))
+
+def record_session_event(
+    conn: sqlite3.Connection,
+    session_id: str,
+    event_type: str,
+    query_text: Optional[str],
+    lexical_query: Optional[str],
+    db_path: str,
+    db_last_updated: Optional[str]
+) -> int:
+    now = datetime.utcnow().isoformat() + "Z"
+    touch_session(conn, session_id, db_path, db_last_updated)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO session_events (session_id, event_type, query_text, lexical_query, db_path, db_last_updated, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (session_id, event_type, query_text, lexical_query, db_path, db_last_updated, now))
+    return cursor.lastrowid
+
+def record_session_results(
+    conn: sqlite3.Connection,
+    session_id: str,
+    event_id: int,
+    results: List[Any]
+):
+    cursor = conn.cursor()
+    for res in results:
+        if isinstance(res, dict):
+            coll = res.get("collection", "")
+            path = res.get("path", "")
+            seq_id = res.get("seq_id", 0)
+            rank = res.get("rank", 0)
+            score = res.get("score", 0.0)
+        else:
+            coll = getattr(res, "collection", "")
+            path = getattr(res, "path", "")
+            seq_id = getattr(res, "seq_id", 0)
+            rank = getattr(res, "rank", 0) or 0
+            score = getattr(res, "score", 0.0)
+        cursor.execute("""
+            INSERT INTO session_results (session_id, event_id, collection, doc_path, seq_id, rank, score)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (session_id, event_id, coll, path, seq_id, rank, score))
+
+def get_seen_chunks_for_session(conn: sqlite3.Connection, session_id: str) -> set:
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT DISTINCT collection, doc_path, seq_id 
+        FROM session_results 
+        WHERE session_id = ?
+    """, (session_id,))
+    return {(row[0], row[1], row[2]) for row in cursor.fetchall()}
+
 def init_schema(conn: sqlite3.Connection):
     """
     Idempotent creation of tables.
