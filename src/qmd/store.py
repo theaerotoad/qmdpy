@@ -442,12 +442,15 @@ class Store:
         
         order_sql = " ORDER BY f.rank LIMIT ?"
         
+        # Scale up candidate over-fetch limit so seen chunks don't starve candidate quorum
+        sql_limit = max(limit * 5, limit + (len(exclude_seen_set) * 2 if exclude_seen_set else 0)) if exclude_seen_set else limit
+
         def build_params(q_val):
             p = [q_val]
             if collection: p.append(collection)
             if title: p.append(f"%{title}%")
             if path: p.append(f"%{path}%")
-            p.append(limit)
+            p.append(sql_limit)
             return p
 
         try:
@@ -463,7 +466,7 @@ class Store:
                 return []
 
         results = []
-        for idx, row in enumerate(rows):
+        for row in rows:
             doc_path, doc_title, chunk_text, rank, coll, rowid, seq_id, headers = row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]
             
             key = (coll or "", doc_path, seq_id)
@@ -471,11 +474,11 @@ class Store:
                 if excluded_chunks_tracker is not None:
                     excluded_chunks_tracker.add(key)
                 continue
-            
+
             # Convert SQLite FTS5 BM25 negative rank into a positive score
             raw_bm25 = -float(rank) if float(rank) < 0 else float(rank)
             calculated_fts_score = max(0.0001, raw_bm25)
-            calculated_fts_rank = idx + 1
+            calculated_fts_rank = len(results) + 1
 
             results.append(Result(
                 path=doc_path,
@@ -489,6 +492,8 @@ class Store:
                 fts_score=calculated_fts_score,
                 fts_rank=calculated_fts_rank
             ))
+            if len(results) >= limit:
+                break
 
         return results
 
@@ -518,7 +523,7 @@ class Store:
         if is_sqlite_vec_active(self.conn):
             try:
                 query_blob = encode_vector(query_vec, quant_type)
-                k_val = max(limit * 5, 100) if (collection or title or path) else limit
+                k_val = max(limit * 5, 100, limit + (len(exclude_seen_set) * 2 if exclude_seen_set else 0)) if (collection or title or path or exclude_seen_set) else limit
 
                 query_sql = """
                     SELECT v.rowid, v.distance, m.chunk_text, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, '')
