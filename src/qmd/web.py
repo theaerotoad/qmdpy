@@ -41,7 +41,7 @@ def search():
 
         results = store.hybrid_search(
             query=query,
-            limit=limit * 3 if doc_view else limit,
+            limit=limit,
             rerank=data.get('rerank', False),
             collection=data.get('collection') if data.get('collection') else None,
             lexical_query=data.get('lex') if data.get('lex') else None,
