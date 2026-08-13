@@ -24,7 +24,10 @@
         
         <div class="flex justify-between items-end border-b border-gray-700 pb-4">
             <div>
-                <h1 class="text-3xl font-bold text-white">QMD Web Search</h1>
+                <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+                    QMD Web Search
+                    <span id="session-badge" class="text-xs font-mono bg-gray-800 border border-gray-700 px-2 py-1 rounded text-gray-400 font-normal">Session: -</span>
+                </h1>
                 <p class="text-gray-400 mt-1 text-sm">Semantic & FTS Local Knowledge Base</p>
             </div>
             <div id="collections-container" class="flex gap-2">
@@ -46,6 +49,10 @@
                     <label class="flex items-center gap-1">
                         <input type="checkbox" id="rerank" class="rounded bg-gray-700">
                         <span>Rerank</span>
+                    </label>
+                    <label class="flex items-center gap-1">
+                        <input type="checkbox" id="exclude-seen" class="rounded bg-gray-700">
+                        <span>Exclude Seen</span>
                     </label>
                     <label class="flex items-center gap-1">
                         <input type="checkbox" id="redact-pii" class="rounded bg-gray-700">
@@ -124,6 +131,7 @@
 
     <script>
         let lastRawJson = null;
+        let currentSessionId = null;
 
         // Fetch collections on load
         async function loadCollections() {
@@ -196,12 +204,14 @@
                 query: document.getElementById('query').value,
                 doc: document.getElementById('doc-view').checked,
                 rerank: document.getElementById('rerank').checked,
+                exclude_seen: document.getElementById('exclude-seen').checked,
                 redact_pii: document.getElementById('redact-pii').checked,
                 limit: parseInt(document.getElementById('limit').value),
                 collection: document.getElementById('collection-filter').value,
                 lex: document.getElementById('lex').value.trim() || null,
                 title: document.getElementById('title').value.trim() || null,
-                path: document.getElementById('path').value.trim() || null
+                path: document.getElementById('path').value.trim() || null,
+                session_id: currentSessionId
             };
 
             try {
@@ -218,8 +228,11 @@
                 }
 
                 lastRawJson = data.results;
-                
-                statsEl.textContent = `Found ${data.results.length} ${data.type === 'doc' ? 'documents' : 'chunks'}.`;
+                currentSessionId = data.session_id;
+                document.getElementById('session-badge').textContent = `Session: ${currentSessionId}`;
+
+                const excludedMsg = data.excluded_count ? ` | Excluded ${data.excluded_count} seen chunk(s)` : '';
+                statsEl.textContent = `Found ${data.results.length} ${data.type === 'doc' ? 'documents' : 'chunks'}${excludedMsg}.`;
                 toolbarEl.classList.remove('hidden');
                 
                 renderResults(data.results, data.type);

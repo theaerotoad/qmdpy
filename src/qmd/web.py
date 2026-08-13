@@ -1,11 +1,13 @@
 import os
 import json
+import secrets
 from flask import Flask, request, jsonify, render_template, g
 
 from qmd.config import load_config
 from qmd.store import Store
 from qmd.main import group_results_by_doc
 from qmd.utils import decompress_text, redact_pii
+from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
 
 app = Flask(__name__)
 
@@ -27,12 +29,17 @@ def index():
 @app.route('/api/search', methods=['POST'])
 def search():
     try:
-        data = request.json
+        data = request.json or {}
         query = data.get('query', '')
         limit = int(data.get('limit', 10))
         doc_view = data.get('doc', False)
-        
-        results = get_store().hybrid_search(
+        session_id = data.get('session_id') or secrets.token_hex(4)
+        exclude_seen = data.get('exclude_seen', False)
+
+        store = get_store()
+        exclude_seen_set = get_seen_chunks_for_session(store.history_conn, session_id) if exclude_seen else set()
+
+        results = store.hybrid_search(
             query=query,
             limit=limit * 3 if doc_view else limit,
             rerank=data.get('rerank', False),
@@ -40,6 +47,7 @@ def search():
             lexical_query=data.get('lex') if data.get('lex') else None,
             title=data.get('title') if data.get('title') else None,
             path=data.get('path') if data.get('path') else None,
+            exclude_seen_set=exclude_seen_set
         )
 
         if data.get('redact_pii', False) or data.get('redact', False):
@@ -47,12 +55,42 @@ def search():
                 r.text = redact_pii(r.text)
                 if hasattr(r, 'title') and r.title:
                     r.title = redact_pii(r.title)
-        
+
+        event_type = "doc_view" if doc_view else "search"
+        db_last_updated = get_db_meta(store.conn, "last_updated")
+        event_id = record_session_event(
+            store.history_conn,
+            session_id,
+            event_type,
+            query,
+            data.get('lex') if data.get('lex') else None,
+            str(store.config.db_path),
+            db_last_updated
+        )
+
+        excluded_count = store.last_exclusion_stats.get("excluded_chunks", 0)
+
         if doc_view:
             grouped = group_results_by_doc(results)[:limit]
-            return jsonify({"results": grouped, "type": "doc"})
+            shown_chunks = []
+            for doc in grouped:
+                for c in doc.get("chunks", []):
+                    shown_chunks.append({
+                        "collection": doc.get("collection", ""),
+                        "path": doc.get("path", ""),
+                        "seq_id": c.get("seq_id", 0),
+                        "rank": c.get("rank", 0),
+                        "score": c.get("score", 0.0)
+                    })
+            record_session_results(store.history_conn, session_id, event_id, shown_chunks)
+            return jsonify({
+                "results": grouped,
+                "type": "doc",
+                "session_id": session_id,
+                "excluded_count": excluded_count
+            })
         else:
-            # Convert Result objects to dictionaries for JSON response
+            record_session_results(store.history_conn, session_id, event_id, results)
             out = []
             for r in results:
                 out.append({
@@ -64,7 +102,12 @@ def search():
                     "collection": r.collection,
                     "seq_id": r.seq_id
                 })
-            return jsonify({"results": out, "type": "chunk"})
+            return jsonify({
+                "results": out,
+                "type": "chunk",
+                "session_id": session_id,
+                "excluded_count": excluded_count
+            })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
