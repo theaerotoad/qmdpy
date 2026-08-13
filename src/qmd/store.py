@@ -396,8 +396,9 @@ class Store:
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (vector_rowid, collection_name, rel_path, title, chunk_text, context_str))
 
-    def search_fts(self, query: str, limit: int = 20, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
+    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
         """Lexical search directly on chunks using chunks_fts."""
+        limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
         # Allow pre-formatted FTS query expressions (quotes, AND, OR, NOT) to pass through directly
         if '"' in query or ' AND ' in query or ' OR ' in query or ' NOT ' in query:
             fts_query = query
@@ -509,7 +510,8 @@ class Store:
             return vecs[0]
         return []
 
-    def search_vec(self, query: str, limit: int = 20, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
+    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
+        limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
         query_text = self.llm.format_query_for_embedding(query)
         query_vec = self.get_query_embedding(query_text)
         if not query_vec:
@@ -523,7 +525,8 @@ class Store:
         if is_sqlite_vec_active(self.conn):
             try:
                 query_blob = encode_vector(query_vec, quant_type)
-                k_val = max(limit * 5, 100, limit + (len(exclude_seen_set) * 2 if exclude_seen_set else 0)) if (collection or title or path or exclude_seen_set) else limit
+                extra_seen = (len(exclude_seen_set) * 2) if exclude_seen_set else 0
+                k_val = (limit * 5 + extra_seen) if (collection or title or path or exclude_seen_set) else limit
 
                 query_sql = """
                     SELECT v.rowid, v.distance, m.chunk_text, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, '')
@@ -855,8 +858,9 @@ class Store:
         2. Scores documents and parent directories based on chunk density and relevance.
         3. Boosts chunks residing within the top matching documents and directories.
         """
-        # Step 1: Wide Phase - Fetch a broader pool of candidates
-        wide_limit = max(50, limit * 5)
+        # Step 1: Wide Phase - Fetch a broader pool of candidates based on configured limits
+        cfg_max = max(getattr(self.config, 'fts_limit', 50), getattr(self.config, 'vec_limit', 50))
+        wide_limit = max(cfg_max, limit * 5)
         wide_results = self.hybrid_search(
             query,
             limit=wide_limit,
