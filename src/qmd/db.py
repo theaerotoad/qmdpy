@@ -2,7 +2,7 @@ import sqlite3
 import struct
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Tuple, Set
 
 from qmd.utils import decompress_text
 
