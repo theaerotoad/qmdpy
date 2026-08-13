@@ -338,4 +338,4 @@ hyde: {complete hypothetical document passage from Step 2 on a SINGLE LINE}
 - [ ] Return collection tree or subtree (for search narrowing)
 - [ ] Straight-up keyword level searching or filtering for documents (grep style?)
 - [ ] Allow (if available) additional document level or directory level summary / classification and metadata that could be used in searching or revealed when sharing results and documents ("File is a review document for XXXX..." "Directory contains PDF assembly drawings..." "Directory is listing of non-fiction books concerning epidemiological issues
-
+- [ ] Order multi-file listings by original directory order
