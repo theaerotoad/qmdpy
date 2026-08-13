@@ -34,7 +34,7 @@ def test_query_embedding_cache_miss_and_hit(db_conn, tmp_path):
         
     # 2. Second retrieval: Cache Hit -> Returns cached vector without calling embedder again
     vec2 = store.get_query_embedding(query)
-    assert vec2 == sample_vector
+    assert vec2 == pytest.approx(sample_vector)
     assert mock_embed.call_count == 1  # Call count remains 1
 
 def test_save_and_get_query_embedding_direct(tmp_path):

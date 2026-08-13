@@ -104,7 +104,7 @@ def format_results_cli(results: List, query: str = "", verbose: bool = False, se
     """Prints standard search results (snippets)."""
     if session_id:
         stats_str = ""
-        if exclusion_stats and exclusion_stats.get("excluded_chunks", 0) > 0:
+        if isinstance(exclusion_stats, dict) and exclusion_stats.get("excluded_chunks", 0) > 0:
             c_count = exclusion_stats["excluded_chunks"]
             d_count = exclusion_stats.get("excluded_docs", 0)
             stats_str = f" | Excluded {c_count} previously seen chunk(s) across {d_count} document(s)"
@@ -147,7 +147,7 @@ def format_doc_results_cli(grouped_results: List[Dict], query: str = "", verbose
     """Prints results grouped by document with combined snippets."""
     if session_id:
         stats_str = ""
-        if exclusion_stats and exclusion_stats.get("excluded_chunks", 0) > 0:
+        if isinstance(exclusion_stats, dict) and exclusion_stats.get("excluded_chunks", 0) > 0:
             c_count = exclusion_stats["excluded_chunks"]
             d_count = exclusion_stats.get("excluded_docs", 0)
             stats_str = f" | Excluded {c_count} previously seen chunk(s) across {d_count} document(s)"
@@ -211,7 +211,7 @@ def format_results_json(results: List, verbose: bool = False, session_id: Option
         }
         if session_id:
             item["session_id"] = session_id
-        if exclusion_stats:
+        if isinstance(exclusion_stats, dict):
             item["excluded_count"] = exclusion_stats.get("excluded_chunks", 0)
         if verbose or getattr(res, "fts_rank", None) is not None or getattr(res, "vec_rank", None) is not None:
             item["fts_score"] = getattr(res, "fts_score", None)
@@ -226,10 +226,10 @@ def format_results_json(results: List, verbose: bool = False, session_id: Option
 def format_doc_results_json(grouped_results: List[Dict], session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
     """Outputs document-grouped results as JSON for piping."""
     import json
-    if session_id or exclusion_stats:
+    if session_id or isinstance(exclusion_stats, dict):
         for doc in grouped_results:
             if session_id:
                 doc["session_id"] = session_id
-            if exclusion_stats:
+            if isinstance(exclusion_stats, dict):
                 doc["excluded_count"] = exclusion_stats.get("excluded_chunks", 0)
     print(json.dumps(grouped_results, indent=2))

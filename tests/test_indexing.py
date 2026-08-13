@@ -17,7 +17,7 @@ def mock_llm_client():
         client_instance = MockClass.return_value
         
         # Mock embed_batch to return dummy vectors of size 768
-        def side_effect_embed(texts):
+        def side_effect_embed(texts, *args, **kwargs):
             return [[0.1] * 768 for _ in texts]
             
         client_instance.embed_batch.side_effect = side_effect_embed
