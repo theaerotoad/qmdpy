@@ -122,16 +122,65 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
 
 def init_history_schema(conn: sqlite3.Connection):
     cursor = conn.cursor()
+    
+    # 1. Global Query Vector Cache
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS query_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+    CREATE TABLE IF NOT EXISTS query_cache (
         query_text TEXT NOT NULL,
         embed_model TEXT NOT NULL,
         embedding BLOB NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        UNIQUE(query_text, embed_model)
+        PRIMARY KEY(query_text, embed_model)
     );
+    """)
+
+    # 2. Sessions Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS sessions (
+        session_id TEXT PRIMARY KEY,
+        db_path TEXT NOT NULL,
+        db_last_updated TEXT,
+        created_at TEXT NOT NULL,
+        last_active_at TEXT NOT NULL
+    );
+    """)
+
+    # 3. Session Events Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS session_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        query_text TEXT,
+        lexical_query TEXT,
+        db_path TEXT NOT NULL,
+        db_last_updated TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+    );
+    """)
+
+    # 4. Session Results Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS session_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        event_id INTEGER NOT NULL,
+        collection TEXT NOT NULL,
+        doc_path TEXT NOT NULL,
+        seq_id INTEGER NOT NULL,
+        rank INTEGER NOT NULL,
+        score REAL NOT NULL,
+        FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
+        FOREIGN KEY(event_id) REFERENCES session_events(id) ON DELETE CASCADE
+    );
+    """)
+
+    # 5. Lookup index for excluded results
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_session_results_lookup 
+    ON session_results(session_id, collection, doc_path, seq_id);
     """)
 
 def get_history_connection(history_db_path: Path) -> sqlite3.Connection:
@@ -149,11 +198,20 @@ def get_history_connection(history_db_path: Path) -> sqlite3.Connection:
 def get_cached_query_embedding(conn: sqlite3.Connection, query_text: str, embed_model: str) -> Optional[List[float]]:
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT embedding FROM query_history WHERE query_text = ? AND embed_model = ?", (query_text, embed_model))
+        cursor.execute("SELECT embedding FROM query_cache WHERE query_text = ? AND embed_model = ?", (query_text, embed_model))
         row = cursor.fetchone()
+        if not row:
+            try:
+                cursor.execute("SELECT embedding FROM query_history WHERE query_text = ? AND embed_model = ?", (query_text, embed_model))
+                row = cursor.fetchone()
+            except Exception:
+                pass
         if row and row[0]:
             now = datetime.now().isoformat()
-            conn.execute("UPDATE query_history SET updated_at = ? WHERE query_text = ? AND embed_model = ?", (now, query_text, embed_model))
+            try:
+                conn.execute("UPDATE query_cache SET updated_at = ? WHERE query_text = ? AND embed_model = ?", (now, query_text, embed_model))
+            except Exception:
+                pass
             blob = row[0]
             dim = len(blob) // 4
             return list(struct.unpack(f'{dim}f', blob))
@@ -166,7 +224,7 @@ def save_query_embedding(conn: sqlite3.Connection, query_text: str, embed_model:
         now = datetime.now().isoformat()
         blob = struct.pack(f'{len(vec)}f', *vec)
         conn.execute("""
-            INSERT INTO query_history (query_text, embed_model, embedding, created_at, updated_at)
+            INSERT INTO query_cache (query_text, embed_model, embedding, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(query_text, embed_model) DO UPDATE SET
                 embedding = excluded.embedding,
