@@ -86,6 +86,7 @@ def test_group_results_by_doc_fts_normalization():
 
 def test_wide_to_narrow_search(db_conn):
     from qmd.utils import compress_text
+    from qmd.store import encode_vector
     config = Config(db_path=":memory:")
     store = Store(config, connection=db_conn)
     
@@ -94,7 +95,8 @@ def test_wide_to_narrow_search(db_conn):
     cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('code', 'docs/python/guide.md', 'Python Guide', 'h1', 'now')")
     doc_id = cursor.lastrowid
     cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'code', 'docs/python/guide.md', 'Python Guide', 'python programming language')", (doc_id,))
-    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (doc_id, b''))
+    dummy_vec = encode_vector([0.0] * 768)
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (doc_id, dummy_vec))
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'h1', 0, ?, '')", (doc_id, compress_text("python programming language")))
     cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'code', 'docs/python/guide.md', 'Python Guide', 'python programming language', '')", (doc_id,))
     db_conn.commit()
@@ -118,6 +120,7 @@ def test_spacy_fts_expansion():
 
 def test_fts_retrieval(db_conn):
     from qmd.utils import compress_text
+    from qmd.store import encode_vector
     store = Store(Config(db_path=":memory:"), connection=db_conn)
     cursor = db_conn.cursor()
     cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h_test', 'The quick brown fox jumps over the lazy dog', 'now')")
@@ -125,7 +128,8 @@ def test_fts_retrieval(db_conn):
     doc_id = cursor.lastrowid
     cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, ?, ?, ?, ?)",
                    (doc_id, "", "test.md", "Test Title", "The quick brown fox jumps over the lazy dog"))
-    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (doc_id, b''))
+    dummy_vec = encode_vector([0.0] * 768)
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (doc_id, dummy_vec))
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'h_test', 0, ?, '')", (doc_id, compress_text("The quick brown fox jumps over the lazy dog")))
     cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, '', 'test.md', 'Test Title', 'The quick brown fox jumps over the lazy dog', '')", (doc_id,))
     db_conn.commit()
@@ -201,8 +205,10 @@ def test_search_collection_filter(db_conn, monkeypatch):
     cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, ?, ?, ?, ?)", (id_b, "coll_b", "doc_b.md", "B", "python test"))
     
     from qmd.utils import compress_text
-    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (id_a, b''))
-    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (id_b, b''))
+    from qmd.store import encode_vector
+    dummy_vec = encode_vector([0.0] * 768)
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (id_a, dummy_vec))
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (id_b, dummy_vec))
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'h1', 0, ?, '')", (id_a, compress_text("python test")))
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'h2', 0, ?, '')", (id_b, compress_text("python test")))
     
@@ -231,7 +237,9 @@ def test_search_metadata_filters(db_conn, monkeypatch):
     doc_id = cursor.lastrowid
     cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, ?, ?, ?, ?)", (doc_id, "docs", "src/api/auth.md", "Authentication API", "metadata test"))
     from qmd.utils import compress_text
-    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (doc_id, b''))
+    from qmd.store import encode_vector
+    dummy_vec = encode_vector([0.0] * 768)
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (doc_id, dummy_vec))
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'h3', 0, ?, '')", (doc_id, compress_text("metadata test")))
     cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'docs', 'src/api/auth.md', 'Authentication API', 'metadata test', '')", (doc_id,))
     db_conn.commit()
