@@ -1349,3 +1349,80 @@ class Store:
                 headers=headers
             ))
         return results
+
+    def get_collection_tree(self, collection: Optional[str] = None, max_depth: Optional[int] = None) -> Union[Dict[str, Any], List[Dict[str, Any]], None]:
+        """Builds a nested folder directory tree structure of indexed documents."""
+        cursor = self.conn.cursor()
+
+        if collection:
+            cursor.execute("SELECT DISTINCT collection FROM documents WHERE collection = ?", (collection,))
+            if not cursor.fetchone():
+                return None
+            collections = [collection]
+        else:
+            cursor.execute("SELECT DISTINCT collection FROM documents ORDER BY collection ASC")
+            collections = [row[0] for row in cursor.fetchall()]
+
+        if not collections and collection:
+            return None
+
+        results = []
+
+        for coll_name in collections:
+            cursor.execute(
+                "SELECT id, path, title FROM documents WHERE collection = ? ORDER BY path ASC",
+                (coll_name,)
+            )
+            doc_rows = cursor.fetchall()
+
+            dir_tree: Dict[str, Any] = {"dirs": {}, "files": []}
+
+            for doc_id, doc_path, doc_title in doc_rows:
+                norm_path = doc_path.replace("\\", "/").strip("/")
+                parts = norm_path.split("/") if norm_path else []
+                if not parts:
+                    continue
+
+                dir_parts = parts[:-1]
+                file_name = parts[-1]
+
+                curr = dir_tree
+                for d in dir_parts:
+                    if d not in curr["dirs"]:
+                        curr["dirs"][d] = {"dirs": {}, "files": []}
+                    curr = curr["dirs"][d]
+
+                curr["files"].append({
+                    "name": file_name,
+                    "type": "file",
+                    "title": doc_title or file_name,
+                    "path": doc_path,
+                    "doc_id": doc_id
+                })
+
+            def _convert_node(name: str, node_data: Dict[str, Any], current_depth: int) -> Dict[str, Any]:
+                children = []
+                if max_depth is None or current_depth < max_depth:
+                    for dir_name in sorted(node_data["dirs"].keys(), key=str.lower):
+                        sub_dict = node_data["dirs"][dir_name]
+                        sub_node = _convert_node(dir_name, sub_dict, current_depth + 1)
+                        children.append(sub_node)
+
+                    sorted_files = sorted(node_data["files"], key=lambda f: f["name"].lower())
+                    children.extend(sorted_files)
+
+                return {
+                    "name": name,
+                    "type": "directory",
+                    "children": children
+                }
+
+            root_node = _convert_node(coll_name, dir_tree, current_depth=0)
+            results.append({
+                "collection": coll_name,
+                "tree": root_node
+            })
+
+        if collection:
+            return results[0] if results else None
+        return results

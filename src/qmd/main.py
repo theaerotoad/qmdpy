@@ -13,7 +13,8 @@ from qmd.db import get_seen_chunks_for_session, record_session_event, record_ses
 from qmd.formatting import (
     format_results_cli, format_doc_results_cli, format_results_json, format_doc_results_json,
     format_outline_cli, format_chunks_cli, format_results_xml, format_doc_results_xml,
-    format_chunks_xml, format_outline_xml, set_plain_mode, RED, GREEN, RESET
+    format_chunks_xml, format_outline_xml, format_collection_tree_cli, format_collection_tree_xml,
+    set_plain_mode, RED, GREEN, RESET
 )
 from qmd.utils import redact_pii
 
@@ -383,6 +384,30 @@ def handle_chunk(args, store: Store):
     else:
         format_chunks_cli(results, window=args.window)
 
+def handle_collection_tree(args, store: Store):
+    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    if getattr(args, "plain", False) or is_xml:
+        set_plain_mode(True)
+
+    coll_name = getattr(args, "name", None) or getattr(args, "collection", None)
+    tree_data = store.get_collection_tree(collection=coll_name, max_depth=getattr(args, "depth", None))
+
+    if coll_name and tree_data is None:
+        if args.json:
+            import json
+            print(json.dumps({"error": f"Collection '{coll_name}' not found"}, indent=2))
+        else:
+            print(f"{RED}Error: Collection '{coll_name}' not found.{RESET}")
+        sys.exit(1)
+
+    if args.json:
+        import json
+        print(json.dumps(tree_data, indent=2))
+    elif is_xml:
+        format_collection_tree_xml(tree_data)
+    else:
+        format_collection_tree_cli(tree_data)
+
 def handle_update(args, store: Store):
     config = store.config
     
@@ -472,6 +497,15 @@ def main():
     coll_sub = coll_parser.add_subparsers(dest="subcommand", required=True)
     coll_list = coll_sub.add_parser("list", help="List all configured collections", parents=[parent_parser])
 
+    coll_tree = coll_sub.add_parser("tree", help="Display directory tree of indexed files", parents=[parent_parser])
+    coll_tree.add_argument("name", nargs="?", default=None, help="Optional collection name")
+    coll_tree.add_argument("-c", "--collection", type=str, default=None, help="Filter by collection name")
+    coll_tree.add_argument("--depth", type=int, default=None, help="Maximum directory depth to display")
+    coll_tree.add_argument("--json", action="store_true", help="Output directory tree as JSON")
+    coll_tree.add_argument("--xml", action="store_true", help="Output directory tree as XML for LLM context")
+    coll_tree.add_argument("--llm", action="store_true", help="Alias for --xml")
+    coll_tree.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
+
     serve_parser = subparsers.add_parser("serve", help="Start the web UI", parents=[parent_parser])
     serve_parser.add_argument("--port", type=int, default=5000, help="Port to run the server on")
 
@@ -493,6 +527,8 @@ def main():
             if args.subcommand == "list":
                 for name, cfg in config.collections.items():
                     print(f"{GREEN}{name}{RESET}: {cfg.path} ({cfg.glob})")
+            elif args.subcommand == "tree":
+                handle_collection_tree(args, store)
         elif args.command == "serve":
             from qmd.web import start_server
             start_server(port=args.port, config_path=config_path)

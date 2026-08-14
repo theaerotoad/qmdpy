@@ -1,7 +1,8 @@
 import sys
 import re
 import html
-from typing import List, Dict, Optional, Tuple, Any
+import json
+from typing import List, Dict, Optional, Tuple, Any, Union
 
 PLAIN_MODE = False
 
@@ -203,7 +204,6 @@ def format_doc_results_cli(grouped_results: List[Dict], query: str = "", verbose
 
 def format_results_json(results: List, verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
     """Outputs results as JSON for piping."""
-    import json
     data = []
     for res in results:
         item = {
@@ -232,7 +232,6 @@ def format_results_json(results: List, verbose: bool = False, session_id: Option
 
 def format_doc_results_json(grouped_results: List[Dict], session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
     """Outputs document-grouped results as JSON for piping."""
-    import json
     if session_id or isinstance(exclusion_stats, dict):
         for doc in grouped_results:
             if session_id:
@@ -461,3 +460,94 @@ def format_chunks_cli(results: List, window: int = 0):
             hdr_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
             print(f"{GREEN}Chunk {res.seq_id}{RESET}{hdr_str}")
             print(f"{res.text}\n")
+
+def format_collection_tree_cli(tree_data: Union[Dict, List[Dict]]):
+    """Prints collection folder directory tree in ASCII format."""
+    if not tree_data:
+        print(f"\n{RED}No collections or documents found.{RESET}")
+        return
+
+    items = tree_data if isinstance(tree_data, list) else [tree_data]
+
+    for item_idx, item in enumerate(items):
+        if item_idx > 0:
+            print()
+        coll_name = item.get("collection", "")
+        root_node = item.get("tree", {})
+        if not root_node:
+            continue
+
+        print(f"{BOLD}{CYAN}{coll_name}/{RESET}")
+
+        def _render_node(node: Dict, prefix: str = ""):
+            children = node.get("children", [])
+            count = len(children)
+            for i, child in enumerate(children):
+                is_last = (i == count - 1)
+                connector = "└── " if is_last else "├── "
+                sub_prefix = "    " if is_last else "│   "
+
+                c_type = child.get("type", "file")
+                c_name = child.get("name", "")
+                if c_type == "directory":
+                    print(f"{prefix}{DIM}{connector}{RESET}{BOLD}{CYAN}{c_name}/{RESET}")
+                    _render_node(child, prefix + sub_prefix)
+                else:
+                    title = child.get("title")
+                    title_str = f" {DIM}({title}){RESET}" if title and title != c_name else ""
+                    print(f"{prefix}{DIM}{connector}{RESET}{GREEN}{c_name}{RESET}{title_str}")
+
+        _render_node(root_node, "")
+    print()
+
+def format_collection_tree_json(tree_data: Union[Dict, List[Dict]]):
+    """Outputs collection folder directory tree as JSON."""
+    print(json.dumps(tree_data, indent=2))
+
+def format_collection_tree_xml(tree_data: Union[Dict, List[Dict]]):
+    """Outputs collection folder tree as XML for LLM context."""
+    if not tree_data:
+        print('<collections>\n</collections>')
+        return
+
+    items = tree_data if isinstance(tree_data, list) else [tree_data]
+    lines = []
+    
+    wrap_all = len(items) > 1
+    if wrap_all:
+        lines.append('<collections>')
+
+    def _node_to_xml(node: Dict, indent_level: int):
+        indent = "  " * indent_level
+        children = node.get("children", [])
+        for child in children:
+            c_type = child.get("type", "file")
+            c_name = escape_xml_attr(child.get("name", ""))
+            if c_type == "directory":
+                c_children = child.get("children", [])
+                if c_children:
+                    lines.append(f'{indent}<directory name="{c_name}">')
+                    _node_to_xml(child, indent_level + 1)
+                    lines.append(f'{indent}</directory>')
+                else:
+                    lines.append(f'{indent}<directory name="{c_name}" />')
+            else:
+                title_attr = f' title="{escape_xml_attr(child.get("title", ""))}"' if child.get("title") else ""
+                path_attr = f' path="{escape_xml_attr(child.get("path", ""))}"' if child.get("path") else ""
+                doc_id = child.get("doc_id")
+                id_attr = f' doc_id="{doc_id}"' if doc_id is not None else ""
+                lines.append(f'{indent}<file name="{c_name}"{title_attr}{path_attr}{id_attr} />')
+
+    for item in items:
+        coll_name = escape_xml_attr(item.get("collection", ""))
+        indent_base = 1 if wrap_all else 0
+        indent = "  " * indent_base
+        root_node = item.get("tree", {})
+        lines.append(f'{indent}<collection_tree collection="{coll_name}">')
+        _node_to_xml(root_node, indent_base + 1)
+        lines.append(f'{indent}</collection_tree>')
+
+    if wrap_all:
+        lines.append('</collections>')
+
+    print("\n".join(lines))
