@@ -149,6 +149,19 @@ class Store:
         except sqlite3.OperationalError:
             pass
 
+        self.llm = LLMClient(
+            base_url=config.llm_url,
+            api_key=getattr(config, "api_key", None),
+            embed_url=getattr(config, "embed_url", None),
+            rerank_url=getattr(config, "rerank_url", None),
+            embed_api_key=getattr(config, "embed_api_key", None),
+            rerank_api_key=getattr(config, "rerank_api_key", None),
+            embed_model=config.embed_model,
+            rerank_model=config.rerank_model,
+            generate_model=config.generate_model,
+            timeout=getattr(config, "request_timeout", 120.0)
+        )
+
     def _build_search_cache_key(
         self,
         search_type: str,
@@ -186,19 +199,6 @@ class Store:
             "rerank_model": rerank_model
         }
         return compute_hash(json.dumps(key_data, sort_keys=True))
-
-        self.llm = LLMClient(
-            base_url=config.llm_url,
-            api_key=getattr(config, "api_key", None),
-            embed_url=getattr(config, "embed_url", None),
-            rerank_url=getattr(config, "rerank_url", None),
-            embed_api_key=getattr(config, "embed_api_key", None),
-            rerank_api_key=getattr(config, "rerank_api_key", None),
-            embed_model=config.embed_model,
-            rerank_model=config.rerank_model,
-            generate_model=config.generate_model,
-            timeout=getattr(config, "request_timeout", 120.0)
-        )
 
     def _get_collection_files(self, base_path: Path, collection_cfg: CollectionConfig) -> List[Path]:
         if collection_cfg.file_extensions:
