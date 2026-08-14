@@ -183,6 +183,17 @@ def init_history_schema(conn: sqlite3.Connection):
     ON session_results(session_id, collection, doc_path, seq_id);
     """)
 
+    # 6. Global Search Result Cache
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS search_result_cache (
+        cache_key TEXT PRIMARY KEY,
+        query_text TEXT NOT NULL,
+        results_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """)
+
 def get_history_connection(history_db_path: Path) -> sqlite3.Connection:
     if history_db_path.parent and not history_db_path.parent.exists():
         history_db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -232,6 +243,35 @@ def save_query_embedding(conn: sqlite3.Connection, query_text: str, embed_model:
         """, (query_text, embed_model, blob, now, now))
     except Exception as e:
         print(f"Warning: Failed to save query embedding: {e}")
+
+def get_cached_search_results(conn: sqlite3.Connection, cache_key: str) -> Optional[str]:
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT results_json FROM search_result_cache WHERE cache_key = ?", (cache_key,))
+        row = cursor.fetchone()
+        if row and row[0]:
+            now = datetime.now().isoformat()
+            try:
+                conn.execute("UPDATE search_result_cache SET updated_at = ? WHERE cache_key = ?", (now, cache_key))
+            except Exception:
+                pass
+            return row[0]
+    except Exception as e:
+        print(f"Warning: Failed to fetch cached search results: {e}")
+    return None
+
+def save_cached_search_results(conn: sqlite3.Connection, cache_key: str, query_text: str, results_json: str):
+    try:
+        now = datetime.now().isoformat()
+        conn.execute("""
+            INSERT INTO search_result_cache (cache_key, query_text, results_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(cache_key) DO UPDATE SET
+                results_json = excluded.results_json,
+                updated_at = excluded.updated_at
+        """, (cache_key, query_text, results_json, now, now))
+    except Exception as e:
+        print(f"Warning: Failed to save search results cache: {e}")
 
 def touch_session(conn: sqlite3.Connection, session_id: str, db_path: str, db_last_updated: Optional[str] = None):
     now = datetime.utcnow().isoformat() + "Z"

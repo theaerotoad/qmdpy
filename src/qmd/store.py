@@ -14,7 +14,8 @@ from tqdm import tqdm
 from qmd.db import (
     get_connection, init_schema, is_sqlite_vec_active, get_db_meta, ensure_vector_table,
     register_functions, get_history_connection, get_cached_query_embedding, save_query_embedding,
-    update_db_last_updated, check_db_compatibility, CURRENT_SCHEMA_VERSION
+    update_db_last_updated, check_db_compatibility, CURRENT_SCHEMA_VERSION,
+    get_cached_search_results, save_cached_search_results
 )
 from qmd.config import Config, CollectionConfig
 from qmd.llm import LLMClient
@@ -42,6 +43,53 @@ def encode_vector(vec: List[float], quant_type: str = "none") -> bytes:
         return bytes(raw_bytes)
     else:
         return struct.pack(f'{len(vec)}f', *vec)
+
+
+def _results_to_json(results: List[Result]) -> str:
+    data = []
+    for r in results:
+        data.append({
+            "path": r.path,
+            "title": r.title,
+            "text": r.text,
+            "score": r.score,
+            "source": r.source,
+            "rank": r.rank,
+            "collection": r.collection,
+            "seq_id": r.seq_id,
+            "headers": getattr(r, "headers", ""),
+            "fts_score": getattr(r, "fts_score", None),
+            "fts_rank": getattr(r, "fts_rank", None),
+            "vec_score": getattr(r, "vec_score", None),
+            "vec_rank": getattr(r, "vec_rank", None),
+            "rrf_score": getattr(r, "rrf_score", None),
+            "rrf_rank": getattr(r, "rrf_rank", None),
+        })
+    return json.dumps(data)
+
+
+def _json_to_results(json_str: str) -> List[Result]:
+    data = json.loads(json_str)
+    results = []
+    for item in data:
+        results.append(Result(
+            path=item["path"],
+            title=item["title"],
+            text=item["text"],
+            score=item["score"],
+            source=item["source"],
+            rank=item.get("rank"),
+            collection=item.get("collection", ""),
+            seq_id=item.get("seq_id", 0),
+            headers=item.get("headers", ""),
+            fts_score=item.get("fts_score"),
+            fts_rank=item.get("fts_rank"),
+            vec_score=item.get("vec_score"),
+            vec_rank=item.get("vec_rank"),
+            rrf_score=item.get("rrf_score"),
+            rrf_rank=item.get("rrf_rank"),
+        ))
+    return results
 
 
 def decode_vector(blob: bytes, dim: int, quant_type: str = "none") -> List[float]:
@@ -100,6 +148,44 @@ class Store:
             self.conn.commit()
         except sqlite3.OperationalError:
             pass
+
+    def _build_search_cache_key(
+        self,
+        search_type: str,
+        query: str,
+        limit: int,
+        rerank: bool,
+        reranker_only: bool,
+        collection: Optional[str],
+        lexical_query: Optional[str],
+        title: Optional[str],
+        path: Optional[str],
+        fts_limit: Optional[int],
+        vec_limit: Optional[int],
+        rerank_candidates: Optional[int]
+    ) -> str:
+        db_last_updated = get_db_meta(self.conn, "last_updated") or ""
+        embed_model = getattr(self.config, "embed_model", "")
+        rerank_model = getattr(self.config, "rerank_model", "")
+
+        key_data = {
+            "search_type": search_type,
+            "query": query,
+            "limit": limit,
+            "rerank": rerank,
+            "reranker_only": reranker_only,
+            "collection": collection or "",
+            "lexical_query": lexical_query or "",
+            "title": title or "",
+            "path": path or "",
+            "fts_limit": fts_limit,
+            "vec_limit": vec_limit,
+            "rerank_candidates": rerank_candidates,
+            "db_last_updated": db_last_updated,
+            "embed_model": embed_model,
+            "rerank_model": rerank_model
+        }
+        return compute_hash(json.dumps(key_data, sort_keys=True))
 
         self.llm = LLMClient(
             base_url=config.llm_url,
@@ -641,6 +727,15 @@ class Store:
     ) -> List[Result]:
         excluded_chunks_tracker: set = set()
         
+        if not exclude_seen_set:
+            cache_key = self._build_search_cache_key(
+                "hybrid", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
+            )
+            cached_json = get_cached_search_results(self.history_conn, cache_key)
+            if cached_json:
+                self.last_exclusion_stats = {"excluded_chunks": 0, "excluded_docs": 0}
+                return _json_to_results(cached_json)
+
         fts_lim = fts_limit if fts_limit is not None else getattr(self.config, 'fts_limit', 50)
         vec_lim = vec_limit if vec_limit is not None else getattr(self.config, 'vec_limit', 50)
         rr_cand = rerank_candidates if rerank_candidates is not None else getattr(self.config, 'rerank_candidates', 20)
@@ -833,7 +928,10 @@ class Store:
         for i, res in enumerate(unique_results):
             res.rank = i + 1
 
-        return unique_results[:limit]
+        ret_results = unique_results[:limit]
+        if not exclude_seen_set:
+            save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(ret_results))
+        return ret_results
 
     def wide_to_narrow_search(
         self, 
@@ -858,6 +956,15 @@ class Store:
         2. Scores documents and parent directories based on chunk density and relevance.
         3. Boosts chunks residing within the top matching documents and directories.
         """
+        if not exclude_seen_set:
+            cache_key = self._build_search_cache_key(
+                "w2n", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
+            )
+            cached_json = get_cached_search_results(self.history_conn, cache_key)
+            if cached_json:
+                self.last_exclusion_stats = {"excluded_chunks": 0, "excluded_docs": 0}
+                return _json_to_results(cached_json)
+
         # Step 1: Wide Phase - Fetch a broader pool of candidates based on configured limits
         cfg_max = max(getattr(self.config, 'fts_limit', 50), getattr(self.config, 'vec_limit', 50))
         wide_limit = max(cfg_max, limit * 5)
@@ -959,4 +1066,7 @@ class Store:
         for i, res in enumerate(candidate_pool):
             res.rank = i + 1
 
-        return candidate_pool[:limit]
+        ret_results = candidate_pool[:limit]
+        if not exclude_seen_set:
+            save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(ret_results))
+        return ret_results
