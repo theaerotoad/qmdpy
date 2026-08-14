@@ -1115,43 +1115,59 @@ class Store:
         total_chars = sum(len(c["text"]) for c in chunks_data) if chunks_data else len(raw_md)
 
         raw_headings = extract_outline(content=raw_md)
+
+        # Build monotonic chunk character offsets within raw_md
+        chunk_offsets = []
+        curr_pos = 0
+        for c in chunks_data:
+            prefix = c["text"].strip()[:50]
+            if prefix:
+                idx = raw_md.find(prefix, curr_pos)
+                if idx != -1:
+                    curr_pos = idx
+                    chunk_offsets.append(idx)
+                else:
+                    chunk_offsets.append(curr_pos)
+            else:
+                chunk_offsets.append(curr_pos)
+
+        def _get_seq_for_offset(offset: int) -> int:
+            if not chunk_offsets:
+                return 0
+            seq = 0
+            for seq_i, c_off in enumerate(chunk_offsets):
+                if c_off <= offset:
+                    seq = seq_i
+                else:
+                    break
+            return seq
+
+        # Calculate start_seq for each heading based on character offset
+        start_seqs = [_get_seq_for_offset(h["char_offset"]) for h in raw_headings]
+
         structured_headings = []
+        num_headings = len(raw_headings)
+        last_chunk_idx = (len(chunks_data) - 1) if chunks_data else 0
 
         for i, h in enumerate(raw_headings):
             h_text = h["text"]
             h_level = h["level"]
+            start_seq = start_seqs[i]
 
-            start_seq = 0
-            h_text_clean = re.sub(r'^\s*#+\s*', '', h_text).strip().lower()
-            found_start = False
-
-            for c in chunks_data:
-                c_text_lower = c["text"].lower()
-                c_headers_lower = c["headers"].lower()
-                if h_text_clean and (h_text_clean in c_headers_lower or h_text_clean in c_text_lower):
-                    start_seq = c["seq_id"]
-                    found_start = True
-                    break
-
-            if not found_start and i > 0 and structured_headings:
-                start_seq = structured_headings[-1]["start_seq"]
-
-            next_same_or_higher = None
-            for j in range(i + 1, len(raw_headings)):
+            # Find next heading at same or higher (<= h_level) hierarchy level
+            next_same_or_higher_seq = None
+            for j in range(i + 1, num_headings):
                 if raw_headings[j]["level"] <= h_level:
-                    next_same_or_higher = raw_headings[j]
+                    next_same_or_higher_seq = start_seqs[j]
                     break
 
-            if next_same_or_higher:
-                next_clean = re.sub(r'^\s*#+\s*', '', next_same_or_higher["text"]).strip().lower()
-                end_seq = start_seq
-                for c in chunks_data:
-                    if c["seq_id"] >= start_seq:
-                        if next_clean and (next_clean in c["headers"].lower() or next_clean in c["text"].lower()):
-                            break
-                        end_seq = c["seq_id"]
+            if next_same_or_higher_seq is not None:
+                if next_same_or_higher_seq > start_seq:
+                    end_seq = next_same_or_higher_seq - 1
+                else:
+                    end_seq = start_seq
             else:
-                end_seq = chunks_data[-1]["seq_id"] if chunks_data else 0
+                end_seq = last_chunk_idx
 
             if end_seq < start_seq:
                 end_seq = start_seq
