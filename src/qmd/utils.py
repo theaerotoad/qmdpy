@@ -259,3 +259,42 @@ def chunk_text(text: str, window_size: int = 1000, overlap: int = 200) -> List[s
         start += (window_size - overlap)
         
     return chunks
+
+def parse_int_ranges(spec: Union[str, int]) -> Optional[List[int]]:
+    """
+    Parses a string or integer containing integers, comma-separated values, and ranges
+    (e.g., '234-299', '23,24,29', '22,40, 25-37', 5) into a sorted list of unique integers.
+    Returns None if the spec is invalid or does not match an integer range pattern.
+    """
+    if isinstance(spec, int):
+        return [spec]
+    if not isinstance(spec, str):
+        return None
+
+    spec = spec.strip()
+    if not spec:
+        return None
+
+    parts = [p.strip() for p in spec.split(',') if p.strip()]
+    if not parts:
+        return None
+
+    result_set = set()
+    for part in parts:
+        if '-' in part:
+            subparts = [sp.strip() for sp in part.split('-')]
+            if len(subparts) != 2:
+                return None
+            if not (subparts[0].isdigit() and subparts[1].isdigit()):
+                return None
+            start, end = int(subparts[0]), int(subparts[1])
+            if start <= end:
+                result_set.update(range(start, end + 1))
+            else:
+                result_set.update(range(end, start + 1))
+        else:
+            if not part.isdigit():
+                return None
+            result_set.add(int(part))
+
+    return sorted(result_set)

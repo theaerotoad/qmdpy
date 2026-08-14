@@ -257,12 +257,27 @@ def format_chunks_cli(results: List, window: int = 0):
         print(f"\n{RED}No chunks found.{RESET}")
         return
 
-    res0 = results[0]
-    path_str = f"qmd://{res0.collection}/{res0.path}" if res0.collection else res0.path
-    print(f"\n{BOLD}{res0.title}{RESET} {DIM}({path_str}){RESET}")
-    print(f"{DIM}Retrieved {len(results)} chunk(s) (window: ±{window}){RESET}\n")
+    distinct_docs = {(r.collection, r.path) for r in results}
+    if len(distinct_docs) == 1:
+        res0 = results[0]
+        path_str = f"qmd://{res0.collection}/{res0.path}" if res0.collection else res0.path
+        print(f"\n{BOLD}{res0.title}{RESET} {DIM}({path_str}){RESET}")
+        print(f"{DIM}Retrieved {len(results)} chunk(s) (window: ±{window}){RESET}\n")
 
-    for res in results:
-        hdr_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
-        print(f"{GREEN}Chunk {res.seq_id}{RESET}{hdr_str}")
-        print(f"{res.text}\n")
+        for res in results:
+            hdr_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
+            print(f"{GREEN}Chunk {res.seq_id}{RESET}{hdr_str}")
+            print(f"{res.text}\n")
+    else:
+        print(f"\n{DIM}Retrieved {len(results)} chunk(s) across {len(distinct_docs)} documents (window: ±{window}){RESET}\n")
+        current_doc = None
+        for res in results:
+            doc_key = (res.collection, res.path)
+            if doc_key != current_doc:
+                current_doc = doc_key
+                path_str = f"qmd://{res.collection}/{res.path}" if res.collection else res.path
+                print(f"{BOLD}{res.title}{RESET} {DIM}({path_str}){RESET}")
+
+            hdr_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
+            print(f"{GREEN}Chunk {res.seq_id}{RESET}{hdr_str}")
+            print(f"{res.text}\n")

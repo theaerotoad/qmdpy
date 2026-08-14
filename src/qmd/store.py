@@ -1223,24 +1223,81 @@ class Store:
 
         return results
 
-    def get_chunk_by_id(self, rowid: int, window: int = 0) -> List[Result]:
-        """Retrieves target chunk by vector rowid along with ±window surrounding chunks."""
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT m.doc_hash, m.seq_id, d.collection, d.path, d.title
-            FROM chunk_metadata m
-            JOIN documents d ON m.doc_hash = d.hash
-            WHERE m.rowid = ?
-        """, (rowid,))
-        row = cursor.fetchone()
-        if not row:
+    def get_chunk_by_id(self, rowid: Union[int, List[int]], window: int = 0) -> List[Result]:
+        """Retrieves target chunk(s) by vector rowid(s) along with ±window surrounding chunks."""
+        rowids = [rowid] if isinstance(rowid, int) else list(rowid)
+        if not rowids:
             return []
 
-        doc_hash, seq_id, collection, path, title = row
-        return self._get_chunks_in_window(doc_hash, seq_id, window)
+        cursor = self.conn.cursor()
+        if window == 0:
+            placeholders = ','.join(['?'] * len(rowids))
+            cursor.execute(f"""
+                SELECT m.rowid, m.seq_id, m.chunk_text, COALESCE(m.headers, ''), d.path, d.title, d.collection
+                FROM chunk_metadata m
+                JOIN documents d ON m.doc_hash = d.hash
+                WHERE m.rowid IN ({placeholders})
+                ORDER BY d.collection, d.path, m.seq_id ASC
+            """, tuple(rowids))
+            results = []
+            for row in cursor.fetchall():
+                r_id, seq_id, compressed_text, headers, doc_path, title, collection = row
+                results.append(Result(
+                    path=doc_path,
+                    title=title,
+                    text=decompress_text(compressed_text),
+                    score=1.0,
+                    source="chunk",
+                    collection=collection or "",
+                    seq_id=seq_id,
+                    headers=headers
+                ))
+            return results
 
-    def get_chunk_by_seq(self, collection: Optional[str], path: str, seq_id: int, window: int = 0) -> List[Result]:
-        """Retrieves target chunk by collection, path, and seq_id along with ±window surrounding chunks."""
+        placeholders = ','.join(['?'] * len(rowids))
+        cursor.execute(f"""
+            SELECT m.doc_hash, m.seq_id
+            FROM chunk_metadata m
+            WHERE m.rowid IN ({placeholders})
+        """, tuple(rowids))
+        rows = cursor.fetchall()
+        if not rows:
+            return []
+
+        doc_seq_map: Dict[str, set] = {}
+        for doc_hash, seq_id in rows:
+            if doc_hash not in doc_seq_map:
+                doc_seq_map[doc_hash] = set()
+            for s in range(max(0, seq_id - window), seq_id + window + 1):
+                doc_seq_map[doc_hash].add(s)
+
+        results = []
+        for doc_hash, seq_set in doc_seq_map.items():
+            seq_list = sorted(seq_set)
+            seq_placeholders = ','.join(['?'] * len(seq_list))
+            cursor.execute(f"""
+                SELECT m.rowid, m.seq_id, m.chunk_text, COALESCE(m.headers, ''), d.path, d.title, d.collection
+                FROM chunk_metadata m
+                JOIN documents d ON m.doc_hash = d.hash
+                WHERE m.doc_hash = ? AND m.seq_id IN ({seq_placeholders})
+                ORDER BY m.seq_id ASC
+            """, (doc_hash, *seq_list))
+            for row in cursor.fetchall():
+                r_id, seq_id, compressed_text, headers, doc_path, title, collection = row
+                results.append(Result(
+                    path=doc_path,
+                    title=title,
+                    text=decompress_text(compressed_text),
+                    score=1.0,
+                    source="chunk",
+                    collection=collection or "",
+                    seq_id=seq_id,
+                    headers=headers
+                ))
+        return results
+
+    def get_chunk_by_seq(self, collection: Optional[str], path: str, seq_id: Union[int, List[int]] = 0, window: int = 0) -> List[Result]:
+        """Retrieves target chunk(s) by collection, path, and seq_id(s) along with ±window surrounding chunks."""
         cursor = self.conn.cursor()
         if collection:
             cursor.execute("SELECT hash, collection, path, title FROM documents WHERE collection = ? AND path = ?", (collection, path))
@@ -1259,4 +1316,36 @@ class Store:
             return []
 
         doc_hash, coll_name, doc_path, title = row
-        return self._get_chunks_in_window(doc_hash, seq_id, window)
+        seq_ids = [seq_id] if isinstance(seq_id, int) else list(seq_id)
+        if not seq_ids:
+            return []
+
+        target_seqs = set()
+        for sid in seq_ids:
+            for s in range(max(0, sid - window), sid + window + 1):
+                target_seqs.add(s)
+
+        sorted_seqs = sorted(target_seqs)
+        placeholders = ','.join(['?'] * len(sorted_seqs))
+        cursor.execute(f"""
+            SELECT m.rowid, m.seq_id, m.chunk_text, COALESCE(m.headers, ''), d.path, d.title, d.collection
+            FROM chunk_metadata m
+            JOIN documents d ON m.doc_hash = d.hash
+            WHERE m.doc_hash = ? AND m.seq_id IN ({placeholders})
+            ORDER BY m.seq_id ASC
+        """, (doc_hash, *sorted_seqs))
+
+        results = []
+        for r in cursor.fetchall():
+            rowid, s_id, compressed_text, headers, d_path, d_title, collection_name = r
+            results.append(Result(
+                path=d_path,
+                title=d_title,
+                text=decompress_text(compressed_text),
+                score=1.0,
+                source="chunk",
+                collection=collection_name or "",
+                seq_id=s_id,
+                headers=headers
+            ))
+        return results

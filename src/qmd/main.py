@@ -335,12 +335,24 @@ def handle_chunk(args, store: Store):
     target = args.target
     results = []
 
-    if target.isdigit() and args.seq is None:
-        rowid = int(target)
-        results = store.get_chunk_by_id(rowid, window=args.window)
+    from qmd.utils import parse_int_ranges
+
+    parsed_target_ids = parse_int_ranges(target)
+
+    if args.seq is not None:
+        seq_ids = parse_int_ranges(args.seq)
+        if seq_ids is None:
+            if args.json:
+                import json
+                print(json.dumps({"error": f"Invalid sequence range specification: '{args.seq}'"}, indent=2))
+            else:
+                print(f"{RED}Error: Invalid sequence range specification: '{args.seq}'{RESET}")
+            sys.exit(1)
+        results = store.get_chunk_by_seq(args.collection, target, seq_id=seq_ids, window=args.window)
+    elif parsed_target_ids is not None:
+        results = store.get_chunk_by_id(parsed_target_ids, window=args.window)
     else:
-        seq = args.seq if args.seq is not None else 0
-        results = store.get_chunk_by_seq(args.collection, target, seq_id=seq, window=args.window)
+        results = store.get_chunk_by_seq(args.collection, target, seq_id=0, window=args.window)
 
     if not results:
         if args.json:
@@ -422,8 +434,8 @@ def main():
     outline_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
     chunk_parser = subparsers.add_parser("chunk", help="Fetch specific chunk by rowid or path with surrounding context window", parents=[parent_parser])
-    chunk_parser.add_argument("target", help="Document path OR chunk rowid")
-    chunk_parser.add_argument("--seq", type=int, default=None, help="Sequence ID of chunk (when target is a document path)")
+    chunk_parser.add_argument("target", help="Document path OR chunk rowid/ranges (e.g. 234-299, 23,24,29, 22,40,25-37)")
+    chunk_parser.add_argument("--seq", type=str, default=None, help="Sequence ID or range of chunk(s) (when target is a document path, e.g. 0, 1-5, 2,4,6-8)")
     chunk_parser.add_argument("-w", "--window", type=int, default=0, help="Number of surrounding chunks to fetch on each side")
     chunk_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
     chunk_parser.add_argument("--json", action="store_true", help="Output chunks as JSON")
