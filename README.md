@@ -24,6 +24,18 @@ See below for the web-based.  You'll see this was clearly a [directed-vibe-codin
 
 I highly recommend running your own local embedding (turns chunks of text into meaning-vectors, allows for natural language matching) and reranking (orders which chunks of text best match a result all at once) instance locally.  For QMD, I currently use [EmbeddingGemma](https://huggingface.co/google/embeddinggemma-300m) and [Ettin 150M](https://huggingface.co/jhu-clsp/ettin-encoder-150m).  You can find a super-lightweight OpenAI API comptitlble driver for both at [good_ettin_here](https://github.com/theaerotoad/good_ettin_here), which drop in works with this application
 
+## Limitations
+
+As the name implies, this is mostly about searching documents that are Markdown files.  But it happily ingests a few other common filetypes, such as `docx`, `pdf`, `csv`, `xlsx`, `pptx`, and `epub`.  In these cases, it attempts to store a as-structured-as-possible markdown version of the file, in chunks, to search through.
+
+This means that the system inherently misses images, and sometimes tables (depending on how they're formatted).  An un-OCR-ed PDF file (just full page images without text) will flop.
+
+In the short term, you can go with a solution like the excellent [docling](https://github.com/docling-project/docling) to pre-process and convert your documents into markdown files (including getting image descriptions, etc).
+
+In the long run, I may add to the CLI / MCP side of this application the ability to extract and provide images if the LLM asks for them (which would mean we'd need to include image references along the way).  Or to offer the very (computationally heavy) option of ingesting images or embedded images at index time to include their descriptions.
+
+But for now, know that QMD(py) is a great way to find information that's primarily text based!
+
 ## Installation & Quick Start
 
 ### 1. Installation
@@ -406,3 +418,4 @@ hyde: {complete hypothetical document passage from Step 2 on a SINGLE LINE}
 * [ ] Allow (if available) additional document level or directory level summary / classification and metadata that could be used in searching or revealed when sharing results and documents ("File is a review document for XXXX..." "Directory contains PDF assembly drawings..." "Directory is listing of non-fiction books concerning epidemiological issues")
 * [ ] Order multi-file listings by original directory order
 * [ ] Implement a poor-man's clipboard-based RAG/MCP loop--first results copied to LLM include instructions of how to pass back xml-formatted queries--let the user paste those into QMD's web, return to LLM as needed.
+* [ ] During indexing, detect if we have duplicate files, especially a .md or .pdf version of the same other file type, and optionally skip indexing
