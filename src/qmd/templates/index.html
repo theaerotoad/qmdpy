@@ -98,7 +98,7 @@
             <span class="text-gray-400 text-sm" id="result-stats"></span>
             <div class="flex gap-2">
                 <button id="copy-json" class="bg-gray-700 hover:bg-gray-600 text-sm py-1 px-4 rounded transition">
-                    Copy JSON for LLM
+                    Copy XML for LLM
                 </button>
                 <button id="copy-prompt" class="bg-blue-600 hover:bg-blue-500 text-white text-sm py-1 px-4 rounded transition">
                     Copy Question & References
@@ -131,7 +131,105 @@
 
     <script>
         let lastRawJson = null;
+        let lastSearchType = 'doc';
         let currentSessionId = null;
+
+        function escapeXmlAttr(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        }
+
+        function formatResultsToXml(results, type, query, sessionId) {
+            if (!results || results.length === 0) {
+                return `<search_results query="${escapeXmlAttr(query)}" total_matches="0">\n</search_results>`;
+            }
+
+            const sessionAttr = sessionId ? ` session_id="${escapeXmlAttr(sessionId)}"` : '';
+
+            if (type === 'doc') {
+                const totalMatches = results.reduce((acc, doc) => acc + (doc.chunks ? doc.chunks.length : 0), 0);
+                const lines = [`<search_results query="${escapeXmlAttr(query)}" total_matches="${totalMatches}" total_documents="${results.length}"${sessionAttr}>`];
+
+                results.forEach(doc => {
+                    const uri = doc.collection ? `qmd://${doc.collection}/${doc.path}` : (doc.path || '');
+                    lines.push(`  <document uri="${escapeXmlAttr(uri)}" title="${escapeXmlAttr(doc.title || '')}">`);
+
+                    const rawChunks = doc.chunks || [];
+                    const sortedChunks = [...rawChunks].sort((a, b) => (a.seq_id || 0) - (b.seq_id || 0));
+
+                    const uniqueChunks = [];
+                    const seenSeq = new Set();
+                    sortedChunks.forEach(c => {
+                        const sid = c.seq_id || 0;
+                        if (!seenSeq.has(sid)) {
+                            seenSeq.add(sid);
+                            uniqueChunks.push(c);
+                        }
+                    });
+
+                    let prevEndSeq = null;
+                    uniqueChunks.forEach(c => {
+                        const seq = c.seq_id || 0;
+                        if (prevEndSeq === null) {
+                            if (seq > 0) {
+                                lines.push(`    <gap omitted_chunks="${seq}" from_seq="0" to_seq="${seq - 1}" />`);
+                            }
+                        } else {
+                            const gap = seq - prevEndSeq - 1;
+                            if (gap > 0) {
+                                lines.push(`    <gap omitted_chunks="${gap}" from_seq="${prevEndSeq + 1}" to_seq="${seq - 1}" />`);
+                            }
+                        }
+
+                        const rankAttr = c.rank !== undefined && c.rank !== null ? ` rank="${c.rank}"` : '';
+                        const scoreAttr = c.score !== undefined && c.score !== null ? ` score="${Number(c.score).toFixed(4)}"` : '';
+                        const sectionAttr = c.headers ? ` section="${escapeXmlAttr(c.headers)}"` : '';
+
+                        lines.push(`    <chunk seq="${seq}"${rankAttr}${scoreAttr}${sectionAttr}>`);
+                        lines.push((c.text || '').trim());
+                        lines.push(`    </chunk>`);
+                        prevEndSeq = seq;
+                    });
+
+                    lines.push(`  </document>`);
+                });
+
+                lines.push('</search_results>');
+                return lines.join('\n');
+            } else {
+                const lines = [`<search_results query="${escapeXmlAttr(query)}" total_matches="${results.length}"${sessionAttr}>`];
+
+                results.forEach((res, i) => {
+                    const rank = res.rank !== undefined && res.rank !== null ? res.rank : (i + 1);
+                    const scoreStr = res.score !== undefined && res.score !== null ? Number(res.score).toFixed(4) : "0.0000";
+                    const seq = res.seq_id || 0;
+                    const prevSeq = seq > 0 ? seq - 1 : 0;
+                    const nextSeq = seq + 1;
+                    const docUri = res.collection ? `qmd://${res.collection}/${res.path}` : res.path;
+                    const section = res.headers || "";
+
+                    lines.push(`  <result`);
+                    lines.push(`    rank="${rank}"`);
+                    lines.push(`    score="${scoreStr}"`);
+                    lines.push(`    document="${escapeXmlAttr(docUri)}"`);
+                    lines.push(`    seq="${seq}"`);
+                    lines.push(`    title="${escapeXmlAttr(res.title || '')}"`);
+                    lines.push(`    section="${escapeXmlAttr(section)}"`);
+                    lines.push(`    prev_seq="${prevSeq}"`);
+                    lines.push(`    next_seq="${nextSeq}">`);
+                    lines.push((res.text || '').trim());
+                    lines.push(`  </result>`);
+                });
+
+                lines.push('</search_results>');
+                return lines.join('\n');
+            }
+        }
 
         // Fetch collections on load
         async function loadCollections() {
@@ -228,6 +326,7 @@
                 }
 
                 lastRawJson = data.results;
+                lastSearchType = data.type;
                 currentSessionId = data.session_id;
                 document.getElementById('session-badge').textContent = `Session: ${currentSessionId}`;
 
@@ -241,13 +340,15 @@
             }
         });
 
-        // Copy JSON logic
+        // Copy XML logic
         document.getElementById('copy-json').addEventListener('click', (e) => {
             if(!lastRawJson) return;
-            navigator.clipboard.writeText(JSON.stringify(lastRawJson, null, 2)).then(() => {
+            const query = document.getElementById('query').value;
+            const xmlData = formatResultsToXml(lastRawJson, lastSearchType, query, currentSessionId);
+            navigator.clipboard.writeText(xmlData).then(() => {
                 const btn = e.target;
                 const originalText = btn.textContent;
-                btn.textContent = "Copied!";
+                btn.textContent = "Copied XML!";
                 btn.classList.add("bg-green-600", "text-white");
                 setTimeout(() => {
                     btn.textContent = originalText;
@@ -260,7 +361,8 @@
         document.getElementById('copy-prompt').addEventListener('click', (e) => {
             if(!lastRawJson) return;
             const query = document.getElementById('query').value;
-            const payload = `Task / Question: ${query}\n\nContext / References:\n${JSON.stringify(lastRawJson, null, 2)}`;
+            const xmlData = formatResultsToXml(lastRawJson, lastSearchType, query, currentSessionId);
+            const payload = `Task / Question: ${query}\n\nContext / References:\n${xmlData}`;
             
             navigator.clipboard.writeText(payload).then(() => {
                 const btn = e.target;

@@ -100,7 +100,9 @@ def search():
                     "score": r.score,
                     "source": r.source,
                     "collection": r.collection,
-                    "seq_id": r.seq_id
+                    "seq_id": r.seq_id,
+                    "headers": getattr(r, "headers", ""),
+                    "rank": getattr(r, "rank", None)
                 })
             return jsonify({
                 "results": out,
