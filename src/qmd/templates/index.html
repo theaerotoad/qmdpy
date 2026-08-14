@@ -144,12 +144,15 @@
                             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                     </div>
-                    <div class="px-6 py-2.5 border-b border-gray-700 bg-gray-800/50 flex items-center justify-between text-xs text-gray-400">
-                        <span>Directory Tree</span>
-                        <button id="refresh-tree" class="hover:text-blue-400 flex items-center gap-1 transition">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                            Refresh
-                        </button>
+                    <div class="px-6 py-2.5 border-b border-gray-700 bg-gray-800/50 flex flex-col gap-2 text-xs text-gray-400">
+                        <div class="flex items-center justify-between">
+                            <span>Directory Tree</span>
+                            <button id="refresh-tree" class="hover:text-blue-400 flex items-center gap-1 transition">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                Refresh
+                            </button>
+                        </div>
+                        <input type="text" id="tree-filter-input" placeholder="Filter files (e.g. guide or .py)..." class="w-full bg-gray-900 border border-gray-700 text-gray-200 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500">
                     </div>
                     <div id="tree-content" class="flex-1 overflow-y-auto p-4 space-y-3 text-xs font-mono">
                     </div>
@@ -698,11 +701,13 @@
         document.getElementById('slide-backdrop').addEventListener('click', closeDocument);
 
         // Collection Tree Viewer Logic
-        async function loadCollectionTree() {
+        let treeFilterTimer = null;
+        async function loadCollectionTree(pattern = '') {
             const container = document.getElementById('tree-content');
             container.innerHTML = '<div class="text-gray-500 py-4 text-center">Loading tree...</div>';
             try {
-                const res = await fetch('/api/collections/tree');
+                const url = pattern ? `/api/collections/tree?pattern=${encodeURIComponent(pattern)}` : '/api/collections/tree';
+                const res = await fetch(url);
                 if (!res.ok) throw new Error("Failed to load collection tree");
                 const data = await res.json();
                 renderCollectionTree(data);
@@ -808,7 +813,18 @@
         document.getElementById('btn-toggle-tree').addEventListener('click', openTreeDrawer);
         document.getElementById('close-tree').addEventListener('click', closeTreeDrawer);
         document.getElementById('tree-backdrop').addEventListener('click', closeTreeDrawer);
-        document.getElementById('refresh-tree').addEventListener('click', loadCollectionTree);
+        document.getElementById('refresh-tree').addEventListener('click', () => {
+            const val = document.getElementById('tree-filter-input').value.trim();
+            loadCollectionTree(val);
+        });
+
+        document.getElementById('tree-filter-input').addEventListener('input', (e) => {
+            clearTimeout(treeFilterTimer);
+            const val = e.target.value.trim();
+            treeFilterTimer = setTimeout(() => {
+                loadCollectionTree(val);
+            }, 250);
+        });
 
         // Escape key to close open panels
         document.addEventListener('keydown', (e) => {

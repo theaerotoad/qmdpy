@@ -236,6 +236,10 @@ def grep():
 def get_collections_tree():
     collection = request.args.get('collection')
     depth_str = request.args.get('depth')
+    pattern = request.args.get('pattern') or None
+    is_regex = request.args.get('regex') == 'true'
+    case_sensitive = request.args.get('case_sensitive') == 'true'
+
     depth = None
     if depth_str is not None:
         try:
@@ -243,7 +247,17 @@ def get_collections_tree():
         except ValueError:
             return jsonify({"error": "Invalid depth parameter"}), 400
 
-    tree_data = get_store().get_collection_tree(collection=collection, max_depth=depth)
+    try:
+        tree_data = get_store().get_collection_tree(
+            collection=collection,
+            max_depth=depth,
+            pattern=pattern,
+            is_regex=is_regex,
+            case_sensitive=case_sensitive
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
     if collection and tree_data is None:
         return jsonify({"error": f"Collection '{collection}' not found"}), 404
     return jsonify(tree_data if tree_data is not None else [])

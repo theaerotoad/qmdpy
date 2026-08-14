@@ -1350,8 +1350,15 @@ class Store:
             ))
         return results
 
-    def get_collection_tree(self, collection: Optional[str] = None, max_depth: Optional[int] = None) -> Union[Dict[str, Any], List[Dict[str, Any]], None]:
-        """Builds a nested folder directory tree structure of indexed documents."""
+    def get_collection_tree(
+        self,
+        collection: Optional[str] = None,
+        max_depth: Optional[int] = None,
+        pattern: Optional[str] = None,
+        is_regex: bool = False,
+        case_sensitive: bool = False
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]], None]:
+        """Builds a nested folder directory tree structure of indexed documents, optionally filtered by pattern/regex."""
         cursor = self.conn.cursor()
 
         if collection:
@@ -1366,6 +1373,17 @@ class Store:
         if not collections and collection:
             return None
 
+        matcher = None
+        if pattern:
+            flags = 0 if case_sensitive else re.IGNORECASE
+            if is_regex:
+                try:
+                    matcher = re.compile(pattern, flags)
+                except re.error as e:
+                    raise ValueError(f"Invalid regular expression: {e}")
+            else:
+                matcher = re.compile(re.escape(pattern), flags)
+
         results = []
 
         for coll_name in collections:
@@ -1378,6 +1396,10 @@ class Store:
             dir_tree: Dict[str, Any] = {"dirs": {}, "files": []}
 
             for doc_id, doc_path, doc_title in doc_rows:
+                if matcher:
+                    if not (matcher.search(doc_path) or (doc_title and matcher.search(doc_title))):
+                        continue
+
                 norm_path = doc_path.replace("\\", "/").strip("/")
                 parts = norm_path.split("/") if norm_path else []
                 if not parts:

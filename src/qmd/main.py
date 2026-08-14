@@ -425,7 +425,25 @@ def handle_collection_tree(args, store: Store):
         set_plain_mode(True)
 
     coll_name = getattr(args, "name", None) or getattr(args, "collection", None)
-    tree_data = store.get_collection_tree(collection=coll_name, max_depth=getattr(args, "depth", None))
+    pattern = getattr(args, "pattern", None)
+    is_regex = getattr(args, "regex", False)
+    case_sensitive = getattr(args, "case_sensitive", False) and not getattr(args, "ignore_case", False)
+
+    try:
+        tree_data = store.get_collection_tree(
+            collection=coll_name,
+            max_depth=getattr(args, "depth", None),
+            pattern=pattern,
+            is_regex=is_regex,
+            case_sensitive=case_sensitive
+        )
+    except ValueError as e:
+        if args.json:
+            import json
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print(f"{RED}Error: {e}{RESET}")
+        sys.exit(1)
 
     if coll_name and tree_data is None:
         if args.json:
@@ -548,6 +566,10 @@ def main():
     coll_tree = coll_sub.add_parser("tree", help="Display directory tree of indexed files", parents=[parent_parser])
     coll_tree.add_argument("name", nargs="?", default=None, help="Optional collection name")
     coll_tree.add_argument("-c", "--collection", type=str, default=None, help="Filter by collection name")
+    coll_tree.add_argument("-p", "--pattern", type=str, default=None, help="Pattern or substring to filter file paths and titles")
+    coll_tree.add_argument("-r", "--regex", action="store_true", help="Treat pattern as a regular expression")
+    coll_tree.add_argument("-s", "--case-sensitive", action="store_true", help="Perform case-sensitive matching")
+    coll_tree.add_argument("-i", "--ignore-case", action="store_true", help="Perform case-insensitive matching (default)")
     coll_tree.add_argument("--depth", type=int, default=None, help="Maximum directory depth to display")
     coll_tree.add_argument("--json", action="store_true", help="Output directory tree as JSON")
     coll_tree.add_argument("--xml", action="store_true", help="Output directory tree as XML for LLM context")

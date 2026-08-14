@@ -75,6 +75,33 @@ def test_collection_tree_max_depth(db_conn, temp_db_path, tmp_path):
             assert child["children"] == []
 
 
+def test_collection_tree_pattern_and_regex(db_conn, temp_db_path):
+    seed_documents(db_conn)
+    cfg = Config(db_path=str(temp_db_path))
+    store = Store(cfg, connection=db_conn)
+
+    # Substring pattern match
+    tree_match = store.get_collection_tree("code", pattern="guide")
+    root = tree_match["tree"]
+    # Only docs folder containing guide.md and setup.md (if "Guide" in title)
+    assert len(root["children"]) >= 1
+
+    # Regex pattern match: match only python files (.py)
+    tree_py = store.get_collection_tree("code", pattern=r"\.py$", is_regex=True)
+    root_py = tree_py["tree"]
+    assert len(root_py["children"]) == 1
+    assert root_py["children"][0]["name"] == "src"
+    assert root_py["children"][0]["children"][0]["name"] == "core"
+    assert root_py["children"][0]["children"][0]["children"][0]["name"] == "app.py"
+
+    # Case sensitive match
+    tree_case = store.get_collection_tree("code", pattern="README", case_sensitive=True)
+    assert any(c["name"] == "README.md" for c in tree_case["tree"]["children"])
+
+    tree_case_miss = store.get_collection_tree("code", pattern="readme", case_sensitive=True)
+    assert not any(c["name"] == "README.md" for c in tree_case_miss["tree"]["children"])
+
+
 def test_collection_tree_formatting(capsys):
     set_plain_mode(True)
     sample_tree = {
@@ -186,6 +213,13 @@ collections:
         assert res_code.status_code == 200
         data_code = res_code.get_json()
         assert data_code["collection"] == "code"
+
+        # Pattern-filtered tree
+        res_filter = client.get('/api/collections/tree?collection=code&pattern=app.py')
+        assert res_filter.status_code == 200
+        data_filter = res_filter.get_json()
+        assert data_filter["collection"] == "code"
+        assert len(data_filter["tree"]["children"]) == 1
 
         # Not found collection
         res_404 = client.get('/api/collections/tree?collection=nonexistent')
