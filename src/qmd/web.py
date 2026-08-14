@@ -195,6 +195,23 @@ def get_document():
         return jsonify({"title": title, "content": content})
     return jsonify({"error": "Not found"}), 404
 
+@app.route('/api/session/<session_id>', methods=['GET'])
+def get_session_info(session_id):
+    try:
+        store = get_store()
+        seen = get_seen_chunks_for_session(store.history_conn, session_id)
+        cursor = store.history_conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM session_events WHERE session_id = ?", (session_id,))
+        event_row = cursor.fetchone()
+        event_count = event_row[0] if event_row else 0
+        return jsonify({
+            "session_id": session_id,
+            "seen_chunks_count": len(seen),
+            "events_count": event_count
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/collections', methods=['GET'])
 def collections():
     cfg = get_config()
