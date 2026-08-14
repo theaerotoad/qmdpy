@@ -1,5 +1,21 @@
 # QMD Python Adaptation - Technical Architecture & Usage Guide
 
+QMD(py) is a quick (markdown-based) local search system.  It's intended to be lightweight, modular, and relatively easy for folks to set up.  It tries to solve two main problems:
+
+1) **Faking much-more-effective-RAG when you're stuck with an arbitrary LLM web frontend**: QMD has Python CLI interface (qmd search "how do I get widget A to work with sprocket XYZ?") and optional self-serving flask-based web interface (see pictures below).  By default, it allows you to search across arbitrary "collections" that you can define, which are indexed with full-text search (Keyword-based type searching via `sqlite`'s FTS5 BM25 type search) and also your-choice of semantic embedding, with the RRF hybrid results optionall reranked by a reranker.
+
+2) **The above, but exposed as an MCP tool**: So your agent can easily search collections of documents you have.  Results are returned with previous results-aware, nicely chunked and annotated XML snippets.  When you don't want to rely on your agent grepping large file directories of content you DON'T want all of exposed, or with possible **rw** access!
+
+
+Here's a current workflow.  You'll see this was clearly a directed-vibe-coding experience:
+
+![Main web interface, for folks who like GUIs](images/qmd_1.png)
+
+![Search results for a given query.  Note the "Copy XML and Prompt for LLM, which lets you easily take your most relevant data--and just it! to an arbitrary LLM](images/qmd_2.png)
+
+![Results of said output, passed into llama.cpp, with a small model's interpretation.](images/qmd_3.png)
+
+
 ## Installation & Quick Start
 
 ### 1. Installation
