@@ -1227,12 +1227,6 @@
                 if (src && tgt) tgt.value = src.value;
             });
 
-            // Keep activeScope updated if manual selects were changed
-            const colVal = document.getElementById(`${sourcePrefix}-collection-filter`).value;
-            const pathVal = document.getElementById(`${sourcePrefix}-path`).value.trim();
-            activeScope.collection = colVal;
-            activeScope.path = pathVal;
-            activeScope.type = pathVal.endsWith('/') ? 'folder' : (pathVal ? 'file' : (colVal ? 'collection' : ''));
             renderScopeChips();
 
             const checks = ['rerank', 'grep-regex', 'grep-case', 'exclude-seen', 'redact-pii'];
