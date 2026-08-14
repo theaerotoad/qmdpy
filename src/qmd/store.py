@@ -68,7 +68,7 @@ def _results_to_json(results: List['Result']) -> str:
     return json.dumps(data)
 
 
-def _json_to_results(json_str: str) -> List[Result]:
+def _json_to_results(json_str: str) -> List['Result']:
     data = json.loads(json_str)
     results = []
     for item in data:
