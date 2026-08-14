@@ -10,6 +10,7 @@ from qmd.main import main
 def seed_documents(conn):
     cursor = conn.cursor()
     cursor.execute("DELETE FROM documents")
+    cursor.execute("DELETE FROM content")
     docs = [
         ("code", "docs/python/guide.md", "Python Guide", "hash1"),
         ("code", "docs/python/advanced.md", "Advanced Python", "hash2"),
@@ -21,15 +22,19 @@ def seed_documents(conn):
     ]
     for coll, path, title, h in docs:
         cursor.execute(
+            "INSERT INTO content (hash, body, created_at) VALUES (?, ?, '2026-08-14T00:00:00')",
+            (h, b"dummy content")
+        )
+        cursor.execute(
             "INSERT INTO documents (collection, path, title, hash, modified_at) VALUES (?, ?, ?, ?, '2026-08-14T00:00:00')",
             (coll, path, title, h)
         )
     conn.commit()
 
 
-def test_get_collection_tree_structure(db_conn, tmp_path):
+def test_get_collection_tree_structure(db_conn, temp_db_path, tmp_path):
     seed_documents(db_conn)
-    cfg = Config(db_path=str(tmp_path / "test.db"))
+    cfg = Config(db_path=str(temp_db_path))
     store = Store(cfg, connection=db_conn)
 
     # Test single collection lookup
@@ -57,9 +62,9 @@ def test_get_collection_tree_structure(db_conn, tmp_path):
     assert store.get_collection_tree("unknown_coll") is None
 
 
-def test_collection_tree_max_depth(db_conn, tmp_path):
+def test_collection_tree_max_depth(db_conn, temp_db_path, tmp_path):
     seed_documents(db_conn)
-    cfg = Config(db_path=str(tmp_path / "test.db"))
+    cfg = Config(db_path=str(temp_db_path))
     store = Store(cfg, connection=db_conn)
 
     # Depth 1: Should only show top-level files/dirs in root
@@ -120,11 +125,11 @@ def test_collection_tree_formatting(capsys):
     assert '</collection_tree>' in xml_out
 
 
-def test_collection_tree_cli_commands(monkeypatch, capsys, db_conn, tmp_path):
+def test_collection_tree_cli_commands(monkeypatch, capsys, db_conn, temp_db_path, tmp_path):
     seed_documents(db_conn)
     config_file = tmp_path / "config.yml"
     config_file.write_text(f"""
-db_path: "{tmp_path / 'test.db'}"
+db_path: "{temp_db_path}"
 collections:
   code:
     path: "{tmp_path}"
@@ -149,13 +154,13 @@ collections:
     assert "<collection_tree collection=\"code\">" in out_llm
 
 
-def test_api_collections_tree(monkeypatch, tmp_path, db_conn):
+def test_api_collections_tree(monkeypatch, tmp_path, db_conn, temp_db_path):
     from qmd.web import app
     seed_documents(db_conn)
 
     config_file = tmp_path / "config.yml"
     config_file.write_text(f"""
-db_path: "{tmp_path / 'test.db'}"
+db_path: "{temp_db_path}"
 collections:
   code:
     path: "{tmp_path}"
