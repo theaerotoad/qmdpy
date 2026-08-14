@@ -156,6 +156,7 @@ collections:
 
 def test_api_collections_tree(monkeypatch, tmp_path, db_conn, temp_db_path):
     from qmd.web import app
+    from qmd.config import load_config
     seed_documents(db_conn)
 
     config_file = tmp_path / "config.yml"
@@ -169,6 +170,7 @@ collections:
 """)
 
     app.config['CONFIG_PATH'] = str(config_file)
+    app.config['config'] = load_config(config_file)
     app.config['TESTING'] = True
 
     with app.test_client() as client:

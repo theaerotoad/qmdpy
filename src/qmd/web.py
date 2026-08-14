@@ -12,7 +12,10 @@ from qmd.db import get_seen_chunks_for_session, record_session_event, record_ses
 app = Flask(__name__)
 
 def get_config():
-    if 'config' not in app.config:
+    if 'CONFIG_PATH' in app.config and app.config.get('_current_config_path') != app.config['CONFIG_PATH']:
+        app.config['config'] = load_config(app.config['CONFIG_PATH'])
+        app.config['_current_config_path'] = app.config['CONFIG_PATH']
+    elif 'config' not in app.config:
         app.config['config'] = load_config(app.config.get('CONFIG_PATH'))
     return app.config['config']
 
