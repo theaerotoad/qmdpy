@@ -9,12 +9,18 @@ QMD(py) is a quick (markdown-based) local search system.  It's intended to be li
 
 Here's a current workflow.  You'll see this was clearly a directed-vibe-coding experience:
 
+**Main web interface, for folks who like GUIs**
+
 ![Main web interface, for folks who like GUIs](images/qmd_1.png)
+
+
+**Search results for a given query.  Note the "Copy XML and Prompt for LLM, which lets you easily take your most relevant data--and just it! to an arbitrary LLM**
 
 ![Search results for a given query.  Note the "Copy XML and Prompt for LLM, which lets you easily take your most relevant data--and just it! to an arbitrary LLM](images/qmd_2.png)
 
-![Results of said output, passed into llama.cpp, with a small model's interpretation.](images/qmd_3.png)
+**Results of said output, passed into llama.cpp, with a small model's interpretation.**
 
+![Results of said output, passed into llama.cpp, with a small model's interpretation.](images/qmd_3.png)
 
 ## Installation & Quick Start
 
@@ -393,6 +399,8 @@ hyde: {complete hypothetical document passage from Step 2 on a SINGLE LINE}
 * [x] XML-tagged output optimized for LLM agent context (`--xml` / `--llm`)
 * [x] Return collection tree or subtree (for search narrowing)
 * [x] Straight-up keyword level searching or filtering for documents (grep style)
+* [x] Make slightly less embarrassing web interface
 * [ ] Cursor based paging (not sure yet how to best handle this)
 * [ ] Allow (if available) additional document level or directory level summary / classification and metadata that could be used in searching or revealed when sharing results and documents ("File is a review document for XXXX..." "Directory contains PDF assembly drawings..." "Directory is listing of non-fiction books concerning epidemiological issues")
 * [ ] Order multi-file listings by original directory order
+* [ ] Implement a poor-man's clipboard-based RAG/MCP loop--first results copied to LLM include instructions of how to pass back xml-formatted queries--let the user paste those into QMD's web, return to LLM as needed.
