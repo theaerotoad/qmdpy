@@ -6,7 +6,7 @@ import math
 import re
 from pathlib import Path
 from datetime import datetime
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, Union
 from dataclasses import dataclass
 
 from tqdm import tqdm
