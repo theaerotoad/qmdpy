@@ -980,9 +980,9 @@
         }
 
         function initSession() {
-            let stored = sessionStorage.getItem(SESSION_STORAGE_KEY) || generateRandomHex(4);
-            sessionStorage.setItem(SESSION_STORAGE_KEY, stored);
-            setSessionId(stored, false);
+            const newId = generateRandomHex(4);
+            sessionStorage.setItem(SESSION_STORAGE_KEY, newId);
+            setSessionId(newId, false);
         }
 
         function setSessionId(newId, fetchStats = true) {
