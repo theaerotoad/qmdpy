@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import secrets
 from flask import Flask, request, jsonify, render_template, g
 
@@ -32,6 +33,7 @@ def index():
 @app.route('/api/search', methods=['POST'])
 def search():
     try:
+        t0 = time.time()
         data = request.json or {}
         query = data.get('query', '')
         limit = int(data.get('limit', 10))
@@ -86,11 +88,13 @@ def search():
                         "score": c.get("score", 0.0)
                     })
             record_session_results(store.history_conn, session_id, event_id, shown_chunks)
+            time_taken = round(time.time() - t0, 3)
             return jsonify({
                 "results": grouped,
                 "type": "doc",
                 "session_id": session_id,
-                "excluded_count": excluded_count
+                "excluded_count": excluded_count,
+                "time_taken": time_taken
             })
         else:
             record_session_results(store.history_conn, session_id, event_id, results)
@@ -107,11 +111,13 @@ def search():
                     "headers": getattr(r, "headers", ""),
                     "rank": getattr(r, "rank", None)
                 })
+            time_taken = round(time.time() - t0, 3)
             return jsonify({
                 "results": out,
                 "type": "chunk",
                 "session_id": session_id,
-                "excluded_count": excluded_count
+                "excluded_count": excluded_count,
+                "time_taken": time_taken
             })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -198,6 +204,7 @@ def collections():
 @app.route('/api/grep', methods=['POST'])
 def grep():
     try:
+        t0 = time.time()
         data = request.json or {}
         pattern = data.get('pattern', '')
         if not pattern:
@@ -222,12 +229,14 @@ def grep():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
+        time_taken = round(time.time() - t0, 3)
         return jsonify({
             "results": results,
             "total_matches": len(results),
             "pattern": pattern,
             "regex": is_regex,
-            "case_sensitive": case_sensitive
+            "case_sensitive": case_sensitive,
+            "time_taken": time_taken
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

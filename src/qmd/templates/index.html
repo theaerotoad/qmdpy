@@ -1,188 +1,467 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QMD Web Search</title>
+    <title>QMD Knowledge Engine</title>
     <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        /* Custom styling for rendered markdown content */
-        .prose pre { background-color: #1f2937; padding: 1rem; border-radius: 0.375rem; overflow-x: auto; margin-top: 0.5rem; margin-bottom: 0.5rem;}
-        .prose code { font-family: monospace; color: #a5b4fc; }
-        .prose p { margin-bottom: 0.75rem; }
-        .prose h1, .prose h2, .prose h3 { font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: #f3f4f6; }
+        /* Custom styling for rendered markdown content & SERP snippet preview */
+        .prose pre { background-color: #0f172a; padding: 0.875rem; border-radius: 0.375rem; overflow-x: auto; margin: 0.5rem 0; border: 1px solid #1e293b; }
+        .prose code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #93c5fd; font-size: 0.875em; }
+        .prose p { margin-bottom: 0.5rem; line-height: 1.6; }
+        .prose p:last-child { margin-bottom: 0; }
+        .prose h1, .prose h2, .prose h3 { font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.375rem; color: #f8fafc; }
         .prose a { color: #60a5fa; text-decoration: underline; }
-        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem;}
-        .prose table { width: 100%; border-collapse: collapse; margin-top: 1rem; margin-bottom: 1rem; text-align: left; }
-        .prose th, .prose td { border: 1px solid #4b5563; padding: 0.5rem; }
-        .prose th { background-color: #374151; }
+        .prose ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+        .prose table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; text-align: left; font-size: 0.875rem; }
+        .prose th, .prose td { border: 1px solid #334155; padding: 0.4rem 0.6rem; }
+        .prose th { background-color: #1e293b; color: #e2e8f0; }
+
+        /* Highlight mark styling */
+        mark.qmd-highlight {
+            background-color: rgba(234, 179, 8, 0.22);
+            color: #fef08a;
+            padding: 0.05rem 0.2rem;
+            border-radius: 0.2rem;
+            font-weight: 600;
+        }
+
+        /* Layout State Transitions */
+        #app-container.state-hero #serp-top-bar { display: none; }
+        #app-container.state-hero #hero-section { display: flex; }
+        #app-container.state-hero #results-wrapper { display: none; }
+
+        #app-container.state-serp #serp-top-bar { display: block; }
+        #app-container.state-serp #hero-section { display: none; }
+        #app-container.state-serp #results-wrapper { display: block; }
+
+        /* Custom scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-200 min-h-screen p-8">
-    <div class="max-w-5xl mx-auto space-y-8">
+<body class="bg-slate-950 text-slate-100 min-h-full font-sans antialiased selection:bg-blue-600 selection:text-white">
+    <div id="app-container" class="state-hero min-h-screen flex flex-col">
         
-        <div class="flex justify-between items-end border-b border-gray-700 pb-4">
-            <div>
-                <h1 class="text-3xl font-bold text-white flex items-center gap-3">
-                    QMD Web Search
-                    <span id="session-badge" class="text-xs font-mono bg-gray-800 border border-gray-700 px-2 py-1 rounded text-gray-400 font-normal">Session: -</span>
-                </h1>
-                <p class="text-gray-400 mt-1 text-sm">Semantic & FTS Local Knowledge Base</p>
-            </div>
-            <div class="flex items-center gap-2">
-                <button id="btn-toggle-tree" class="text-xs bg-gray-800 border border-blue-500/60 hover:border-blue-400 text-blue-300 py-1 px-3 rounded flex items-center gap-1.5 transition">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                    File Tree
-                </button>
-                <div id="collections-container" class="flex gap-2">
+        <!-- ================================================================= -->
+        <!-- STATE A: HERO LANDING STATE (Centered Google / DDG Style)         -->
+        <!-- ================================================================= -->
+        <div id="hero-section" class="flex-1 flex-col justify-center items-center px-4 py-12 max-w-4xl mx-auto w-full">
+            <!-- Top Utility Bar (Hero Mode) -->
+            <div class="w-full flex justify-between items-center mb-16 text-xs text-slate-400">
+                <div class="flex items-center gap-2">
+                    <span id="hero-session-badge" class="font-mono bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-full text-slate-400">
+                        Session: <span class="session-id-val text-slate-200">-</span>
+                    </span>
                 </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" class="btn-open-tree bg-slate-900 border border-slate-800 hover:border-slate-700 hover:text-slate-200 py-1.5 px-3 rounded-md flex items-center gap-1.5 transition">
+                        <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                        Collection Tree
+                    </button>
+                    <div id="hero-collections-container" class="flex gap-1.5"></div>
+                </div>
+            </div>
+
+            <!-- Hero Branding -->
+            <div class="text-center mb-8">
+                <h1 class="text-5xl md:text-6xl font-black tracking-tight text-white mb-2 bg-gradient-to-r from-blue-400 via-sky-300 to-indigo-400 bg-clip-text text-transparent">
+                    Q M D
+                </h1>
+                <p class="text-slate-400 text-sm md:text-base font-medium tracking-wide">
+                    Quick Markdown Knowledge Engine
+                </p>
+            </div>
+
+            <!-- Hero Main Search Box Form -->
+            <div class="w-full max-w-2xl">
+                <form id="hero-search-form" class="space-y-4" onsubmit="handleFormSubmit(event, 'hero')">
+                    <div class="relative flex items-center shadow-2xl rounded-2xl bg-slate-900 border border-slate-800 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition duration-200">
+                        <div class="pl-4 text-slate-500 pointer-events-none">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        </div>
+                        <input type="text" id="hero-query" class="w-full bg-transparent text-white px-4 py-4 text-base focus:outline-none placeholder-slate-500" placeholder="Search your markdown knowledge base..." autocomplete="off" autofocus required>
+                        <div class="pr-2 flex items-center gap-1.5">
+                            <button type="button" class="btn-open-tree text-slate-400 hover:text-slate-200 p-2 rounded-lg hover:bg-slate-800 transition" title="Browse Collection Files">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                            </button>
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-5 py-2.5 rounded-xl transition shadow-sm text-sm">
+                                Search
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Search Mode Pills -->
+                    <div class="flex flex-wrap justify-center items-center gap-2 text-xs pt-2">
+                        <div class="inline-flex bg-slate-900 p-1 rounded-xl border border-slate-800 shadow-inner">
+                            <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium bg-blue-600 text-white" data-mode="search">
+                                Search
+                            </button>
+                            <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium text-slate-400 hover:text-slate-200" data-mode="doc">
+                                Document View
+                            </button>
+                            <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium text-slate-400 hover:text-slate-200" data-mode="grep">
+                                Grep
+                            </button>
+                        </div>
+
+                        <!-- Options Dropdown Trigger -->
+                        <button type="button" class="toggle-advanced-btn bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 px-3 py-2 rounded-xl flex items-center gap-1.5 transition">
+                            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                            <span>Options</span>
+                        </button>
+                    </div>
+
+                    <!-- Scope Shortcuts & Quick Settings (Hero Mode) -->
+                    <div class="flex flex-wrap justify-center items-center gap-3 text-xs text-slate-400 pt-1">
+                        <div class="flex items-center gap-1.5">
+                            <span>Collection:</span>
+                            <select id="hero-collection-filter" class="collection-select bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-blue-500">
+                                <option value="">All Collections</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span>Limit:</span>
+                            <input type="number" id="hero-limit" class="limit-input w-16 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-center text-slate-200 focus:outline-none focus:border-blue-500" value="10">
+                        </div>
+                    </div>
+
+                    <!-- Advanced Filters Expandable Drawer -->
+                    <div id="hero-advanced-panel" class="hidden bg-slate-900/90 border border-slate-800 rounded-2xl p-5 mt-4 space-y-4 shadow-xl">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs">
+                            <div>
+                                <label class="block text-slate-400 mb-1 font-medium">Lexical Override (FTS)</label>
+                                <input type="text" id="hero-lex" class="lex-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500" placeholder="e.g. strict terms">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1 font-medium">Title Filter</label>
+                                <input type="text" id="hero-title" class="title-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500" placeholder="e.g. store">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1 font-medium">Path Filter</label>
+                                <input type="text" id="hero-path" class="path-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500" placeholder="e.g. src/qmd/">
+                            </div>
+                        </div>
+                        
+                        <div class="flex flex-wrap gap-4 text-xs pt-2 border-t border-slate-800 items-center text-slate-300">
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white" id="hero-label-rerank">
+                                <input type="checkbox" id="hero-rerank" class="rerank-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                                <span>LLM Reranking</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white hidden" id="hero-label-regex">
+                                <input type="checkbox" id="hero-grep-regex" class="regex-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                                <span>Regex Pattern</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white hidden" id="hero-label-case">
+                                <input type="checkbox" id="hero-grep-case" class="case-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                                <span>Case Sensitive</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white">
+                                <input type="checkbox" id="hero-exclude-seen" class="exclude-seen-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                                <span>Exclude Seen Chunks</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white">
+                                <input type="checkbox" id="hero-redact-pii" class="redact-pii-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                                <span>Redact PII</span>
+                            </label>
+                        </div>
+                    </div>
+                </form>
             </div>
         </div>
 
-        <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
-            <form id="search-form" class="space-y-4">
-                <div class="flex gap-4">
-                    <input type="text" id="query" class="flex-1 bg-gray-700 text-white rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search your knowledge base..." required>
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md transition duration-150">Search</button>
-                </div>
-                
-                <div class="flex flex-wrap gap-4 text-sm mt-4 items-center">
-                    <label class="flex items-center gap-1">
-                        <input type="checkbox" id="grep-mode" class="rounded bg-gray-700">
-                        <span class="text-yellow-400 font-medium">Grep Mode</span>
-                    </label>
-                    <label class="flex items-center gap-1" id="label-doc-view">
-                        <input type="checkbox" id="doc-view" class="rounded bg-gray-700" checked>
-                        <span>Document View</span>
-                    </label>
-                    <label class="flex items-center gap-1" id="label-rerank">
-                        <input type="checkbox" id="rerank" class="rounded bg-gray-700">
-                        <span>Rerank</span>
-                    </label>
-                    <label class="flex items-center gap-1 hidden" id="label-regex">
-                        <input type="checkbox" id="grep-regex" class="rounded bg-gray-700">
-                        <span>Regex</span>
-                    </label>
-                    <label class="flex items-center gap-1 hidden" id="label-case">
-                        <input type="checkbox" id="grep-case" class="rounded bg-gray-700">
-                        <span>Case Sensitive</span>
-                    </label>
-                    <label class="flex items-center gap-1">
-                        <input type="checkbox" id="exclude-seen" class="rounded bg-gray-700">
-                        <span>Exclude Seen</span>
-                    </label>
-                    <label class="flex items-center gap-1">
-                        <input type="checkbox" id="redact-pii" class="rounded bg-gray-700">
-                        <span>Redact PII</span>
-                    </label>
-                    <div class="flex items-center gap-2 border-l border-gray-600 pl-4">
-                        <span>Limit:</span>
-                        <input type="number" id="limit" value="10" class="w-16 bg-gray-700 rounded px-2 py-1 text-center">
+        <!-- ================================================================= -->
+        <!-- STATE B: SERP HEADER BAR (Sticky Top Header for Results)          -->
+        <!-- ================================================================= -->
+        <header id="serp-top-bar" class="sticky top-0 z-30 bg-slate-950/95 backdrop-blur border-b border-slate-800 shadow-md">
+            <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+                <!-- Mini Logo (Returns to Hero) -->
+                <a href="javascript:void(0)" onclick="returnToHero()" class="flex items-center gap-2 group flex-shrink-0">
+                    <span class="text-2xl font-black tracking-tight bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent group-hover:opacity-90 transition">
+                        QMD
+                    </span>
+                </a>
+
+                <!-- Compact SERP Search Input -->
+                <form id="serp-search-form" class="flex-1 max-w-2xl flex items-center" onsubmit="handleFormSubmit(event, 'serp')">
+                    <div class="relative w-full flex items-center bg-slate-900 border border-slate-800 rounded-xl focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition">
+                        <input type="text" id="serp-query" class="w-full bg-transparent text-white pl-4 pr-16 py-2 text-sm focus:outline-none placeholder-slate-500" placeholder="Search markdown..." autocomplete="off" required>
+                        <div class="absolute right-1.5 flex items-center gap-1">
+                            <button type="button" class="btn-open-tree text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 transition" title="Browse Collection Files">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                            </button>
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-3 py-1 rounded-lg text-xs transition">
+                                Search
+                            </button>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <span>Collection:</span>
-                        <select id="collection-filter" class="bg-gray-700 rounded px-2 py-1">
+                </form>
+
+                <!-- Header Actions & Session Pill -->
+                <div class="flex items-center gap-2 flex-shrink-0 text-xs">
+                    <span id="serp-session-badge" class="font-mono bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-md text-slate-400 hidden sm:inline-block">
+                        Session: <span class="session-id-val text-slate-200">-</span>
+                    </span>
+                    <button type="button" class="btn-open-tree bg-slate-900 border border-slate-800 hover:border-slate-700 hover:text-slate-200 py-1 px-2.5 rounded-md flex items-center gap-1.5 transition text-slate-300">
+                        <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                        Tree
+                    </button>
+                </div>
+            </div>
+
+            <!-- SERP Secondary Filter & Mode Strip -->
+            <div class="max-w-6xl mx-auto px-4 py-2 border-t border-slate-900 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+                <div class="flex items-center gap-3">
+                    <div class="inline-flex bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                        <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium bg-blue-600 text-white" data-mode="search">
+                            Search
+                        </button>
+                        <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium text-slate-400 hover:text-slate-200" data-mode="doc">
+                            Doc View
+                        </button>
+                        <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium text-slate-400 hover:text-slate-200" data-mode="grep">
+                            Grep
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-1.5 border-l border-slate-800 pl-3">
+                        <span>Col:</span>
+                        <select id="serp-collection-filter" class="collection-select bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-slate-200 focus:outline-none">
                             <option value="">All</option>
                         </select>
                     </div>
+
+                    <div class="flex items-center gap-1.5">
+                        <span>Limit:</span>
+                        <input type="number" id="serp-limit" class="limit-input w-12 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-center text-slate-200 focus:outline-none" value="10">
+                    </div>
                 </div>
-                
-                <div class="mt-3">
-                    <button type="button" id="toggle-advanced" class="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition">
-                        <svg class="w-3 h-3 transition-transform" id="advanced-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                        Advanced Options
+
+                <div class="flex items-center gap-3">
+                    <button type="button" class="toggle-advanced-btn hover:text-slate-200 flex items-center gap-1 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                        <span>More Filters</span>
+                    </button>
+                    <div id="serp-collections-container" class="flex gap-1"></div>
+                </div>
+            </div>
+
+            <!-- SERP Advanced Filters Dropdown Drawer -->
+            <div id="serp-advanced-panel" class="hidden bg-slate-900 border-t border-b border-slate-800 px-4 py-3">
+                <div class="max-w-6xl mx-auto space-y-3">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                        <div>
+                            <label class="block text-slate-400 mb-1 font-medium">Lexical Override (FTS)</label>
+                            <input type="text" id="serp-lex" class="lex-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded px-2.5 py-1 focus:outline-none focus:border-blue-500" placeholder="e.g. strict terms">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1 font-medium">Title Filter</label>
+                            <input type="text" id="serp-title" class="title-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded px-2.5 py-1 focus:outline-none focus:border-blue-500" placeholder="e.g. store">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1 font-medium">Path Filter</label>
+                            <input type="text" id="serp-path" class="path-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded px-2.5 py-1 focus:outline-none focus:border-blue-500" placeholder="e.g. src/qmd/">
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-4 text-xs pt-2 border-t border-slate-800 items-center text-slate-300">
+                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-white" id="serp-label-rerank">
+                            <input type="checkbox" id="serp-rerank" class="rerank-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                            <span>LLM Rerank</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-white hidden" id="serp-label-regex">
+                            <input type="checkbox" id="serp-grep-regex" class="regex-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                            <span>Regex</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-white hidden" id="serp-label-case">
+                            <input type="checkbox" id="serp-grep-case" class="case-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                            <span>Case Sensitive</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-white">
+                            <input type="checkbox" id="serp-exclude-seen" class="exclude-seen-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                            <span>Exclude Seen</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-white">
+                            <input type="checkbox" id="serp-redact-pii" class="redact-pii-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                            <span>Redact PII</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- ================================================================= -->
+        <!-- STATE B: RESULTS VIEWPORT (Classic SERP List Layout)              -->
+        <!-- ================================================================= -->
+        <main id="results-wrapper" class="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
+            <!-- Results Stats & Context Export Toolbar -->
+            <div id="results-toolbar" class="hidden flex flex-wrap items-center justify-between gap-3 pb-4 mb-6 border-b border-slate-800/80">
+                <div id="result-stats" class="text-xs text-slate-400 font-mono"></div>
+                <div class="flex items-center gap-2">
+                    <button id="copy-json" class="bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs py-1.5 px-3 rounded-lg transition flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        Copy XML for LLM
+                    </button>
+                    <button id="copy-prompt" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium py-1.5 px-3 rounded-lg transition shadow-sm flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        Copy Prompt & References
                     </button>
                 </div>
-                
-                <div id="advanced-options" class="hidden mt-4 pt-4 border-t border-gray-700 grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Lexical Override (FTS)</label>
-                        <input type="text" id="lex" class="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g. strict exact terms">
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Title Filter</label>
-                        <input type="text" id="title" class="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g. config">
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Path Filter</label>
-                        <input type="text" id="path" class="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g. src/utils">
-                    </div>
-                </div>
-            </form>
-        </div>
-
-        <div class="flex justify-between items-center hidden" id="results-toolbar">
-            <span class="text-gray-400 text-sm" id="result-stats"></span>
-            <div class="flex gap-2">
-                <button id="copy-json" class="bg-gray-700 hover:bg-gray-600 text-sm py-1 px-4 rounded transition">
-                    Copy XML for LLM
-                </button>
-                <button id="copy-prompt" class="bg-blue-600 hover:bg-blue-500 text-white text-sm py-1 px-4 rounded transition">
-                    Copy Question & References
-                </button>
-            </div>
-        </div>
-
-        <div id="results" class="space-y-6 pb-20">
             </div>
 
+            <!-- SERP Results Container -->
+            <div id="results" class="space-y-6 pb-24"></div>
+        </main>
     </div>
+
+    <!-- ================================================================= -->
+    <!-- SLIDE-OVER PANELS: Document Viewer & Collection File Tree         -->
+    <!-- ================================================================= -->
 
     <!-- Collection Tree Drawer -->
     <div id="tree-drawer" class="fixed inset-0 overflow-hidden z-40 pointer-events-none hidden">
         <div class="absolute inset-0 overflow-hidden">
-            <div id="tree-backdrop" class="absolute inset-0 bg-gray-900 bg-opacity-75 transition-opacity opacity-0 pointer-events-auto duration-300"></div>
+            <div id="tree-backdrop" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto duration-300"></div>
             <div class="fixed inset-y-0 left-0 max-w-md w-full flex">
-                <div id="tree-panel" class="w-full bg-gray-900 border-r border-gray-700 shadow-2xl transform transition-transform -translate-x-full pointer-events-auto flex flex-col duration-300">
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800">
+                <div id="tree-panel" class="w-full bg-slate-900 border-r border-slate-800 shadow-2xl transform transition-transform -translate-x-full pointer-events-auto flex flex-col duration-300">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950">
                         <div class="flex items-center gap-2">
                             <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                            <h2 class="text-lg font-semibold text-white">Collection Files</h2>
+                            <h2 class="text-base font-semibold text-white">Collection Files</h2>
                         </div>
-                        <button id="close-tree" class="text-gray-400 hover:text-white transition focus:outline-none">
-                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        <button id="close-tree" class="text-slate-400 hover:text-white transition focus:outline-none">
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                     </div>
-                    <div class="px-6 py-2.5 border-b border-gray-700 bg-gray-800/50 flex flex-col gap-2 text-xs text-gray-400">
+                    <div class="px-6 py-3 border-b border-slate-800 bg-slate-900/50 flex flex-col gap-2 text-xs text-slate-400">
                         <div class="flex items-center justify-between">
-                            <span>Directory Tree</span>
+                            <span>Directory Hierarchy</span>
                             <button id="refresh-tree" class="hover:text-blue-400 flex items-center gap-1 transition">
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                                 Refresh
                             </button>
                         </div>
-                        <input type="text" id="tree-filter-input" placeholder="Filter files (e.g. guide or .py)..." class="w-full bg-gray-900 border border-gray-700 text-gray-200 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500">
+                        <input type="text" id="tree-filter-input" placeholder="Filter files (e.g. guide or .py)..." class="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
                     </div>
-                    <div id="tree-content" class="flex-1 overflow-y-auto p-4 space-y-3 text-xs font-mono">
-                    </div>
+                    <div id="tree-content" class="flex-1 overflow-y-auto p-4 space-y-3 text-xs font-mono"></div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Document Slide-Over Viewer -->
     <div id="slide-over" class="fixed inset-0 overflow-hidden z-50 pointer-events-none hidden">
         <div class="absolute inset-0 overflow-hidden">
-            <div id="slide-backdrop" class="absolute inset-0 bg-gray-900 bg-opacity-75 transition-opacity opacity-0 pointer-events-auto duration-300"></div>
+            <div id="slide-backdrop" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto duration-300"></div>
             <div class="fixed inset-y-0 right-0 max-w-3xl w-full flex">
-                <div id="slide-panel" class="w-full bg-gray-900 border-l border-gray-700 shadow-2xl transform transition-transform translate-x-full pointer-events-auto flex flex-col duration-300">
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800">
-                        <h2 id="slide-title" class="text-xl font-semibold text-white truncate">Document Title</h2>
-                        <button id="close-slide" class="text-gray-400 hover:text-white transition focus:outline-none">
+                <div id="slide-panel" class="w-full bg-slate-900 border-l border-slate-800 shadow-2xl transform transition-transform translate-x-full pointer-events-auto flex flex-col duration-300">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950">
+                        <div class="flex flex-col min-w-0 pr-4">
+                            <span id="slide-uri" class="text-xs font-mono text-slate-400 truncate"></span>
+                            <h2 id="slide-title" class="text-lg font-semibold text-white truncate">Document Title</h2>
+                        </div>
+                        <button id="close-slide" class="text-slate-400 hover:text-white transition focus:outline-none flex-shrink-0">
                             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                     </div>
-                    <div id="slide-content" class="flex-1 overflow-y-auto p-8 prose prose-invert max-w-none">
-                        </div>
+                    <div id="slide-content" class="flex-1 overflow-y-auto p-8 prose prose-invert max-w-none"></div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- ================================================================= -->
+    <!-- JAVASCRIPT LOGIC                                                  -->
+    <!-- ================================================================= -->
     <script>
+        // State Management
+        let activeMode = 'search'; // 'search' | 'doc' | 'grep'
         let lastRawJson = null;
-        let lastSearchType = 'doc';
+        let lastSearchType = 'chunk';
         let currentSessionId = null;
+        let treeFilterTimer = null;
+
+        // UI State Switching (Hero vs SERP)
+        function setAppState(state) {
+            const container = document.getElementById('app-container');
+            if (state === 'serp') {
+                container.classList.remove('state-hero');
+                container.classList.add('state-serp');
+            } else {
+                container.classList.remove('state-serp');
+                container.classList.add('state-hero');
+            }
+        }
+
+        function returnToHero() {
+            setAppState('hero');
+            document.getElementById('hero-query').value = document.getElementById('serp-query').value;
+            document.getElementById('hero-query').focus();
+        }
+
+        // Mode Switching
+        function setMode(mode) {
+            activeMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                const isActive = btn.dataset.mode === mode;
+                btn.className = `mode-btn px-2.5 py-1 rounded-md transition font-medium ${isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`;
+            });
+
+            const isGrep = mode === 'grep';
+            document.querySelectorAll('#hero-label-rerank, #serp-label-rerank').forEach(el => el.classList.toggle('hidden', isGrep));
+            document.querySelectorAll('#hero-label-regex, #serp-label-regex').forEach(el => el.classList.toggle('hidden', !isGrep));
+            document.querySelectorAll('#hero-label-case, #serp-label-case').forEach(el => el.classList.toggle('hidden', !isGrep));
+
+            const placeholder = isGrep ? "Grep pattern (e.g. def _[a-z_]+ or exact text)..." : "Search your knowledge base...";
+            document.getElementById('hero-query').placeholder = placeholder;
+            document.getElementById('serp-query').placeholder = isGrep ? "Grep pattern..." : "Search markdown...";
+        }
+
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => setMode(e.target.dataset.mode));
+        });
+
+        // Advanced Options Toggle
+        document.querySelectorAll('.toggle-advanced-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const heroPanel = document.getElementById('hero-advanced-panel');
+                const serpPanel = document.getElementById('serp-advanced-panel');
+                heroPanel.classList.toggle('hidden');
+                serpPanel.classList.toggle('hidden');
+            });
+        });
+
+        // Two-way Form Sync between Hero and SERP inputs
+        function syncInputs(sourcePrefix) {
+            const targetPrefix = sourcePrefix === 'hero' ? 'serp' : 'hero';
+            const fields = ['query', 'collection-filter', 'limit', 'lex', 'title', 'path'];
+            fields.forEach(f => {
+                const src = document.getElementById(`${sourcePrefix}-${f}`);
+                const tgt = document.getElementById(`${targetPrefix}-${f}`);
+                if (src && tgt) tgt.value = src.value;
+            });
+
+            const checks = ['rerank', 'grep-regex', 'grep-case', 'exclude-seen', 'redact-pii'];
+            checks.forEach(c => {
+                const src = document.getElementById(`${sourcePrefix}-${c}`);
+                const tgt = document.getElementById(`${targetPrefix}-${c}`);
+                if (src && tgt) tgt.checked = src.checked;
+            });
+        }
+
+        // XML Escaping & Highlighting Utilities
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
 
         function escapeXmlAttr(str) {
             if (str === null || str === undefined) return '';
@@ -194,6 +473,19 @@
                 .replace(/'/g, '&apos;');
         }
 
+        function highlightKeywords(text, query) {
+            if (!query || !text) return text;
+            const terms = query.replace(/[^\w\s]/g, ' ')
+                .split(/\s+/)
+                .filter(t => t.length > 1 && !['and', 'or', 'not', 'the', 'is', 'in', 'to'].includes(t.toLowerCase()));
+            if (terms.length === 0) return text;
+
+            const pattern = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+            const regex = new RegExp(`(${pattern})`, 'gi');
+            return text.replace(regex, '<mark class="qmd-highlight">$1</mark>');
+        }
+
+        // XML Formatting for Context Export
         function formatResultsToXml(results, type, query, sessionId) {
             if (!results || results.length === 0) {
                 return `<search_results query="${escapeXmlAttr(query)}" total_matches="0">\n</search_results>`;
@@ -228,7 +520,6 @@
 
                     const rawChunks = doc.chunks || [];
                     const sortedChunks = [...rawChunks].sort((a, b) => (a.seq_id || 0) - (b.seq_id || 0));
-
                     const uniqueChunks = [];
                     const seenSeq = new Set();
                     sortedChunks.forEach(c => {
@@ -298,28 +589,43 @@
             }
         }
 
-        // Fetch collections on load
+        // Fetch & Populate Collections
         async function loadCollections() {
-            const res = await fetch('/api/collections');
-            const data = await res.json();
-            
-            const filterEl = document.getElementById('collection-filter');
-            const containerEl = document.getElementById('collections-container');
-            
-            data.forEach(c => {
-                // Populate dropdown
-                const opt = document.createElement('option');
-                opt.value = c.name;
-                opt.textContent = c.name;
-                filterEl.appendChild(opt);
+            try {
+                const res = await fetch('/api/collections');
+                const data = await res.json();
+                
+                const selects = document.querySelectorAll('.collection-select');
+                const heroContainer = document.getElementById('hero-collections-container');
+                const serpContainer = document.getElementById('serp-collections-container');
 
-                // Populate fast update buttons
-                const btn = document.createElement('button');
-                btn.className = "text-xs bg-gray-800 border border-gray-600 hover:bg-gray-700 text-gray-300 py-1 px-2 rounded flex items-center gap-1 transition";
-                btn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> ${c.name}`;
-                btn.onclick = () => updateCollection(c.name, btn);
-                containerEl.appendChild(btn);
-            });
+                selects.forEach(sel => {
+                    sel.innerHTML = '<option value="">All Collections</option>';
+                });
+                heroContainer.innerHTML = '';
+                serpContainer.innerHTML = '';
+
+                data.forEach(c => {
+                    selects.forEach(sel => {
+                        const opt = document.createElement('option');
+                        opt.value = c.name;
+                        opt.textContent = c.name;
+                        sel.appendChild(opt);
+                    });
+
+                    // Update button
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = "bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 py-1 px-2.5 rounded-md flex items-center gap-1 transition text-xs";
+                    btn.innerHTML = `<svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> ${escapeHtml(c.name)}`;
+                    btn.onclick = () => updateCollection(c.name, btn);
+                    
+                    heroContainer.appendChild(btn.cloneNode(true));
+                    serpContainer.appendChild(btn);
+                });
+            } catch(e) {
+                console.error("Failed to load collections", e);
+            }
         }
 
         async function updateCollection(name, btn) {
@@ -334,8 +640,8 @@
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
-                    btn.classList.add('border-green-500', 'text-green-400');
-                    setTimeout(() => btn.classList.remove('border-green-500', 'text-green-400'), 2000);
+                    btn.classList.add('border-emerald-500', 'text-emerald-400');
+                    setTimeout(() => btn.classList.remove('border-emerald-500', 'text-emerald-400'), 2000);
                 } else {
                     alert(data.message);
                 }
@@ -346,73 +652,66 @@
             btn.disabled = false;
         }
 
-        // Handle Grep Mode Toggle UI changes
-        document.getElementById('grep-mode').addEventListener('change', (e) => {
-            const isGrep = e.target.checked;
-            document.getElementById('label-doc-view').classList.toggle('hidden', isGrep);
-            document.getElementById('label-rerank').classList.toggle('hidden', isGrep);
-            document.getElementById('label-regex').classList.toggle('hidden', !isGrep);
-            document.getElementById('label-case').classList.toggle('hidden', !isGrep);
-            document.getElementById('query').placeholder = isGrep ? "Grep pattern (e.g. def _[a-z_]+ or exact text)..." : "Search your knowledge base...";
-        });
-
-        // Handle Advanced Toggle
-        document.getElementById('toggle-advanced').addEventListener('click', () => {
-            const panel = document.getElementById('advanced-options');
-            const icon = document.getElementById('advanced-icon');
-            panel.classList.toggle('hidden');
-            icon.classList.toggle('rotate-180');
-        });
-
-        // Handle Form Submission
-        document.getElementById('search-form').addEventListener('submit', async (e) => {
+        // Search Form Execution
+        async function handleFormSubmit(e, source) {
             e.preventDefault();
+            syncInputs(source);
             
+            const query = document.getElementById(`${source}-query`).value.trim();
+            if (!query) return;
+
+            setAppState('serp');
+
             const resultsEl = document.getElementById('results');
             const statsEl = document.getElementById('result-stats');
             const toolbarEl = document.getElementById('results-toolbar');
-            
-            resultsEl.innerHTML = '<div class="text-center text-gray-500 mt-10">Searching...</div>';
+
+            resultsEl.innerHTML = `
+                <div class="flex items-center justify-center py-20 text-slate-500 gap-3">
+                    <svg class="animate-spin h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                    <span>Searching knowledge base...</span>
+                </div>
+            `;
             toolbarEl.classList.add('hidden');
 
-            const isGrep = document.getElementById('grep-mode').checked;
-
             try {
-                if (isGrep) {
-                    const grepPayload = {
-                        pattern: document.getElementById('query').value,
-                        regex: document.getElementById('grep-regex').checked,
-                        case_sensitive: document.getElementById('grep-case').checked,
-                        limit: parseInt(document.getElementById('limit').value),
-                        collection: document.getElementById('collection-filter').value || null,
-                        path: document.getElementById('path').value.trim() || null
+                if (activeMode === 'grep') {
+                    const payload = {
+                        pattern: query,
+                        regex: document.getElementById('serp-grep-regex').checked,
+                        case_sensitive: document.getElementById('serp-grep-case').checked,
+                        limit: parseInt(document.getElementById('serp-limit').value) || 50,
+                        collection: document.getElementById('serp-collection-filter').value || null,
+                        path: document.getElementById('serp-path').value.trim() || null
                     };
 
                     const res = await fetch('/api/grep', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(grepPayload)
+                        body: JSON.stringify(payload)
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || "Grep failed");
 
                     lastRawJson = data.results;
                     lastSearchType = 'grep';
-                    statsEl.textContent = `Found ${data.total_matches} grep match(es).`;
+                    const timeStr = data.time_taken !== undefined ? ` (${data.time_taken}s)` : '';
+                    statsEl.innerHTML = `Found <span class="text-slate-200 font-semibold">${data.total_matches}</span> grep matches${timeStr}`;
                     toolbarEl.classList.remove('hidden');
-                    renderResults(data.results, 'grep');
+                    renderResults(data.results, 'grep', query);
                 } else {
+                    const isDocView = activeMode === 'doc';
                     const payload = {
-                        query: document.getElementById('query').value,
-                        doc: document.getElementById('doc-view').checked,
-                        rerank: document.getElementById('rerank').checked,
-                        exclude_seen: document.getElementById('exclude-seen').checked,
-                        redact_pii: document.getElementById('redact-pii').checked,
-                        limit: parseInt(document.getElementById('limit').value),
-                        collection: document.getElementById('collection-filter').value,
-                        lex: document.getElementById('lex').value.trim() || null,
-                        title: document.getElementById('title').value.trim() || null,
-                        path: document.getElementById('path').value.trim() || null,
+                        query: query,
+                        doc: isDocView,
+                        rerank: document.getElementById('serp-rerank').checked,
+                        exclude_seen: document.getElementById('serp-exclude-seen').checked,
+                        redact_pii: document.getElementById('serp-redact-pii').checked,
+                        limit: parseInt(document.getElementById('serp-limit').value) || 10,
+                        collection: document.getElementById('serp-collection-filter').value || null,
+                        lex: document.getElementById('serp-lex').value.trim() || null,
+                        title: document.getElementById('serp-title').value.trim() || null,
+                        path: document.getElementById('serp-path').value.trim() || null,
                         session_id: currentSessionId
                     };
 
@@ -421,76 +720,48 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
-                    
                     const data = await res.json();
-                    
-                    if (!res.ok) {
-                        throw new Error(data.error || "Server returned an error");
-                    }
+                    if (!res.ok) throw new Error(data.error || "Search failed");
 
                     lastRawJson = data.results;
                     lastSearchType = data.type;
                     currentSessionId = data.session_id;
-                    document.getElementById('session-badge').textContent = `Session: ${currentSessionId}`;
 
-                    const excludedMsg = data.excluded_count ? ` | Excluded ${data.excluded_count} seen chunk(s)` : '';
-                    statsEl.textContent = `Found ${data.results.length} ${data.type === 'doc' ? 'documents' : 'chunks'}${excludedMsg}.`;
+                    document.querySelectorAll('.session-id-val').forEach(el => el.textContent = currentSessionId);
+
+                    const timeStr = data.time_taken !== undefined ? ` (${data.time_taken}s)` : '';
+                    const excludedMsg = data.excluded_count ? ` <span class="text-slate-500">•</span> Excluded <span class="text-amber-400 font-semibold">${data.excluded_count}</span> seen chunk(s)` : '';
+                    statsEl.innerHTML = `Found <span class="text-slate-200 font-semibold">${data.results.length}</span> ${data.type === 'doc' ? 'documents' : 'chunks'}${timeStr}${excludedMsg}`;
                     toolbarEl.classList.remove('hidden');
-                    
-                    renderResults(data.results, data.type);
+
+                    renderResults(data.results, data.type, query);
                 }
             } catch (err) {
-                resultsEl.innerHTML = `<div class="text-red-400 mt-10 text-center font-mono bg-gray-800 p-4 rounded border border-red-900 shadow-md">Error executing search:<br>${err.message}</div>`;
+                resultsEl.innerHTML = `
+                    <div class="bg-red-950/40 border border-red-900/60 rounded-xl p-5 text-red-300 text-sm">
+                        <div class="font-semibold mb-1">Search Execution Error</div>
+                        <div class="font-mono text-xs text-red-400">${escapeHtml(err.message)}</div>
+                    </div>
+                `;
             }
-        });
+        }
 
-        // Copy XML logic
-        document.getElementById('copy-json').addEventListener('click', (e) => {
-            if(!lastRawJson) return;
-            const query = document.getElementById('query').value;
-            const xmlData = formatResultsToXml(lastRawJson, lastSearchType, query, currentSessionId);
-            navigator.clipboard.writeText(xmlData).then(() => {
-                const btn = e.target;
-                const originalText = btn.textContent;
-                btn.textContent = "Copied XML!";
-                btn.classList.add("bg-green-600", "text-white");
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.classList.remove("bg-green-600", "text-white");
-                }, 2000);
-            });
-        });
-
-        // Copy Prompt + References logic
-        document.getElementById('copy-prompt').addEventListener('click', (e) => {
-            if(!lastRawJson) return;
-            const query = document.getElementById('query').value;
-            const xmlData = formatResultsToXml(lastRawJson, lastSearchType, query, currentSessionId);
-            const payload = `Task / Question: ${query}\n\nContext / References:\n${xmlData}`;
-            
-            navigator.clipboard.writeText(payload).then(() => {
-                const btn = e.target;
-                const originalText = btn.textContent;
-                btn.textContent = "Copied!";
-                btn.classList.replace("bg-blue-600", "bg-green-600");
-                btn.classList.replace("hover:bg-blue-500", "hover:bg-green-500");
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.classList.replace("bg-green-600", "bg-blue-600");
-                    btn.classList.replace("hover:bg-green-500", "hover:bg-blue-500");
-                }, 2000);
-            });
-        });
-
-        function renderResults(results, type) {
+        // Render SERP Result Cards
+        function renderResults(results, type, query) {
             const container = document.getElementById('results');
             container.innerHTML = '';
 
-            if (results.length === 0) {
-                container.innerHTML = '<div class="text-gray-500 italic mt-4">No results found.</div>';
+            if (!results || results.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-16 text-slate-500">
+                        <div class="text-base font-medium text-slate-400 mb-1">No matches found</div>
+                        <div class="text-xs">Try broader search terms, clearing filters, or switching modes.</div>
+                    </div>
+                `;
                 return;
             }
 
+            // GREP MODE RENDERING
             if (type === 'grep') {
                 const grouped = {};
                 results.forEach(m => {
@@ -508,23 +779,25 @@
 
                 Object.values(grouped).forEach((doc, idx) => {
                     const card = document.createElement('div');
-                    card.className = "bg-gray-800 rounded-lg p-5 border border-gray-700 shadow-md";
+                    card.className = "bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-sm hover:border-slate-700 transition";
                     const uri = doc.collection ? `qmd://${doc.collection}/${doc.path}` : doc.path;
 
                     card.innerHTML = `
-                        <div class="flex justify-between items-center border-b border-gray-700 pb-2 mb-3">
-                            <h3 class="text-base font-semibold text-blue-400 hover:text-blue-300 transition cursor-pointer flex items-center gap-2" onclick="openDocument('${doc.collection}', '${doc.path}', '')">
-                                <span class="text-gray-500 text-xs font-mono">#${idx + 1}</span>
-                                ${doc.title}
-                                <span class="text-xs text-gray-400 font-mono font-normal">(${uri})</span>
-                            </h3>
-                            <span class="text-xs bg-gray-900 px-2 py-0.5 rounded text-yellow-400 font-mono">${doc.matches.length} match(es)</span>
+                        <!-- Breadcrumb & Header -->
+                        <div class="flex items-center justify-between gap-2 text-xs font-mono text-slate-400 mb-1">
+                            <span class="text-blue-400/90 truncate">${escapeHtml(uri)}</span>
+                            <span class="bg-slate-950 border border-slate-800 text-amber-400 px-2 py-0.5 rounded font-mono text-[11px]">${doc.matches.length} match(es)</span>
                         </div>
-                        <div class="space-y-1 font-mono text-xs">
+                        <h3 class="text-base font-semibold text-blue-400 hover:text-blue-300 hover:underline cursor-pointer mb-3" onclick="openDocument('${escapeXmlAttr(doc.collection)}', '${escapeXmlAttr(doc.path)}', '')">
+                            ${escapeHtml(doc.title || doc.path)}
+                        </h3>
+                        
+                        <!-- Line Matches List -->
+                        <div class="space-y-1 font-mono text-xs bg-slate-950/70 p-3 rounded-lg border border-slate-900">
                             ${doc.matches.map(m => `
-                                <div class="flex items-start gap-2.5 hover:bg-gray-700/40 p-1.5 rounded cursor-pointer transition select-none group" onclick="openDocument('${m.collection}', '${m.path}', '${escapeXmlAttr(m.line_text)}')">
-                                    <span class="text-cyan-400 font-semibold w-12 text-right flex-shrink-0 group-hover:text-cyan-300">L${m.line_number}:</span>
-                                    <span class="text-gray-200 break-all">${escapeXmlAttr(m.line_text)}</span>
+                                <div class="flex items-start gap-3 hover:bg-slate-800/60 p-1 rounded cursor-pointer transition select-none group" onclick="openDocument('${escapeXmlAttr(m.collection)}', '${escapeXmlAttr(m.path)}', '${escapeXmlAttr(m.line_text)}')">
+                                    <span class="text-sky-400 font-semibold w-12 text-right flex-shrink-0 group-hover:text-sky-300">L${m.line_number}:</span>
+                                    <span class="text-slate-200 break-all">${highlightKeywords(escapeHtml(m.line_text), query)}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -534,142 +807,194 @@
                 return;
             }
 
+            // CHUNK & DOCUMENT SERP RESULT RENDERING
             results.forEach((item, index) => {
                 const card = document.createElement('div');
-                card.className = type === 'doc' 
-                    ? "bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-md" 
-                    : "bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-md cursor-pointer hover:border-blue-500 transition duration-200 group";
-                
-                if (type !== 'doc') {
-                    card.onclick = () => openDocument(item.collection, item.path, item.text);
-                }
+                card.className = "bg-slate-900/80 border border-slate-800/90 rounded-2xl p-5 shadow-sm hover:border-slate-700 transition";
 
-                const header = document.createElement('div');
-                header.className = "flex justify-between items-start border-b border-gray-700 pb-3 mb-4";
-                
-                const pathStr = item.collection ? `qmd://${item.collection}/${item.path}` : item.path;
-                
-                const titleClass = type === 'doc' 
-                    ? "text-lg font-semibold text-blue-400 hover:text-blue-300 transition flex items-center gap-2 cursor-pointer" 
-                    : "text-lg font-semibold text-blue-400 group-hover:text-blue-300 transition flex items-center gap-2";
-                
-                header.innerHTML = `
-                    <div>
-                        <h3 class="${titleClass}" ${type === 'doc' ? `onclick="openDocument('${item.collection}', '${item.path}', '')"` : ''}>
-                            <span class="text-gray-500 text-sm font-mono">#${index + 1}</span> 
-                            ${item.title}
-                        </h3>
-                        <p class="text-xs text-gray-400 font-mono mt-1">${pathStr}</p>
-                    </div>
-                    <div class="text-right">
-                        <span class="text-xs font-mono bg-gray-900 px-2 py-1 rounded text-gray-300">Score: ${item.score.toFixed(4)}</span>
-                        ${item.source ? `<div class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">${item.source}</div>` : ''}
-                    </div>
-                `;
-                card.appendChild(header);
+                const uri = item.collection ? `qmd://${item.collection}/${item.path}` : item.path;
+                const section = item.headers || "";
 
-                const body = document.createElement('div');
-                body.className = "prose prose-invert max-w-none text-sm text-gray-300";
-                
                 if (type === 'doc') {
-                    // Document view: make individual snippets clickable
-                    item.snippets.forEach((snip, i) => {
-                        const snipDiv = document.createElement('div');
-                        snipDiv.className = "cursor-pointer hover:bg-gray-700/30 p-3 -mx-3 rounded transition border border-transparent hover:border-gray-600";
-                        snipDiv.onclick = (e) => {
-                            e.stopPropagation();
-                            openDocument(item.collection, item.path, snip);
-                        };
-                        snipDiv.innerHTML = marked.parse(snip);
-                        body.appendChild(snipDiv);
-                        
-                        if (i < item.snippets.length - 1) {
-                            const hr = document.createElement('hr');
-                            hr.className = "border-gray-700 my-4 border-dashed";
-                            body.appendChild(hr);
-                        }
-                    });
+                    // Document-level card
+                    const snippets = item.snippets || [];
+                    card.innerHTML = `
+                        <!-- SERP Breadcrumbs URI -->
+                        <div class="flex items-center gap-1.5 text-xs text-slate-400 font-mono mb-1.5">
+                            <span class="text-blue-400/90 font-medium">${escapeHtml(uri)}</span>
+                        </div>
+
+                        <!-- SERP Clickable Blue Title -->
+                        <h3 class="text-xl font-semibold text-blue-400 hover:text-blue-300 hover:underline cursor-pointer mb-3" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '')">
+                            ${escapeHtml(item.title || item.path)}
+                        </h3>
+
+                        <!-- Snippets List -->
+                        <div class="space-y-3 my-3">
+                            ${snippets.map((snip) => `
+                                <div class="cursor-pointer bg-slate-950/60 hover:bg-slate-950 p-4 rounded-xl border border-slate-800/80 hover:border-slate-700 transition text-sm text-slate-300 leading-relaxed" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(snip)}')">
+                                    <div class="prose prose-invert max-w-none text-xs text-slate-300">
+                                        ${marked.parse(snip)}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+
+                        <!-- Metadata & Quick Action Footer -->
+                        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800/80 text-xs font-mono text-slate-400">
+                            <div class="flex items-center gap-2">
+                                <span class="bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800 text-slate-300">Score: ${Number(item.score || 0).toFixed(4)}</span>
+                                <span class="bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800 text-slate-400">${snippets.length} snippet(s)</span>
+                                ${item.source ? `<span class="text-slate-500 uppercase text-[10px] tracking-wider font-sans">${escapeHtml(item.source)}</span>` : ''}
+                            </div>
+                            <div class="flex items-center gap-2 font-sans">
+                                <button type="button" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '')" class="hover:bg-slate-800 px-2.5 py-1 rounded text-blue-400 hover:text-blue-300 transition flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                    Open Doc
+                                </button>
+                                <button type="button" onclick="copySingleXml(${index})" class="hover:bg-slate-800 px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition">
+                                    XML
+                                </button>
+                            </div>
+                        </div>
+                    `;
                 } else {
-                    // Chunk view
-                    body.innerHTML = marked.parse(item.text);
+                    // Chunk-level result card
+                    card.innerHTML = `
+                        <!-- SERP Breadcrumbs URI -->
+                        <div class="flex items-center gap-1.5 text-xs text-slate-400 font-mono mb-1.5">
+                            <span class="text-blue-400/90 font-medium">${escapeHtml(uri)}</span>
+                            ${section ? `<span class="text-slate-600">›</span><span class="text-slate-400 truncate">${escapeHtml(section)}</span>` : ''}
+                        </div>
+
+                        <!-- SERP Clickable Blue Title -->
+                        <h3 class="text-xl font-semibold text-blue-400 hover:text-blue-300 hover:underline cursor-pointer mb-2.5" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')">
+                            ${escapeHtml(item.title || item.path)}
+                        </h3>
+
+                        <!-- Formatted Markdown Snippet -->
+                        <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 my-3 text-sm text-slate-300 leading-relaxed cursor-pointer hover:border-slate-700 transition" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')">
+                            <div class="prose prose-invert max-w-none text-xs text-slate-300">
+                                ${marked.parse(item.text || '')}
+                            </div>
+                        </div>
+
+                        <!-- Metadata & Quick Action Footer -->
+                        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800/80 text-xs font-mono text-slate-400">
+                            <div class="flex items-center gap-2">
+                                <span class="bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800 text-slate-300">Score: ${Number(item.score || 0).toFixed(4)}</span>
+                                ${item.rank ? `<span class="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-slate-400">#${item.rank}</span>` : ''}
+                                ${item.seq_id !== undefined ? `<span class="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-slate-400">seq: ${item.seq_id}</span>` : ''}
+                                ${item.source ? `<span class="text-slate-500 uppercase text-[10px] tracking-wider font-sans">${escapeHtml(item.source)}</span>` : ''}
+                            </div>
+                            <div class="flex items-center gap-2 font-sans">
+                                <button type="button" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')" class="hover:bg-slate-800 px-2.5 py-1 rounded text-blue-400 hover:text-blue-300 transition flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                    Open Doc
+                                </button>
+                                <button type="button" onclick="copySingleXml(${index})" class="hover:bg-slate-800 px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition">
+                                    XML
+                                </button>
+                            </div>
+                        </div>
+                    `;
                 }
 
-                card.appendChild(body);
                 container.appendChild(card);
             });
         }
 
-        // Document Viewer Logic
+        // Single XML Copy Helper
+        function copySingleXml(index) {
+            if (!lastRawJson || !lastRawJson[index]) return;
+            const item = lastRawJson[index];
+            const xml = formatResultsToXml([item], lastSearchType, document.getElementById('serp-query').value, currentSessionId);
+            navigator.clipboard.writeText(xml).then(() => {
+                alert("Copied XML for item to clipboard!");
+            });
+        }
+
+        // Copy XML / Prompt Toolbar Handlers
+        document.getElementById('copy-json').addEventListener('click', (e) => {
+            if (!lastRawJson) return;
+            const query = document.getElementById('serp-query').value;
+            const xmlData = formatResultsToXml(lastRawJson, lastSearchType, query, currentSessionId);
+            navigator.clipboard.writeText(xmlData).then(() => {
+                const btn = e.currentTarget;
+                const orig = btn.innerHTML;
+                btn.innerHTML = `<span class="text-emerald-400 font-semibold">Copied XML!</span>`;
+                setTimeout(() => btn.innerHTML = orig, 2000);
+            });
+        });
+
+        document.getElementById('copy-prompt').addEventListener('click', (e) => {
+            if (!lastRawJson) return;
+            const query = document.getElementById('serp-query').value;
+            const xmlData = formatResultsToXml(lastRawJson, lastSearchType, query, currentSessionId);
+            const payload = `Task / Question: ${query}\n\nContext / References:\n${xmlData}`;
+            navigator.clipboard.writeText(payload).then(() => {
+                const btn = e.currentTarget;
+                const orig = btn.innerHTML;
+                btn.innerHTML = `<span class="text-white font-semibold">Copied!</span>`;
+                setTimeout(() => btn.innerHTML = orig, 2000);
+            });
+        });
+
+        // Slide-Over Document Viewer Logic
         async function openDocument(collection, path, targetText) {
             const slideOver = document.getElementById('slide-over');
             const backdrop = document.getElementById('slide-backdrop');
             const panel = document.getElementById('slide-panel');
             const contentEl = document.getElementById('slide-content');
             const titleEl = document.getElementById('slide-title');
+            const uriEl = document.getElementById('slide-uri');
 
-            contentEl.innerHTML = '<div class="text-center text-gray-500 mt-10">Loading document...</div>';
+            contentEl.innerHTML = '<div class="text-center text-slate-500 py-16">Loading document...</div>';
+            uriEl.textContent = collection ? `qmd://${collection}/${path}` : path;
             
-            // Unhide container and trigger reflow
             slideOver.classList.remove('hidden');
-            void slideOver.offsetWidth; 
-            
-            // Animate in
+            void slideOver.offsetWidth;
             backdrop.classList.remove('opacity-0');
             panel.classList.remove('translate-x-full');
 
-            const redactPii = document.getElementById('redact-pii').checked;
+            const redactPii = document.getElementById('serp-redact-pii').checked;
             try {
                 const res = await fetch(`/api/document?collection=${encodeURIComponent(collection)}&path=${encodeURIComponent(path)}${redactPii ? '&redact_pii=true' : ''}`);
                 if (!res.ok) throw new Error("Document not found or error loading.");
                 const data = await res.json();
 
                 titleEl.textContent = data.title || path;
-
                 let rawMd = data.content;
                 
                 if (targetText && targetText.length > 10) {
                     let searchStr = targetText.trim();
                     let index = rawMd.indexOf(searchStr);
-                    
                     if (index === -1) {
-                        // Fallback: Try matching first 40 chars to avoid whitespace/truncation issues
                         index = rawMd.indexOf(searchStr.substring(0, 40));
                     }
-                    
                     if (index !== -1) {
-                        // Inject anchor safely AFTER markdown block syntax (like #, -, |)
-                        // by finding the first alphanumeric char from the match point.
                         const remainder = rawMd.substring(index);
                         const match = remainder.match(/[a-zA-Z0-9]/);
                         const offset = match ? match.index : 0;
-                        
                         rawMd = rawMd.substring(0, index + offset) + 
                                 '<span id="scroll-target"></span>' + 
                                 rawMd.substring(index + offset);
                     }
                 }
 
-                // Ensure tables and breaks are parsed correctly
                 marked.setOptions({ gfm: true, breaks: true });
-                
-                // Render the modified markdown
                 contentEl.innerHTML = marked.parse(rawMd);
 
-                // Auto-scroll to the injected anchor
                 setTimeout(() => {
                     const targetSpan = document.getElementById('scroll-target');
                     if (targetSpan) {
                         targetSpan.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        
-                        // Flash the parent block element (p, td, li, h1, etc)
                         const parent = targetSpan.parentElement;
                         if (parent) {
                             const originalBg = parent.style.backgroundColor;
                             const originalTransition = parent.style.transition;
-                            
                             parent.style.transition = 'background-color 0.5s ease-out';
-                            parent.style.backgroundColor = 'rgba(59, 130, 246, 0.3)'; // blue-500/30
-                            
+                            parent.style.backgroundColor = 'rgba(59, 130, 246, 0.3)';
                             setTimeout(() => { 
                                 parent.style.backgroundColor = originalBg; 
                                 setTimeout(() => { parent.style.transition = originalTransition; }, 500);
@@ -677,34 +1002,29 @@
                         }
                     }
                 }, 300);
-
             } catch (err) {
-                contentEl.innerHTML = `<div class="text-red-400">Failed to load document: ${err.message}</div>`;
+                contentEl.innerHTML = `<div class="text-red-400 p-4">Failed to load document: ${escapeHtml(err.message)}</div>`;
             }
         }
 
         function closeDocument() {
             const backdrop = document.getElementById('slide-backdrop');
             const panel = document.getElementById('slide-panel');
-            
-            // Animate out
             backdrop.classList.add('opacity-0');
             panel.classList.add('translate-x-full');
-            
             setTimeout(() => {
                 document.getElementById('slide-over').classList.add('hidden');
-                document.getElementById('slide-content').innerHTML = ''; // clear memory
+                document.getElementById('slide-content').innerHTML = '';
             }, 300);
         }
 
         document.getElementById('close-slide').addEventListener('click', closeDocument);
         document.getElementById('slide-backdrop').addEventListener('click', closeDocument);
 
-        // Collection Tree Viewer Logic
-        let treeFilterTimer = null;
+        // Collection File Tree Drawer Logic
         async function loadCollectionTree(pattern = '') {
             const container = document.getElementById('tree-content');
-            container.innerHTML = '<div class="text-gray-500 py-4 text-center">Loading tree...</div>';
+            container.innerHTML = '<div class="text-slate-500 py-6 text-center">Loading tree...</div>';
             try {
                 const url = pattern ? `/api/collections/tree?pattern=${encodeURIComponent(pattern)}` : '/api/collections/tree';
                 const res = await fetch(url);
@@ -712,7 +1032,7 @@
                 const data = await res.json();
                 renderCollectionTree(data);
             } catch (err) {
-                container.innerHTML = `<div class="text-red-400 p-2">Error: ${err.message}</div>`;
+                container.innerHTML = `<div class="text-red-400 p-2">Error: ${escapeHtml(err.message)}</div>`;
             }
         }
 
@@ -722,20 +1042,19 @@
 
             const collections = Array.isArray(treeData) ? treeData : [treeData];
             if (collections.length === 0) {
-                container.innerHTML = '<div class="text-gray-500 py-4 text-center">No indexed documents found.</div>';
+                container.innerHTML = '<div class="text-slate-500 py-6 text-center">No indexed documents found.</div>';
                 return;
             }
 
             collections.forEach(item => {
                 const collDiv = document.createElement('div');
-                collDiv.className = "bg-gray-800/60 rounded p-2.5 border border-gray-700/60";
+                collDiv.className = "bg-slate-950/60 rounded-xl p-3 border border-slate-800/80";
 
                 const collTitle = document.createElement('div');
-                collTitle.className = "font-bold text-blue-400 flex items-center gap-1.5 pb-1.5 border-b border-gray-700/50 mb-2";
-                collTitle.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg> ${item.collection}/`;
+                collTitle.className = "font-bold text-blue-400 flex items-center gap-1.5 pb-2 border-b border-slate-800/80 mb-2";
+                collTitle.innerHTML = `<svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg> ${escapeHtml(item.collection)}/`;
                 collDiv.appendChild(collTitle);
 
-                const rootTree = item.tree || {};
                 const treeContainer = document.createElement('div');
                 treeContainer.className = "pl-1 space-y-1";
 
@@ -746,14 +1065,14 @@
                         if (child.type === 'directory') {
                             row.className = "space-y-1";
                             const dirHeader = document.createElement('div');
-                            dirHeader.className = "flex items-center gap-1 text-yellow-400 font-semibold cursor-pointer hover:text-yellow-300 select-none py-0.5";
+                            dirHeader.className = "flex items-center gap-1 text-amber-400 font-semibold cursor-pointer hover:text-amber-300 select-none py-0.5";
                             dirHeader.innerHTML = `
-                                <svg class="w-3 h-3 transform transition-transform text-gray-400 dir-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                                <svg class="w-3.5 h-3.5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
-                                <span>${child.name}/</span>
+                                <svg class="w-3 h-3 transform transition-transform text-slate-500 dir-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                <svg class="w-3.5 h-3.5 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
+                                <span>${escapeHtml(child.name)}/</span>
                             `;
                             const childContainer = document.createElement('div');
-                            childContainer.className = "pl-3.5 border-l border-gray-700/60 ml-1.5 space-y-1";
+                            childContainer.className = "pl-3.5 border-l border-slate-800 ml-1.5 space-y-1";
 
                             dirHeader.onclick = () => {
                                 childContainer.classList.toggle('hidden');
@@ -764,22 +1083,20 @@
                             renderNode(child, childContainer, collName);
                             row.appendChild(childContainer);
                         } else {
-                            row.className = "flex items-center gap-1.5 text-gray-300 hover:text-blue-300 hover:bg-gray-700/40 px-1.5 py-0.5 rounded cursor-pointer transition select-none group";
-                            const titleStr = child.title && child.title !== child.name ? `<span class="text-gray-500 text-[10px] group-hover:text-gray-400 truncate">(${child.title})</span>` : '';
+                            row.className = "flex items-center gap-1.5 text-slate-300 hover:text-blue-300 hover:bg-slate-800/50 px-2 py-1 rounded cursor-pointer transition select-none group";
+                            const titleStr = child.title && child.title !== child.name ? `<span class="text-slate-500 text-[10px] group-hover:text-slate-400 truncate">(${escapeHtml(child.title)})</span>` : '';
                             row.innerHTML = `
-                                <svg class="w-3 h-3 text-gray-400 group-hover:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                <span class="truncate">${child.name}</span>
+                                <svg class="w-3.5 h-3.5 text-slate-500 group-hover:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                <span class="truncate">${escapeHtml(child.name)}</span>
                                 ${titleStr}
                             `;
-                            row.onclick = () => {
-                                openDocument(collName, child.path, '');
-                            };
+                            row.onclick = () => openDocument(collName, child.path, '');
                         }
                         parentEl.appendChild(row);
                     });
                 }
 
-                renderNode(rootTree, treeContainer, item.collection);
+                renderNode(item.tree || {}, treeContainer, item.collection);
                 collDiv.appendChild(treeContainer);
                 container.appendChild(collDiv);
             });
@@ -801,16 +1118,16 @@
         function closeTreeDrawer() {
             const backdrop = document.getElementById('tree-backdrop');
             const panel = document.getElementById('tree-panel');
-
             backdrop.classList.add('opacity-0');
             panel.classList.add('-translate-x-full');
-
             setTimeout(() => {
                 document.getElementById('tree-drawer').classList.add('hidden');
             }, 300);
         }
 
-        document.getElementById('btn-toggle-tree').addEventListener('click', openTreeDrawer);
+        document.querySelectorAll('.btn-open-tree').forEach(btn => {
+            btn.addEventListener('click', openTreeDrawer);
+        });
         document.getElementById('close-tree').addEventListener('click', closeTreeDrawer);
         document.getElementById('tree-backdrop').addEventListener('click', closeTreeDrawer);
         document.getElementById('refresh-tree').addEventListener('click', () => {
@@ -821,12 +1138,10 @@
         document.getElementById('tree-filter-input').addEventListener('input', (e) => {
             clearTimeout(treeFilterTimer);
             const val = e.target.value.trim();
-            treeFilterTimer = setTimeout(() => {
-                loadCollectionTree(val);
-            }, 250);
+            treeFilterTimer = setTimeout(() => loadCollectionTree(val), 250);
         });
 
-        // Escape key to close open panels
+        // Global Escape Key Listener
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 if (!document.getElementById('slide-over').classList.contains('hidden')) {
@@ -837,7 +1152,7 @@
             }
         });
 
-        // Initialize
+        // Initialize on load
         loadCollections();
     </script>
 </body>
