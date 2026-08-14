@@ -582,15 +582,22 @@
         const THEME_STORAGE_KEY = 'qmd_theme_mode';
 
         // Load & Apply Default Preferences
-        function loadDefaultPreferences() {
-            const defaults = JSON.parse(localStorage.getItem(DEFAULTS_KEY) || '{}');
-            if (defaults.limit) document.querySelectorAll('.limit-select').forEach(sel => sel.value = defaults.limit);
-            if (defaults.mode) setMode(defaults.mode);
-            if (defaults.rerank !== undefined) featureStates.rerank = defaults.rerank;
-            if (defaults.exclude_seen !== undefined) featureStates.exclude_seen = defaults.exclude_seen;
-            if (defaults.redact_pii !== undefined) featureStates.redact_pii = defaults.redact_pii;
+        function applyDefaultPreferences(customDefaults = null) {
+            const defaults = customDefaults || JSON.parse(localStorage.getItem(DEFAULTS_KEY) || '{}');
+            if (defaults.limit) {
+                document.querySelectorAll('.limit-select').forEach(sel => sel.value = defaults.limit);
+            }
+            if (defaults.mode) {
+                setMode(defaults.mode);
+            }
+            featureStates.rerank = defaults.rerank !== undefined ? !!defaults.rerank : false;
+            featureStates.exclude_seen = defaults.exclude_seen !== undefined ? !!defaults.exclude_seen : false;
+            featureStates.redact_pii = defaults.redact_pii !== undefined ? !!defaults.redact_pii : false;
             updateFeatureButtonsUI();
+        }
 
+        function loadSettingsModalValues() {
+            const defaults = JSON.parse(localStorage.getItem(DEFAULTS_KEY) || '{}');
             const limEl = document.getElementById('setting-default-limit');
             const modEl = document.getElementById('setting-default-mode');
             const rkEl = document.getElementById('setting-default-rerank');
@@ -612,6 +619,7 @@
                 redact_pii: document.getElementById('setting-default-pii').checked
             };
             localStorage.setItem(DEFAULTS_KEY, JSON.stringify(defaults));
+            applyDefaultPreferences(defaults);
         }
 
         function toggleFeature(name, forceVal = null) {
@@ -689,6 +697,11 @@
             const isGrep = mode === 'grep';
             document.querySelectorAll('.search-toggles').forEach(el => el.classList.toggle('hidden', isGrep));
             document.querySelectorAll('.grep-toggles').forEach(el => el.classList.toggle('hidden', !isGrep));
+
+            const hQ = document.getElementById('hero-query');
+            const sQ = document.getElementById('serp-query');
+            if (hQ) hQ.placeholder = isGrep ? "Grep pattern (e.g. def _[a-z_]+ or exact text)..." : "Search notes, title:\"space\", pii:off...";
+            if (sQ) sQ.placeholder = isGrep ? "Grep pattern..." : "Search markdown...";
         }
 
         document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -845,6 +858,7 @@
         }
 
         function openSettings() {
+            loadSettingsModalValues();
             const modal = document.getElementById('settings-modal');
             modal.classList.remove('hidden');
             void modal.offsetWidth;
@@ -1331,10 +1345,26 @@
             }
         });
 
+        // Two-way synchronization for limits & collections dropdowns
+        document.querySelectorAll('.limit-select').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                const val = e.target.value;
+                document.querySelectorAll('.limit-select').forEach(s => s.value = val);
+            });
+        });
+
+        document.querySelectorAll('.collection-select').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                const val = e.target.value;
+                document.querySelectorAll('.collection-select').forEach(s => s.value = val);
+            });
+        });
+
         // Initialize on Launch
         initSession();
         applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || 'system');
-        loadDefaultPreferences();
+        applyDefaultPreferences();
+        loadSettingsModalValues();
         loadCollections();
     </script>
 </body>
