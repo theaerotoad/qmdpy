@@ -98,7 +98,7 @@ qmd search "docker" -c work -t "networking" -p "src/"
 # Lexical Override (Ignore vector nuance, force BM25 match)
 qmd search "error codes" --lex "ERR_CONNECTION_REFUSED"
 
-# Start Web UI (Features direct XML copy for LLM prompts)
+# Start Web UI (Features interactive File Tree drawer, Grep Mode, & XML prompt export)
 qmd serve --port 5000
 
 ```
@@ -117,6 +117,40 @@ qmd chunk 22,40,25-37 -w 1
 # Fetch Chunk(s) by Document Path & Sequence Range
 qmd chunk "research/deep_space.md" --seq 1-5,10 -c work
 qmd chunk "research/deep_space.md" --seq 147-150 --xml
+
+```
+
+**Collection Directory Trees & Knowledge Base Inspection:**
+
+```bash
+# Render ASCII folder tree of all indexed collections
+qmd collection tree
+
+# Render tree for a specific collection with maximum depth limit
+qmd collection tree work --depth 2
+
+# Filter tree files by substring or regex pattern
+qmd collection tree work -p "guide"
+qmd collection tree work -p "\.py$" --regex
+
+# Export collection tree structure in JSON or LLM-friendly XML
+qmd collection tree work --xml
+qmd collection tree --json
+
+```
+
+**Direct Pattern Matching & Grep:**
+
+```bash
+# Exact string matching across raw document bodies with line numbers
+qmd grep "import sqlite3" -c work
+
+# Regular expression matching with case sensitivity and path filter
+qmd grep "def _[a-z_]+" --regex --case-sensitive -p "src/"
+
+# Export grep matches in JSON or XML for LLM context
+qmd grep "TODO:" --limit 20 --json
+qmd grep "class \w+Model" --regex --xml
 
 ```
 
@@ -139,6 +173,13 @@ By offloading the "heavy lifting" (Embedding generation, Chat completion, and Re
 * **Vector:** Semantic search using cosine similarity on stored binary BLOBs.
 * **Hybrid:** Reciprocal Rank Fusion (RRF) combining FTS and Vector results.
 * **Rerank:** LLM-based re-ranking of top candidates via a custom `/v1/rerank` endpoint.
+* **Grep / Pattern Search:** Fast substring and regex scanning directly over decompressed document contents.
+
+
+* **Inspection Tools:**
+* **Document Outlines:** Extracts heading hierarchies mapped to chunk sequence intervals.
+* **Direct Chunk Retrieval:** Context window fetching (`±N` chunks) by `seq_id` or vector `rowid`.
+* **Collection Directory Trees:** Visual ASCII and structured XML/JSON hierarchy generation with path pattern filtering.
 
 
 * **Output Formats:** Human-friendly colored terminal UI, JSON piping, and LLM-optimized XML format with `<chunk>`, `<gap>`, and navigation attributes (`prev_seq`, `next_seq`).
@@ -175,15 +216,15 @@ qmd_python/
 │       ├── main.py       # CLI Entry Point & Command Dispatcher
 │       ├── config.py     # YAML Config Loader
 │       ├── db.py         # SQLite Connection & Schema Migrations
-│       ├── store.py      # Business Logic: Indexing, Search, RRF
+│       ├── store.py      # Business Logic: Indexing, Search, Trees, Grep, RRF
 │       ├── llm.py        # API Client (Embed/Chat/Rerank)
 │       ├── utils.py      # Hashing, Path Helpers, Range Parsers
-│       ├── formatting.py # CLI Output (Colors, Snippets, XML, JSON)
+│       ├── formatting.py # CLI Output (Colors, Trees, Grep, Snippets, XML, JSON)
 │       ├── converters.py # Document Converters
 │       ├── epub.py       # EPUB Converter
-│       ├── web.py        # Web Server & Search API
+│       ├── web.py        # Web Server & REST API
 │       ├── templates/
-│       │   └── index.html # Web Search UI
+│       │   └── index.html # Web Search UI (Drawer Tree, Grep Mode, Doc Viewer)
 │       └── docparse/     # Structure-Aware Markdown Parsing
 │           ├── parser.py
 │           ├── grouper.py
@@ -248,6 +289,8 @@ qmd_python/
 * `hybrid_search(..., rerank_only=False)`: Runs FTS + Vec + RRF + Rerank. Handles deduplication and scoring.
 * `get_chunk_by_id()` / `get_chunk_by_seq()`: Fetches individual chunks, ranges, and surrounding context windows.
 * `get_document_outline()`: Generates heading hierarchies correlated to chunk sequence intervals.
+* `get_collection_tree()`: Constructs nested directory trees with optional pattern/depth filtering.
+* `grep_search()`: Performs line-by-line exact and regex pattern matching across raw documents.
 
 
 
@@ -255,13 +298,15 @@ qmd_python/
 
 **6. File:** `src/qmd/formatting.py`
 
-* **Purpose:** Formats search results, outlines, and chunks for terminal and LLM consumption.
+* **Purpose:** Formats search results, outlines, chunks, directory trees, and grep matches for terminal and LLM consumption.
 * **Key Dependencies:** `sys` (for ANSI codes), `html` (for XML attribute escaping).
 * **Core Symbols:**
 * `def format_results_cli(results)`: Prints colorized output with snippets.
 * `def format_doc_results_cli(grouped_results)`: Prints Document View with merged snippets.
 * `def format_results_xml()` / `def format_doc_results_xml()`: Emits structured, boundary-isolated XML for LLMs.
 * `def format_chunks_xml()` / `def format_outline_xml()`: Formats chunk extraction and outline data as XML.
+* `def format_collection_tree_cli()` / `def format_collection_tree_xml()`: Emits ASCII and structured XML directory trees.
+* `def format_grep_cli()` / `def format_grep_xml()`: Emits highlighted terminal lines and XML grep matches.
 
 
 
@@ -274,6 +319,8 @@ qmd_python/
 * `def handle_search(args)`: Logic for `qmd search` (supports `-v`, `-d`, `-r`, `--xml`, `--json`).
 * `def handle_chunk(args)`: Logic for `qmd chunk` (supports ID/seq lists and ranges).
 * `def handle_outline(args)`: Logic for `qmd outline`.
+* `def handle_collection_tree(args)`: Logic for `qmd collection tree` (supports `-p`, `-r`, `--depth`, `--xml`, `--json`).
+* `def handle_grep(args)`: Logic for `qmd grep` (supports `-r`, `-s`, `-p`, `--xml`, `--json`).
 * `def handle_update(args)`: Logic for `qmd update` (supports `--pull`, `--force`).
 
 
@@ -328,8 +375,8 @@ hyde: {complete hypothetical document passage from Step 2 on a SINGLE LINE}
 * [x] Explicit chunk or chunk-fetch by ID
 * [x] Return document structure (e.g. markdown headings and sizes)
 * [x] XML-tagged output optimized for LLM agent context (`--xml` / `--llm`)
+* [x] Return collection tree or subtree (for search narrowing)
+* [x] Straight-up keyword level searching or filtering for documents (grep style)
 * [ ] Cursor based paging (not sure yet how to best handle this)
-* [ ] Return collection tree or subtree (for search narrowing)
-* [ ] Straight-up keyword level searching or filtering for documents (grep style?)
-* [ ] Allow (if available) additional document level or directory level summary / classification and metadata that could be used in searching or revealed when sharing results and documents ("File is a review document for XXXX..." "Directory contains PDF assembly drawings..." "Directory is listing of non-fiction books concerning epidemiological issues
+* [ ] Allow (if available) additional document level or directory level summary / classification and metadata that could be used in searching or revealed when sharing results and documents ("File is a review document for XXXX..." "Directory contains PDF assembly drawings..." "Directory is listing of non-fiction books concerning epidemiological issues")
 * [ ] Order multi-file listings by original directory order
