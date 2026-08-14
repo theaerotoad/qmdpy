@@ -192,6 +192,22 @@ def collections():
     colls = [{"name": k, "path": v.path} for k, v in cfg.collections.items()]
     return jsonify(colls)
 
+@app.route('/api/collections/tree', methods=['GET'])
+def get_collections_tree():
+    collection = request.args.get('collection')
+    depth_str = request.args.get('depth')
+    depth = None
+    if depth_str is not None:
+        try:
+            depth = int(depth_str)
+        except ValueError:
+            return jsonify({"error": "Invalid depth parameter"}), 400
+
+    tree_data = get_store().get_collection_tree(collection=collection, max_depth=depth)
+    if collection and tree_data is None:
+        return jsonify({"error": f"Collection '{collection}' not found"}), 404
+    return jsonify(tree_data if tree_data is not None else [])
+
 @app.route('/api/update', methods=['POST'])
 def update():
     data = request.json
