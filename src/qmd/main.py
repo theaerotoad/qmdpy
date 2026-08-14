@@ -10,7 +10,7 @@ from typing import List, Dict, Tuple
 from qmd.config import load_config
 from qmd.store import Store, Result
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
-from qmd.formatting import format_results_cli, format_doc_results_cli, format_results_json, format_doc_results_json, set_plain_mode, RED, GREEN, RESET
+from qmd.formatting import format_results_cli, format_doc_results_cli, format_results_json, format_doc_results_json, format_outline_cli, format_chunks_cli, set_plain_mode, RED, GREEN, RESET
 from qmd.utils import redact_pii
 
 def _clean_header_part(part: str) -> str:
@@ -309,6 +309,52 @@ def handle_search(args, store: Store):
         else:
             format_results_cli(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
 
+def handle_outline(args, store: Store):
+    if getattr(args, "plain", False):
+        set_plain_mode(True)
+
+    outline = store.get_document_outline(collection=args.collection, path=args.path)
+    if not outline:
+        if args.json:
+            import json
+            print(json.dumps({"error": "Document not found"}, indent=2))
+        else:
+            print(f"{RED}Error: Document not found matching path '{args.path}'{RESET}")
+        sys.exit(1)
+
+    if args.json:
+        import json
+        print(json.dumps(outline, indent=2))
+    else:
+        format_outline_cli(outline)
+
+def handle_chunk(args, store: Store):
+    if getattr(args, "plain", False):
+        set_plain_mode(True)
+
+    target = args.target
+    results = []
+
+    if target.isdigit() and args.seq is None:
+        rowid = int(target)
+        results = store.get_chunk_by_id(rowid, window=args.window)
+    else:
+        seq = args.seq if args.seq is not None else 0
+        results = store.get_chunk_by_seq(args.collection, target, seq_id=seq, window=args.window)
+
+    if not results:
+        if args.json:
+            import json
+            print(json.dumps({"error": "Chunk not found"}, indent=2))
+        else:
+            print(f"{RED}Error: Chunk not found.{RESET}")
+        sys.exit(1)
+
+    if args.json:
+        format_results_json(results)
+    else:
+        format_chunks_cli(results, window=args.window)
+
 def handle_update(args, store: Store):
     config = store.config
     
@@ -369,6 +415,20 @@ def main():
     search_parser.add_argument("--session", type=str, help="Session ID for tracking history and excluding seen results")
     search_parser.add_argument("--exclude-seen", action="store_true", help="Exclude previously seen chunks from the active session")
 
+    outline_parser = subparsers.add_parser("outline", help="Show heading outline and chunk mapping for a document", parents=[parent_parser])
+    outline_parser.add_argument("path", help="Path or relative path to the document")
+    outline_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
+    outline_parser.add_argument("--json", action="store_true", help="Output outline as JSON")
+    outline_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
+
+    chunk_parser = subparsers.add_parser("chunk", help="Fetch specific chunk by rowid or path with surrounding context window", parents=[parent_parser])
+    chunk_parser.add_argument("target", help="Document path OR chunk rowid")
+    chunk_parser.add_argument("--seq", type=int, default=None, help="Sequence ID of chunk (when target is a document path)")
+    chunk_parser.add_argument("-w", "--window", type=int, default=0, help="Number of surrounding chunks to fetch on each side")
+    chunk_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
+    chunk_parser.add_argument("--json", action="store_true", help="Output chunks as JSON")
+    chunk_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
+
     update_parser = subparsers.add_parser("update", help="Update the index", parents=[parent_parser])
     update_parser.add_argument("--pull", action="store_true", help="Run 'git pull' before indexing")
     update_parser.add_argument("-f", "--force", action="store_true", help="Force re-indexing of all files, ignoring hash checks")
@@ -389,6 +449,10 @@ def main():
     try:
         if args.command in ["search", "query", "q"]:
             handle_search(args, store)
+        elif args.command == "outline":
+            handle_outline(args, store)
+        elif args.command == "chunk":
+            handle_chunk(args, store)
         elif args.command == "update":
             handle_update(args, store)
         elif args.command == "collection":

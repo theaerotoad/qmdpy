@@ -24,7 +24,7 @@ from qmd.formatting import DIM, YELLOW, CYAN, RESET, MAGENTA
 from qmd.converters import convert_to_markdown, SUPPORTED_EXTENSIONS
 
 # Docparse integration
-from qmd.docparse.parser import parse_markdown_to_blocks
+from qmd.docparse.parser import parse_markdown_to_blocks, extract_outline
 from qmd.docparse.grouper import group_blocks_into_chunks
 from qmd.docparse.models import Chunk
 
@@ -1070,3 +1070,177 @@ class Store:
         if not exclude_seen_set:
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(ret_results))
         return ret_results
+
+    def get_document_outline(self, collection: Optional[str], path: str) -> Optional[Dict[str, Any]]:
+        """Extracts document structure heading hierarchy correlated with chunk sequence ranges."""
+        cursor = self.conn.cursor()
+        if collection:
+            cursor.execute("SELECT id, collection, path, title, hash FROM documents WHERE collection = ? AND path = ?", (collection, path))
+        else:
+            cursor.execute("SELECT id, collection, path, title, hash FROM documents WHERE path = ?", (path,))
+
+        doc_row = cursor.fetchone()
+        if not doc_row:
+            # Fallback to substring matching on path
+            if collection:
+                cursor.execute("SELECT id, collection, path, title, hash FROM documents WHERE collection = ? AND path LIKE ?", (collection, f"%{path}%"))
+            else:
+                cursor.execute("SELECT id, collection, path, title, hash FROM documents WHERE path LIKE ?", (f"%{path}%",))
+            doc_row = cursor.fetchone()
+
+        if not doc_row:
+            return None
+
+        doc_id, coll_name, doc_path, title, doc_hash = doc_row
+
+        cursor.execute("SELECT body FROM content WHERE hash = ?", (doc_hash,))
+        content_row = cursor.fetchone()
+        raw_md = decompress_text(content_row[0]) if content_row else ""
+
+        cursor.execute("SELECT rowid, seq_id, chunk_text, COALESCE(headers, '') FROM chunk_metadata WHERE doc_hash = ? ORDER BY seq_id", (doc_hash,))
+        chunk_rows = cursor.fetchall()
+
+        chunks_data = []
+        for r in chunk_rows:
+            rowid, seq_id, compressed_text, headers_str = r
+            text = decompress_text(compressed_text)
+            chunks_data.append({
+                "rowid": rowid,
+                "seq_id": seq_id,
+                "text": text,
+                "headers": headers_str
+            })
+
+        total_chunks = len(chunks_data)
+        total_chars = sum(len(c["text"]) for c in chunks_data) if chunks_data else len(raw_md)
+
+        raw_headings = extract_outline(content=raw_md)
+        structured_headings = []
+
+        for i, h in enumerate(raw_headings):
+            h_text = h["text"]
+            h_level = h["level"]
+
+            start_seq = 0
+            h_text_clean = re.sub(r'^\s*#+\s*', '', h_text).strip().lower()
+            found_start = False
+
+            for c in chunks_data:
+                c_text_lower = c["text"].lower()
+                c_headers_lower = c["headers"].lower()
+                if h_text_clean and (h_text_clean in c_headers_lower or h_text_clean in c_text_lower):
+                    start_seq = c["seq_id"]
+                    found_start = True
+                    break
+
+            if not found_start and i > 0 and structured_headings:
+                start_seq = structured_headings[-1]["start_seq"]
+
+            next_same_or_higher = None
+            for j in range(i + 1, len(raw_headings)):
+                if raw_headings[j]["level"] <= h_level:
+                    next_same_or_higher = raw_headings[j]
+                    break
+
+            if next_same_or_higher:
+                next_clean = re.sub(r'^\s*#+\s*', '', next_same_or_higher["text"]).strip().lower()
+                end_seq = start_seq
+                for c in chunks_data:
+                    if c["seq_id"] >= start_seq:
+                        if next_clean and (next_clean in c["headers"].lower() or next_clean in c["text"].lower()):
+                            break
+                        end_seq = c["seq_id"]
+            else:
+                end_seq = chunks_data[-1]["seq_id"] if chunks_data else 0
+
+            if end_seq < start_seq:
+                end_seq = start_seq
+
+            section_chars = sum(
+                len(c["text"]) for c in chunks_data if start_seq <= c["seq_id"] <= end_seq
+            ) if chunks_data else 0
+
+            structured_headings.append({
+                "level": h_level,
+                "text": h_text,
+                "start_seq": start_seq,
+                "end_seq": end_seq,
+                "char_count": section_chars
+            })
+
+        return {
+            "collection": coll_name,
+            "path": doc_path,
+            "title": title,
+            "total_chunks": total_chunks,
+            "total_chars": total_chars,
+            "headings": structured_headings
+        }
+
+    def _get_chunks_in_window(self, doc_hash: str, target_seq_id: int, window: int) -> List[Result]:
+        min_seq = max(0, target_seq_id - window)
+        max_seq = target_seq_id + window
+
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT m.rowid, m.seq_id, m.chunk_text, COALESCE(m.headers, ''), d.path, d.title, d.collection
+            FROM chunk_metadata m
+            JOIN documents d ON m.doc_hash = d.hash
+            WHERE m.doc_hash = ? AND m.seq_id >= ? AND m.seq_id <= ?
+            ORDER BY m.seq_id ASC
+        """, (doc_hash, min_seq, max_seq))
+
+        results = []
+        for row in cursor.fetchall():
+            rowid, seq_id, compressed_text, headers, doc_path, title, collection = row
+            chunk_text = decompress_text(compressed_text)
+            results.append(Result(
+                path=doc_path,
+                title=title,
+                text=chunk_text,
+                score=1.0,
+                source="chunk",
+                collection=collection or "",
+                seq_id=seq_id,
+                headers=headers
+            ))
+
+        return results
+
+    def get_chunk_by_id(self, rowid: int, window: int = 0) -> List[Result]:
+        """Retrieves target chunk by vector rowid along with ±window surrounding chunks."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT m.doc_hash, m.seq_id, d.collection, d.path, d.title
+            FROM chunk_metadata m
+            JOIN documents d ON m.doc_hash = d.hash
+            WHERE m.rowid = ?
+        """, (rowid,))
+        row = cursor.fetchone()
+        if not row:
+            return []
+
+        doc_hash, seq_id, collection, path, title = row
+        return self._get_chunks_in_window(doc_hash, seq_id, window)
+
+    def get_chunk_by_seq(self, collection: Optional[str], path: str, seq_id: int, window: int = 0) -> List[Result]:
+        """Retrieves target chunk by collection, path, and seq_id along with ±window surrounding chunks."""
+        cursor = self.conn.cursor()
+        if collection:
+            cursor.execute("SELECT hash, collection, path, title FROM documents WHERE collection = ? AND path = ?", (collection, path))
+        else:
+            cursor.execute("SELECT hash, collection, path, title FROM documents WHERE path = ?", (path,))
+
+        row = cursor.fetchone()
+        if not row:
+            if collection:
+                cursor.execute("SELECT hash, collection, path, title FROM documents WHERE collection = ? AND path LIKE ?", (collection, f"%{path}%"))
+            else:
+                cursor.execute("SELECT hash, collection, path, title FROM documents WHERE path LIKE ?", (f"%{path}%",))
+            row = cursor.fetchone()
+
+        if not row:
+            return []
+
+        doc_hash, coll_name, doc_path, title = row
+        return self._get_chunks_in_window(doc_hash, seq_id, window)

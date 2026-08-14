@@ -111,6 +111,53 @@ def search():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/outline', methods=['GET'])
+def get_outline():
+    collection = request.args.get('collection')
+    path = request.args.get('path')
+    if not path:
+        return jsonify({"error": "Missing 'path' parameter"}), 400
+
+    outline = get_store().get_document_outline(collection=collection, path=path)
+    if outline:
+        return jsonify(outline)
+    return jsonify({"error": "Document not found"}), 404
+
+@app.route('/api/chunk', methods=['GET'])
+def get_chunk():
+    collection = request.args.get('collection')
+    path = request.args.get('path')
+    seq_id_arg = request.args.get('seq_id')
+    rowid_arg = request.args.get('rowid')
+    window = int(request.args.get('window', 0))
+
+    store = get_store()
+    results = []
+
+    if rowid_arg is not None:
+        try:
+            rowid = int(rowid_arg)
+            results = store.get_chunk_by_id(rowid, window=window)
+        except ValueError:
+            return jsonify({"error": "Invalid rowid"}), 400
+    elif path is not None:
+        seq_id = int(seq_id_arg) if seq_id_arg is not None else 0
+        results = store.get_chunk_by_seq(collection=collection, path=path, seq_id=seq_id, window=window)
+    else:
+        return jsonify({"error": "Must provide 'path' with 'seq_id' or 'rowid'"}), 400
+
+    out = []
+    for r in results:
+        out.append({
+            "path": r.path,
+            "title": r.title,
+            "text": r.text,
+            "collection": r.collection,
+            "seq_id": r.seq_id,
+            "headers": getattr(r, "headers", "")
+        })
+    return jsonify({"chunks": out, "total": len(out)})
+
 @app.route('/api/document', methods=['GET'])
 def get_document():
     collection = request.args.get('collection')

@@ -233,3 +233,36 @@ def format_doc_results_json(grouped_results: List[Dict], session_id: Optional[st
             if isinstance(exclusion_stats, dict):
                 doc["excluded_count"] = exclusion_stats.get("excluded_chunks", 0)
     print(json.dumps(grouped_results, indent=2))
+
+def format_outline_cli(outline: Dict):
+    """Prints document heading outline and chunk mapping."""
+    if not outline:
+        print(f"\n{RED}No outline available.{RESET}")
+        return
+
+    path_str = f"qmd://{outline['collection']}/{outline['path']}" if outline.get('collection') else outline['path']
+    print(f"\n{BOLD}{outline['title']}{RESET} {DIM}({path_str}){RESET}")
+    print(f"{DIM}Total Chunks: {outline['total_chunks']} | Total Chars: {outline['total_chars']}{RESET}\n")
+
+    for h in outline.get('headings', []):
+        indent = "  " * (h['level'] - 1)
+        level_hashes = "#" * h['level']
+        seq_str = f"[seq: {h['start_seq']}-{h['end_seq']}]" if h['start_seq'] != h['end_seq'] else f"[seq: {h['start_seq']}]"
+        print(f"{indent}{CYAN}{level_hashes}{RESET} {BOLD}{h['text']}{RESET} {YELLOW}{seq_str}{RESET} {DIM}({h['char_count']} chars){RESET}")
+    print()
+
+def format_chunks_cli(results: List, window: int = 0):
+    """Prints retrieved chunk(s) with context window headers."""
+    if not results:
+        print(f"\n{RED}No chunks found.{RESET}")
+        return
+
+    res0 = results[0]
+    path_str = f"qmd://{res0.collection}/{res0.path}" if res0.collection else res0.path
+    print(f"\n{BOLD}{res0.title}{RESET} {DIM}({path_str}){RESET}")
+    print(f"{DIM}Retrieved {len(results)} chunk(s) (window: ±{window}){RESET}\n")
+
+    for res in results:
+        hdr_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
+        print(f"{GREEN}Chunk {res.seq_id}{RESET}{hdr_str}")
+        print(f"{res.text}\n")

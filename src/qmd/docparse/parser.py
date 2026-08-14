@@ -5,7 +5,7 @@ This module is responsible for parsing a Markdown document into a list of
 "semantic blocks," where each block consists of a header and its content.
 """
 import re
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
 from .models import SemanticBlock
 
 # Regex to match images: ![alt text](url) -> capture 'alt text'
@@ -97,3 +97,49 @@ def parse_markdown_to_blocks(
         ))
 
     return blocks, has_tables
+
+
+def extract_outline(
+    content: Optional[str] = None,
+    file_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Extracts heading hierarchy (# through ######) with character offsets and line numbers.
+    Ignores headers within code blocks.
+    """
+    headings = []
+    lines = []
+    if content is not None:
+        lines = content.splitlines(keepends=True)
+    elif file_path is not None:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+        except Exception:
+            return []
+    else:
+        return []
+
+    in_code_block = False
+    header_pattern = re.compile(r'^(#+)\s+(.*)')
+    char_offset = 0
+
+    for line_num, line in enumerate(lines, 1):
+        if line.strip().startswith('```'):
+            in_code_block = not in_code_block
+
+        if not in_code_block:
+            match = header_pattern.match(line)
+            if match:
+                level = len(match.group(1))
+                text = match.group(2).strip()
+                headings.append({
+                    "level": level,
+                    "text": text,
+                    "line_num": line_num,
+                    "char_offset": char_offset
+                })
+
+        char_offset += len(line)
+
+    return headings
