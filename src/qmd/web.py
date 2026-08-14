@@ -195,6 +195,43 @@ def collections():
     colls = [{"name": k, "path": v.path} for k, v in cfg.collections.items()]
     return jsonify(colls)
 
+@app.route('/api/grep', methods=['POST'])
+def grep():
+    try:
+        data = request.json or {}
+        pattern = data.get('pattern', '')
+        if not pattern:
+            return jsonify({"error": "Missing 'pattern' parameter"}), 400
+
+        is_regex = bool(data.get('regex', False))
+        case_sensitive = bool(data.get('case_sensitive', False))
+        collection = data.get('collection') or None
+        path = data.get('path') or None
+        limit = int(data.get('limit', 50))
+
+        store = get_store()
+        try:
+            results = store.grep_search(
+                pattern=pattern,
+                is_regex=is_regex,
+                case_sensitive=case_sensitive,
+                collection=collection,
+                path=path,
+                limit=limit
+            )
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+        return jsonify({
+            "results": results,
+            "total_matches": len(results),
+            "pattern": pattern,
+            "regex": is_regex,
+            "case_sensitive": case_sensitive
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/collections/tree', methods=['GET'])
 def get_collections_tree():
     collection = request.args.get('collection')

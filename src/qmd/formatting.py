@@ -551,3 +551,78 @@ def format_collection_tree_xml(tree_data: Union[Dict, List[Dict]]):
         lines.append('</collections>')
 
     print("\n".join(lines))
+
+def format_grep_cli(results: List[Dict], pattern: str = ""):
+    """Prints grep pattern search results with line numbers and matches."""
+    if not results:
+        print(f"\n{RED}No matching patterns found.{RESET}")
+        return
+
+    print(f"\n{DIM}Found {len(results)} match{'es' if len(results) != 1 else ''}:{RESET}\n")
+
+    current_doc = None
+    for res in results:
+        doc_key = (res.get("collection", ""), res.get("path", ""))
+        if doc_key != current_doc:
+            current_doc = doc_key
+            coll = res.get("collection", "")
+            path = res.get("path", "")
+            title = res.get("title", "")
+            uri = f"qmd://{coll}/{path}" if coll else path
+            title_str = f" {BOLD}{title}{RESET}" if title and title != path else ""
+            print(f"{GREEN}{uri}{RESET}{title_str}")
+
+        line_no = res.get("line_number", 0)
+        line_text = res.get("line_text", "")
+        highlighted_line = line_text
+
+        if not PLAIN_MODE and res.get("match_text"):
+            m_text = re.escape(res["match_text"])
+            highlighted_line = re.sub(f"({m_text})", f"{YELLOW}{BOLD}\\1{RESET}", line_text)
+
+        print(f"  {CYAN}{line_no:4d}:{RESET} {highlighted_line}")
+    print()
+
+def format_grep_json(results: List[Dict]):
+    """Outputs grep pattern search results as JSON."""
+    print(json.dumps(results, indent=2))
+
+def format_grep_xml(results: List[Dict], pattern: str = "", is_regex: bool = False, case_sensitive: bool = False):
+    """Outputs grep pattern search results as structured XML for LLM context."""
+    pattern_attr = escape_xml_attr(pattern)
+    regex_attr = 'true' if is_regex else 'false'
+    case_attr = 'true' if case_sensitive else 'false'
+    total_matches = len(results)
+
+    if not results:
+        print(f'<grep_results pattern="{pattern_attr}" is_regex="{regex_attr}" case_sensitive="{case_attr}" total_matches="0">\n</grep_results>')
+        return
+
+    docs: Dict[Tuple[str, str], List[Dict]] = {}
+    doc_titles: Dict[Tuple[str, str], str] = {}
+    for res in results:
+        key = (res.get("collection", ""), res.get("path", ""))
+        if key not in docs:
+            docs[key] = []
+            doc_titles[key] = res.get("title", "")
+        docs[key].append(res)
+
+    lines = [
+        f'<grep_results pattern="{pattern_attr}" is_regex="{regex_attr}" case_sensitive="{case_attr}" total_matches="{total_matches}" total_documents="{len(docs)}">'
+    ]
+
+    for key, match_list in docs.items():
+        coll, path = key
+        uri = f"qmd://{coll}/{path}" if coll else path
+        title = doc_titles[key]
+        lines.append(f'  <document uri="{escape_xml_attr(uri)}" title="{escape_xml_attr(title)}">')
+
+        for m in match_list:
+            line_no = m.get("line_number", 0)
+            line_text = html.escape(strip_ansi(m.get("line_text", "")))
+            lines.append(f'    <match line="{line_no}">{line_text}</match>')
+
+        lines.append('  </document>')
+
+    lines.append('</grep_results>')
+    print("\n".join(lines))

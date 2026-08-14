@@ -1426,3 +1426,67 @@ class Store:
         if collection:
             return results[0] if results else None
         return results
+
+    def grep_search(
+        self,
+        pattern: str,
+        is_regex: bool = False,
+        case_sensitive: bool = False,
+        collection: Optional[str] = None,
+        path: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Performs direct string or regular expression pattern search across decompressed document bodies."""
+        if not pattern:
+            return []
+
+        flags = 0 if case_sensitive else re.IGNORECASE
+        if is_regex:
+            try:
+                regex = re.compile(pattern, flags)
+            except re.error as e:
+                raise ValueError(f"Invalid regular expression: {e}")
+        else:
+            regex = re.compile(re.escape(pattern), flags)
+
+        cursor = self.conn.cursor()
+        query_sql = """
+            SELECT d.collection, d.path, d.title, c.body
+            FROM documents d
+            JOIN content c ON d.hash = c.hash
+        """
+        where_clauses = []
+        params = []
+        if collection:
+            where_clauses.append("d.collection = ?")
+            params.append(collection)
+        if path:
+            where_clauses.append("d.path LIKE ?")
+            params.append(f"%{path}%")
+
+        if where_clauses:
+            query_sql += " WHERE " + " AND ".join(where_clauses)
+        query_sql += " ORDER BY d.collection, d.path ASC"
+
+        cursor.execute(query_sql, tuple(params))
+        rows = cursor.fetchall()
+
+        matches = []
+        for coll, doc_path, doc_title, body_blob in rows:
+            text = decompress_text(body_blob) if body_blob is not None else ""
+            lines = text.splitlines()
+            for line_idx, line in enumerate(lines, start=1):
+                match = regex.search(line)
+                if match:
+                    matches.append({
+                        "collection": coll or "",
+                        "path": doc_path,
+                        "title": doc_title or doc_path,
+                        "line_number": line_idx,
+                        "line_text": line,
+                        "match_text": match.group(0)
+                    })
+                    if len(matches) >= limit:
+                        return matches
+
+        return matches

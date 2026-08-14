@@ -49,12 +49,24 @@
                 
                 <div class="flex flex-wrap gap-4 text-sm mt-4 items-center">
                     <label class="flex items-center gap-1">
+                        <input type="checkbox" id="grep-mode" class="rounded bg-gray-700">
+                        <span class="text-yellow-400 font-medium">Grep Mode</span>
+                    </label>
+                    <label class="flex items-center gap-1" id="label-doc-view">
                         <input type="checkbox" id="doc-view" class="rounded bg-gray-700" checked>
                         <span>Document View</span>
                     </label>
-                    <label class="flex items-center gap-1">
+                    <label class="flex items-center gap-1" id="label-rerank">
                         <input type="checkbox" id="rerank" class="rounded bg-gray-700">
                         <span>Rerank</span>
+                    </label>
+                    <label class="flex items-center gap-1 hidden" id="label-regex">
+                        <input type="checkbox" id="grep-regex" class="rounded bg-gray-700">
+                        <span>Regex</span>
+                    </label>
+                    <label class="flex items-center gap-1 hidden" id="label-case">
+                        <input type="checkbox" id="grep-case" class="rounded bg-gray-700">
+                        <span>Case Sensitive</span>
                     </label>
                     <label class="flex items-center gap-1">
                         <input type="checkbox" id="exclude-seen" class="rounded bg-gray-700">
@@ -186,7 +198,24 @@
 
             const sessionAttr = sessionId ? ` session_id="${escapeXmlAttr(sessionId)}"` : '';
 
-            if (type === 'doc') {
+            if (type === 'grep') {
+                const lines = [`<grep_results pattern="${escapeXmlAttr(query)}" total_matches="${results.length}">`];
+                const docs = {};
+                results.forEach(m => {
+                    const k = (m.collection || '') + '/' + (m.path || '');
+                    if (!docs[k]) docs[k] = { uri: m.collection ? `qmd://${m.collection}/${m.path}` : m.path, title: m.title || '', matches: [] };
+                    docs[k].matches.push(m);
+                });
+                Object.values(docs).forEach(d => {
+                    lines.push(`  <document uri="${escapeXmlAttr(d.uri)}" title="${escapeXmlAttr(d.title)}">`);
+                    d.matches.forEach(m => {
+                        lines.push(`    <match line="${m.line_number}">${escapeXmlAttr(m.line_text)}</match>`);
+                    });
+                    lines.push('  </document>');
+                });
+                lines.push('</grep_results>');
+                return lines.join('\n');
+            } else if (type === 'doc') {
                 const totalMatches = results.reduce((acc, doc) => acc + (doc.chunks ? doc.chunks.length : 0), 0);
                 const lines = [`<search_results query="${escapeXmlAttr(query)}" total_matches="${totalMatches}" total_documents="${results.length}"${sessionAttr}>`];
 
@@ -314,6 +343,16 @@
             btn.disabled = false;
         }
 
+        // Handle Grep Mode Toggle UI changes
+        document.getElementById('grep-mode').addEventListener('change', (e) => {
+            const isGrep = e.target.checked;
+            document.getElementById('label-doc-view').classList.toggle('hidden', isGrep);
+            document.getElementById('label-rerank').classList.toggle('hidden', isGrep);
+            document.getElementById('label-regex').classList.toggle('hidden', !isGrep);
+            document.getElementById('label-case').classList.toggle('hidden', !isGrep);
+            document.getElementById('query').placeholder = isGrep ? "Grep pattern (e.g. def _[a-z_]+ or exact text)..." : "Search your knowledge base...";
+        });
+
         // Handle Advanced Toggle
         document.getElementById('toggle-advanced').addEventListener('click', () => {
             const panel = document.getElementById('advanced-options');
@@ -333,43 +372,70 @@
             resultsEl.innerHTML = '<div class="text-center text-gray-500 mt-10">Searching...</div>';
             toolbarEl.classList.add('hidden');
 
-            const payload = {
-                query: document.getElementById('query').value,
-                doc: document.getElementById('doc-view').checked,
-                rerank: document.getElementById('rerank').checked,
-                exclude_seen: document.getElementById('exclude-seen').checked,
-                redact_pii: document.getElementById('redact-pii').checked,
-                limit: parseInt(document.getElementById('limit').value),
-                collection: document.getElementById('collection-filter').value,
-                lex: document.getElementById('lex').value.trim() || null,
-                title: document.getElementById('title').value.trim() || null,
-                path: document.getElementById('path').value.trim() || null,
-                session_id: currentSessionId
-            };
+            const isGrep = document.getElementById('grep-mode').checked;
 
             try {
-                const res = await fetch('/api/search', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                const data = await res.json();
-                
-                if (!res.ok) {
-                    throw new Error(data.error || "Server returned an error");
+                if (isGrep) {
+                    const grepPayload = {
+                        pattern: document.getElementById('query').value,
+                        regex: document.getElementById('grep-regex').checked,
+                        case_sensitive: document.getElementById('grep-case').checked,
+                        limit: parseInt(document.getElementById('limit').value),
+                        collection: document.getElementById('collection-filter').value || null,
+                        path: document.getElementById('path').value.trim() || null
+                    };
+
+                    const res = await fetch('/api/grep', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(grepPayload)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || "Grep failed");
+
+                    lastRawJson = data.results;
+                    lastSearchType = 'grep';
+                    statsEl.textContent = `Found ${data.total_matches} grep match(es).`;
+                    toolbarEl.classList.remove('hidden');
+                    renderResults(data.results, 'grep');
+                } else {
+                    const payload = {
+                        query: document.getElementById('query').value,
+                        doc: document.getElementById('doc-view').checked,
+                        rerank: document.getElementById('rerank').checked,
+                        exclude_seen: document.getElementById('exclude-seen').checked,
+                        redact_pii: document.getElementById('redact-pii').checked,
+                        limit: parseInt(document.getElementById('limit').value),
+                        collection: document.getElementById('collection-filter').value,
+                        lex: document.getElementById('lex').value.trim() || null,
+                        title: document.getElementById('title').value.trim() || null,
+                        path: document.getElementById('path').value.trim() || null,
+                        session_id: currentSessionId
+                    };
+
+                    const res = await fetch('/api/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    const data = await res.json();
+                    
+                    if (!res.ok) {
+                        throw new Error(data.error || "Server returned an error");
+                    }
+
+                    lastRawJson = data.results;
+                    lastSearchType = data.type;
+                    currentSessionId = data.session_id;
+                    document.getElementById('session-badge').textContent = `Session: ${currentSessionId}`;
+
+                    const excludedMsg = data.excluded_count ? ` | Excluded ${data.excluded_count} seen chunk(s)` : '';
+                    statsEl.textContent = `Found ${data.results.length} ${data.type === 'doc' ? 'documents' : 'chunks'}${excludedMsg}.`;
+                    toolbarEl.classList.remove('hidden');
+                    
+                    renderResults(data.results, data.type);
                 }
-
-                lastRawJson = data.results;
-                lastSearchType = data.type;
-                currentSessionId = data.session_id;
-                document.getElementById('session-badge').textContent = `Session: ${currentSessionId}`;
-
-                const excludedMsg = data.excluded_count ? ` | Excluded ${data.excluded_count} seen chunk(s)` : '';
-                statsEl.textContent = `Found ${data.results.length} ${data.type === 'doc' ? 'documents' : 'chunks'}${excludedMsg}.`;
-                toolbarEl.classList.remove('hidden');
-                
-                renderResults(data.results, data.type);
             } catch (err) {
                 resultsEl.innerHTML = `<div class="text-red-400 mt-10 text-center font-mono bg-gray-800 p-4 rounded border border-red-900 shadow-md">Error executing search:<br>${err.message}</div>`;
             }
@@ -419,6 +485,49 @@
 
             if (results.length === 0) {
                 container.innerHTML = '<div class="text-gray-500 italic mt-4">No results found.</div>';
+                return;
+            }
+
+            if (type === 'grep') {
+                const grouped = {};
+                results.forEach(m => {
+                    const key = (m.collection || '') + '/' + m.path;
+                    if (!grouped[key]) {
+                        grouped[key] = {
+                            collection: m.collection,
+                            path: m.path,
+                            title: m.title,
+                            matches: []
+                        };
+                    }
+                    grouped[key].matches.push(m);
+                });
+
+                Object.values(grouped).forEach((doc, idx) => {
+                    const card = document.createElement('div');
+                    card.className = "bg-gray-800 rounded-lg p-5 border border-gray-700 shadow-md";
+                    const uri = doc.collection ? `qmd://${doc.collection}/${doc.path}` : doc.path;
+
+                    card.innerHTML = `
+                        <div class="flex justify-between items-center border-b border-gray-700 pb-2 mb-3">
+                            <h3 class="text-base font-semibold text-blue-400 hover:text-blue-300 transition cursor-pointer flex items-center gap-2" onclick="openDocument('${doc.collection}', '${doc.path}', '')">
+                                <span class="text-gray-500 text-xs font-mono">#${idx + 1}</span>
+                                ${doc.title}
+                                <span class="text-xs text-gray-400 font-mono font-normal">(${uri})</span>
+                            </h3>
+                            <span class="text-xs bg-gray-900 px-2 py-0.5 rounded text-yellow-400 font-mono">${doc.matches.length} match(es)</span>
+                        </div>
+                        <div class="space-y-1 font-mono text-xs">
+                            ${doc.matches.map(m => `
+                                <div class="flex items-start gap-2.5 hover:bg-gray-700/40 p-1.5 rounded cursor-pointer transition select-none group" onclick="openDocument('${m.collection}', '${m.path}', '${escapeXmlAttr(m.line_text)}')">
+                                    <span class="text-cyan-400 font-semibold w-12 text-right flex-shrink-0 group-hover:text-cyan-300">L${m.line_number}:</span>
+                                    <span class="text-gray-200 break-all">${escapeXmlAttr(m.line_text)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
                 return;
             }
 
