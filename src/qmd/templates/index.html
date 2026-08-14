@@ -787,8 +787,9 @@
                 const isSel = isScopeSelected(row.dataset.scopeColl || '', row.dataset.scopePath || '');
                 const btn = row.querySelector('.scope-toggle-btn');
                 if (btn) {
-                    btn.textContent = isSel ? '✓ Scoped' : '+ Scope';
-                    btn.className = `scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition ${isSel ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`;
+                    btn.textContent = isSel ? '✓' : '+';
+                    btn.title = isSel ? 'Remove from scope (✕)' : 'Add to scope (+)';
+                    btn.className = `scope-toggle-btn w-6 h-6 flex items-center justify-center rounded-lg text-xs font-bold transition ${isSel ? 'bg-blue-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700'}`;
                 }
             });
         }
@@ -831,7 +832,7 @@
                 div.innerHTML = `
                     <div class="scope-item-row flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800 mb-2 cursor-pointer" data-scope-coll="${escapeXmlAttr(item.collection)}" data-scope-path="">
                         <div class="font-bold text-blue-600 dark:text-blue-400">${escapeHtml(item.collection)}/</div>
-                        <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400">+ Scope</button>
+                        <button type="button" class="scope-toggle-btn w-6 h-6 flex items-center justify-center rounded-lg text-xs font-bold transition bg-white dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700" title="Add to scope">+</button>
                     </div>
                     <div class="tree-nodes pl-1 space-y-1"></div>
                 `;
@@ -845,7 +846,7 @@
                             row.innerHTML = `
                                 <div class="scope-item-row flex items-center justify-between text-amber-600 dark:text-amber-400 font-semibold py-1 px-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/40 cursor-pointer" data-scope-coll="${escapeXmlAttr(item.collection)}" data-scope-path="${escapeXmlAttr(p)}">
                                     <span>📁 ${escapeHtml(child.name)}/</span>
-                                    <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400">+ Scope</button>
+                                    <button type="button" class="scope-toggle-btn w-6 h-6 flex items-center justify-center rounded-lg text-xs font-bold transition bg-white dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700" title="Add to scope">+</button>
                                 </div>
                                 <div class="child-nodes pl-3 border-l border-slate-200 dark:border-slate-800 ml-2 space-y-1"></div>
                             `;
@@ -855,7 +856,7 @@
                             row.className = "scope-item-row flex items-center justify-between text-slate-700 dark:text-slate-300 px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800/50 cursor-pointer";
                             row.dataset.scopeColl = item.collection;
                             row.dataset.scopePath = child.path;
-                            row.innerHTML = `<span class="truncate">📄 ${escapeHtml(child.name)}</span><button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400">+ Scope</button>`;
+                            row.innerHTML = `<span class="truncate">📄 ${escapeHtml(child.name)}</span><button type="button" class="scope-toggle-btn w-6 h-6 flex items-center justify-center rounded-lg text-xs font-bold transition bg-white dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700" title="Add to scope">+</button>`;
                             row.onclick = () => toggleScope(item.collection, child.path, 'file', child.name);
                         }
                         parentEl.appendChild(row);
@@ -961,14 +962,12 @@
                     btn.innerHTML = `<span class="text-emerald-500 font-semibold">✓ Done</span>`;
                     setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
                 } else {
-                    alert(data.message || "Re-index failed");
-                    btn.innerHTML = orig;
-                    btn.disabled = false;
+                    btn.innerHTML = `<span class="text-red-500 font-semibold">Failed</span>`;
+                    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
                 }
             } catch(e) {
-                alert("Re-index failed.");
-                btn.innerHTML = orig;
-                btn.disabled = false;
+                btn.innerHTML = `<span class="text-red-500 font-semibold">Failed</span>`;
+                setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
             }
         }
 
@@ -1034,7 +1033,14 @@
 
         function copySessionId(type) {
             const txt = type === 'cli' ? `--session ${currentSessionId}` : currentSessionId;
-            navigator.clipboard.writeText(txt);
+            const btn = document.getElementById(type === 'cli' ? 'btn-copy-session-cli' : 'btn-copy-session-id');
+            navigator.clipboard.writeText(txt).then(() => {
+                if (btn) {
+                    const orig = btn.innerHTML;
+                    btn.innerHTML = `<span class="text-emerald-600 dark:text-emerald-400 font-semibold">Copied!</span>`;
+                    setTimeout(() => { btn.innerHTML = orig; }, 1800);
+                }
+            });
         }
 
         function openSessionModal() {
@@ -1212,11 +1218,15 @@
                         </div>
                         <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500">
                             <span>Score: ${Number(item.score || 0).toFixed(4)} • ${snippets.length} snippet(s)</span>
-                            <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 font-sans">Open Doc</button>
+                            <div class="flex items-center gap-1.5 font-sans">
+                                <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition">XML</button>
+                                <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 transition">Open Doc</button>
+                            </div>
                         </div>
                     `;
                     card.querySelector('.doc-link').onclick = () => openDocument(item.collection, item.path, '');
                     card.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, '');
+                    card.querySelector('.btn-copy-xml').onclick = (e) => copySingleXml(index, e.currentTarget);
                     card.querySelectorAll('.snip-box').forEach((el, sIdx) => {
                         el.onclick = () => openDocument(item.collection, item.path, snippets[sIdx]);
                     });
@@ -1227,14 +1237,32 @@
                         <div class="chunk-box cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 prose dark:prose-invert max-w-none text-xs leading-relaxed">${marked.parse(item.text || '')}</div>
                         <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500">
                             <span>Score: ${Number(item.score || 0).toFixed(4)} ${item.rank ? `• #${item.rank}` : ''}</span>
-                            <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 font-sans">Open Doc</button>
+                            <div class="flex items-center gap-1.5 font-sans">
+                                <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition">XML</button>
+                                <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 transition">Open Doc</button>
+                            </div>
                         </div>
                     `;
                     card.querySelector('.doc-link').onclick = () => openDocument(item.collection, item.path, item.text || '');
                     card.querySelector('.chunk-box').onclick = () => openDocument(item.collection, item.path, item.text || '');
+                    card.querySelector('.btn-copy-xml').onclick = (e) => copySingleXml(index, e.currentTarget);
                     card.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, item.text || '');
                 }
                 container.appendChild(card);
+            });
+        }
+
+        // Single XML Copy Helper
+        function copySingleXml(index, btnEl = null) {
+            if (!lastRawJson || !lastRawJson[index]) return;
+            const item = lastRawJson[index];
+            const xml = formatResultsToXml([item], lastSearchType, document.getElementById('serp-query').value, currentSessionId);
+            navigator.clipboard.writeText(xml).then(() => {
+                if (btnEl) {
+                    const orig = btnEl.innerHTML;
+                    btnEl.innerHTML = `<span class="text-emerald-600 dark:text-emerald-400 font-semibold">Copied!</span>`;
+                    setTimeout(() => { btnEl.innerHTML = orig; }, 1800);
+                }
             });
         }
 
@@ -1273,17 +1301,27 @@
         }
 
         // Copy XML / Prompt Toolbar
-        document.getElementById('copy-json').onclick = () => {
+        document.getElementById('copy-json').onclick = (e) => {
             if (!lastRawJson) return;
+            const btn = e.currentTarget;
+            const orig = btn.innerHTML;
             const xml = formatResultsToXml(lastRawJson, lastSearchType, document.getElementById('serp-query').value, currentSessionId);
-            navigator.clipboard.writeText(xml).then(() => alert("Copied XML for LLM to clipboard!"));
+            navigator.clipboard.writeText(xml).then(() => {
+                btn.innerHTML = `<svg class="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-emerald-600 dark:text-emerald-400 font-semibold">Copied!</span>`;
+                setTimeout(() => { btn.innerHTML = orig; }, 1800);
+            });
         };
 
-        document.getElementById('copy-prompt').onclick = () => {
+        document.getElementById('copy-prompt').onclick = (e) => {
             if (!lastRawJson) return;
+            const btn = e.currentTarget;
+            const orig = btn.innerHTML;
             const q = document.getElementById('serp-query').value;
             const xml = formatResultsToXml(lastRawJson, lastSearchType, q, currentSessionId);
-            navigator.clipboard.writeText(`Task / Query: ${q}\n\nContext:\n${xml}`).then(() => alert("Copied Prompt & References to clipboard!"));
+            navigator.clipboard.writeText(`Task / Question: ${q}\n\nContext / References:\n${xml}`).then(() => {
+                btn.innerHTML = `<svg class="w-3.5 h-3.5 text-emerald-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-white font-semibold">Copied!</span>`;
+                setTimeout(() => { btn.innerHTML = orig; }, 1800);
+            });
         };
 
         // Document Slide-Over Logic
