@@ -1017,57 +1017,60 @@
             const heroChips = document.getElementById('hero-scope-chips');
             const serpChips = document.getElementById('serp-scope-chips');
 
+            const containers = [heroChips, serpChips].filter(Boolean);
+            containers.forEach(c => { c.innerHTML = ''; });
+
             if (selectedScopes.length === 0) {
-                if (heroChips) { heroChips.innerHTML = ''; heroChips.classList.add('hidden'); }
-                if (serpChips) { serpChips.innerHTML = ''; serpChips.classList.add('hidden'); }
+                containers.forEach(c => c.classList.add('hidden'));
                 return;
             }
 
-            let chipsHtml = '';
+            containers.forEach(container => {
+                container.classList.remove('hidden');
 
-            selectedScopes.forEach(scope => {
-                const fullPath = scope.path || scope.collection;
-                const displayPath = formatPathMiddle(fullPath, 24);
+                selectedScopes.forEach(scope => {
+                    const fullPath = scope.path || scope.collection;
+                    const displayPath = formatPathMiddle(fullPath, 24);
 
-                let icon = '';
-                let bgStyle = '';
+                    let icon = '';
+                    let bgStyle = '';
 
-                if (scope.type === 'collection') {
-                    icon = `<svg class="w-3 h-3 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>`;
-                    bgStyle = 'bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300';
-                } else if (scope.type === 'folder') {
-                    icon = `<svg class="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>`;
-                    bgStyle = 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300';
-                } else {
-                    icon = `<svg class="w-3 h-3 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`;
-                    bgStyle = 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300';
-                }
+                    if (scope.type === 'collection') {
+                        icon = `<svg class="w-3 h-3 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>`;
+                        bgStyle = 'bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300';
+                    } else if (scope.type === 'folder') {
+                        icon = `<svg class="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>`;
+                        bgStyle = 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300';
+                    } else {
+                        icon = `<svg class="w-3 h-3 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`;
+                        bgStyle = 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300';
+                    }
 
-                chipsHtml += `
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono border shadow-sm max-w-[260px] sm:max-w-xs ${bgStyle}" title="${escapeXmlAttr(fullPath)}">
+                    const chip = document.createElement('span');
+                    chip.className = `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono border shadow-sm max-w-[260px] sm:max-w-xs ${bgStyle}`;
+                    chip.title = fullPath;
+                    chip.innerHTML = `
                         ${icon}
                         <span class="truncate min-w-0" title="${escapeXmlAttr(fullPath)}">${escapeHtml(displayPath)}</span>
-                        <button type="button" onclick="removeScope('${escapeXmlAttr(scope.id)}')" class="hover:text-red-500 transition ml-0.5 flex-shrink-0 focus:outline-none" title="Remove scope">✕</button>
-                    </span>
-                `;
+                        <button type="button" class="remove-chip-btn hover:text-red-500 transition ml-0.5 flex-shrink-0 focus:outline-none" title="Remove scope">✕</button>
+                    `;
+                    chip.querySelector('.remove-chip-btn').onclick = (e) => {
+                        e.stopPropagation();
+                        removeScope(scope.id);
+                    };
+                    container.appendChild(chip);
+                });
+
+                if (selectedScopes.length > 1) {
+                    const clearBtn = document.createElement('button');
+                    clearBtn.type = 'button';
+                    clearBtn.className = "text-[11px] text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 underline transition ml-1 py-1 whitespace-nowrap";
+                    clearBtn.title = "Clear all selected scopes";
+                    clearBtn.textContent = `Clear all (${selectedScopes.length})`;
+                    clearBtn.onclick = clearAllScopes;
+                    container.appendChild(clearBtn);
+                }
             });
-
-            if (selectedScopes.length > 1) {
-                chipsHtml += `
-                    <button type="button" onclick="clearAllScopes()" class="text-[11px] text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 underline transition ml-1 py-1 whitespace-nowrap" title="Clear all selected scopes">
-                        Clear all (${selectedScopes.length})
-                    </button>
-                `;
-            }
-
-            if (heroChips) {
-                heroChips.innerHTML = chipsHtml;
-                heroChips.classList.remove('hidden');
-            }
-            if (serpChips) {
-                serpChips.innerHTML = chipsHtml;
-                serpChips.classList.remove('hidden');
-            }
         }
 
         // Scope Picker Modal Handlers
@@ -1131,15 +1134,22 @@
                 collTitle.dataset.scopePath = '';
 
                 collTitle.innerHTML = `
-                    <div class="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2 min-w-0 pr-2 cursor-pointer" onclick="toggleScope('${escapeXmlAttr(item.collection)}', '', 'collection', '${escapeXmlAttr(item.collection)}/')">
+                    <div class="coll-click-area font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2 min-w-0 pr-2 cursor-pointer flex-1">
                         <input type="checkbox" class="scope-checkbox rounded text-blue-600 focus:ring-0 cursor-pointer pointer-events-none" ${isCollSelected ? 'checked' : ''}>
                         <svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                         <span class="truncate" title="${escapeXmlAttr(item.collection)}/">${escapeHtml(item.collection)}/</span>
                     </div>
-                    <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition ${isCollSelected ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-700'}" onclick="toggleScope('${escapeXmlAttr(item.collection)}', '', 'collection', '${escapeXmlAttr(item.collection)}/')">
+                    <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition ${isCollSelected ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-700'}">
                         ${isCollSelected ? '✓ Scoped' : '+ Scope'}
                     </button>
                 `;
+
+                collTitle.querySelector('.coll-click-area').onclick = () => toggleScope(item.collection, '', 'collection', item.collection + '/');
+                collTitle.querySelector('.scope-toggle-btn').onclick = (e) => {
+                    e.stopPropagation();
+                    toggleScope(item.collection, '', 'collection', item.collection + '/');
+                };
+
                 collDiv.appendChild(collTitle);
 
                 const treeContainer = document.createElement('div');
@@ -1160,12 +1170,12 @@
                             dirHeader.dataset.scopePath = folderPath;
 
                             dirHeader.innerHTML = `
-                                <div class="flex items-center gap-1.5 cursor-pointer select-none dir-toggle flex-1 min-w-0 pr-2">
+                                <div class="dir-toggle flex items-center gap-1.5 cursor-pointer select-none flex-1 min-w-0 pr-2">
                                     <svg class="w-3 h-3 transform transition-transform text-slate-400 dark:text-slate-500 dir-chevron flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                                     <svg class="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
                                     <span class="truncate" title="${escapeXmlAttr(folderPath)}">${escapeHtml(child.name)}/</span>
                                 </div>
-                                <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition opacity-90 hover:opacity-100 flex-shrink-0 ${isFolderSelected ? 'bg-amber-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'}" onclick="toggleScope('${escapeXmlAttr(collName)}', '${escapeXmlAttr(folderPath)}', 'folder', '${escapeXmlAttr(folderPath)}')">
+                                <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition opacity-90 hover:opacity-100 flex-shrink-0 ${isFolderSelected ? 'bg-amber-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'}">
                                     ${isFolderSelected ? '✓ Scoped' : '+ Scope'}
                                 </button>
                             `;
@@ -1175,6 +1185,11 @@
                             dirHeader.querySelector('.dir-toggle').onclick = () => {
                                 childContainer.classList.toggle('hidden');
                                 dirHeader.querySelector('.dir-chevron').classList.toggle('-rotate-90');
+                            };
+
+                            dirHeader.querySelector('.scope-toggle-btn').onclick = (e) => {
+                                e.stopPropagation();
+                                toggleScope(collName, folderPath, 'folder', folderPath);
                             };
 
                             row.appendChild(dirHeader);
@@ -1189,15 +1204,24 @@
                             const titleStr = child.title && child.title !== child.name ? `<span class="text-slate-400 dark:text-slate-500 text-[10px] truncate max-w-[130px] flex-shrink-0">(${escapeHtml(child.title)})</span>` : '';
                             
                             row.innerHTML = `
-                                <div class="flex items-center gap-1.5 truncate flex-1 min-w-0 pr-2 cursor-pointer" onclick="toggleScope('${escapeXmlAttr(collName)}', '${escapeXmlAttr(child.path)}', 'file', '${escapeXmlAttr(child.name)}')">
+                                <div class="file-click-area flex items-center gap-1.5 truncate flex-1 min-w-0 pr-2 cursor-pointer">
                                     <svg class="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                     <span class="truncate" title="${escapeXmlAttr(child.path)}">${escapeHtml(child.name)}</span>
                                     ${titleStr}
                                 </div>
-                                <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition opacity-90 hover:opacity-100 flex-shrink-0 ${isFileSelected ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-700'}" onclick="toggleScope('${escapeXmlAttr(collName)}', '${escapeXmlAttr(child.path)}', 'file', '${escapeXmlAttr(child.name)}')">
+                                <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition opacity-90 hover:opacity-100 flex-shrink-0 ${isFileSelected ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-700'}">
                                     ${isFileSelected ? '✓ Scoped' : '+ Scope'}
                                 </button>
                             `;
+
+                            row.querySelector('.file-click-area').onclick = () => {
+                                toggleScope(collName, child.path, 'file', child.name);
+                            };
+
+                            row.querySelector('.scope-toggle-btn').onclick = (e) => {
+                                e.stopPropagation();
+                                toggleScope(collName, child.path, 'file', child.name);
+                            };
                         }
                         parentEl.appendChild(row);
                     });
@@ -1594,20 +1618,29 @@
                             <span class="text-blue-600 dark:text-blue-400/90 truncate">${escapeHtml(uri)}</span>
                             <span class="bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded font-mono text-[11px]">${doc.matches.length} match(es)</span>
                         </div>
-                        <h3 class="text-lg font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer mb-3" onclick="openDocument('${escapeXmlAttr(doc.collection)}', '${escapeXmlAttr(doc.path)}', '')">
+                        <h3 class="doc-title-link text-lg font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer mb-3">
                             ${escapeHtml(doc.title || doc.path)}
                         </h3>
                         
                         <!-- Line Matches List -->
                         <div class="space-y-1 font-mono text-xs bg-slate-50 dark:bg-slate-950/70 p-3 rounded-xl border border-slate-200 dark:border-slate-900">
                             ${doc.matches.map(m => `
-                                <div class="flex items-start gap-3 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 p-1.5 rounded cursor-pointer transition select-none group" onclick="openDocument('${escapeXmlAttr(m.collection)}', '${escapeXmlAttr(m.path)}', '${escapeXmlAttr(m.line_text)}')">
+                                <div class="grep-line-row flex items-start gap-3 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 p-1.5 rounded cursor-pointer transition select-none group">
                                     <span class="text-sky-600 dark:text-sky-400 font-semibold w-12 text-right flex-shrink-0">L${m.line_number}:</span>
                                     <span class="text-slate-800 dark:text-slate-200 break-all">${highlightKeywords(escapeHtml(m.line_text), query)}</span>
                                 </div>
                             `).join('')}
                         </div>
                     `;
+
+                    card.querySelector('.doc-title-link').onclick = () => openDocument(doc.collection, doc.path, '');
+                    card.querySelectorAll('.grep-line-row').forEach((rowEl, rIdx) => {
+                        const m = doc.matches[rIdx];
+                        if (m) {
+                            rowEl.onclick = () => openDocument(m.collection, m.path, m.line_text);
+                        }
+                    });
+
                     container.appendChild(card);
                 });
                 return;
@@ -1631,14 +1664,14 @@
                         </div>
 
                         <!-- SERP Clickable Blue Title -->
-                        <h3 class="text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer mb-3" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '')">
+                        <h3 class="doc-title-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer mb-3">
                             ${escapeHtml(item.title || item.path)}
                         </h3>
 
                         <!-- Snippets List -->
                         <div class="space-y-3 my-3">
                             ${snippets.map((snip) => `
-                                <div class="cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 transition text-sm text-slate-700 dark:text-slate-300 leading-relaxed" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(snip)}')">
+                                <div class="doc-snip-row cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 transition text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                                     <div class="prose dark:prose-invert max-w-none text-xs">
                                         ${marked.parse(snip)}
                                     </div>
@@ -1654,16 +1687,26 @@
                                 ${item.source ? `<span class="text-slate-400 uppercase text-[10px] tracking-wider font-sans">${escapeHtml(item.source)}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-2 font-sans">
-                                <button type="button" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '')" class="hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition flex items-center gap-1">
+                                <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition flex items-center gap-1">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                     Open Doc
                                 </button>
-                                <button type="button" onclick="copySingleXml(${index})" class="hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition">
+                                <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition">
                                     XML
                                 </button>
                             </div>
                         </div>
                     `;
+
+                    card.querySelector('.doc-title-link').onclick = () => openDocument(item.collection, item.path, '');
+                    card.querySelectorAll('.doc-snip-row').forEach((snipEl, sIdx) => {
+                        const snipText = snippets[sIdx];
+                        if (snipText) {
+                            snipEl.onclick = () => openDocument(item.collection, item.path, snipText);
+                        }
+                    });
+                    card.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, '');
+                    card.querySelector('.btn-copy-xml').onclick = () => copySingleXml(index);
                 } else {
                     // Chunk-level result card
                     card.innerHTML = `
@@ -1674,12 +1717,12 @@
                         </div>
 
                         <!-- SERP Clickable Blue Title -->
-                        <h3 class="text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer mb-2.5" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')">
+                        <h3 class="doc-title-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer mb-2.5">
                             ${escapeHtml(item.title || item.path)}
                         </h3>
 
                         <!-- Formatted Markdown Snippet -->
-                        <div class="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 my-3 text-sm text-slate-700 dark:text-slate-300 leading-relaxed cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 transition" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')">
+                        <div class="chunk-snip-box bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 my-3 text-sm text-slate-700 dark:text-slate-300 leading-relaxed cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 transition">
                             <div class="prose dark:prose-invert max-w-none text-xs">
                                 ${marked.parse(item.text || '')}
                             </div>
@@ -1694,16 +1737,21 @@
                                 ${item.source ? `<span class="text-slate-400 uppercase text-[10px] tracking-wider font-sans">${escapeHtml(item.source)}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-2 font-sans">
-                                <button type="button" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')" class="hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition flex items-center gap-1">
+                                <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition flex items-center gap-1">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                     Open Doc
                                 </button>
-                                <button type="button" onclick="copySingleXml(${index})" class="hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition">
+                                <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition">
                                     XML
                                 </button>
                             </div>
                         </div>
                     `;
+
+                    card.querySelector('.doc-title-link').onclick = () => openDocument(item.collection, item.path, item.text || '');
+                    card.querySelector('.chunk-snip-box').onclick = () => openDocument(item.collection, item.path, item.text || '');
+                    card.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, item.text || '');
+                    card.querySelector('.btn-copy-xml').onclick = () => copySingleXml(index);
                 }
 
                 container.appendChild(card);
