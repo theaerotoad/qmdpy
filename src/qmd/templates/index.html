@@ -1769,28 +1769,32 @@
         }
 
         // Copy XML / Prompt Toolbar Handlers
-        document.getElementById('copy-json').addEventListener('click', (e) => {
+        document.getElementById('copy-json').addEventListener('click', () => {
             if (!lastRawJson) return;
+            const btn = document.getElementById('copy-json');
             const query = document.getElementById('serp-query').value;
             const xmlData = formatResultsToXml(lastRawJson, lastSearchType, query, currentSessionId);
             navigator.clipboard.writeText(xmlData).then(() => {
-                const btn = e.currentTarget;
-                const orig = btn.innerHTML;
-                btn.innerHTML = `<span class="text-emerald-500 font-semibold">Copied XML!</span>`;
-                setTimeout(() => btn.innerHTML = orig, 2000);
+                if (btn) {
+                    const orig = btn.innerHTML;
+                    btn.innerHTML = `<span class="text-emerald-500 font-semibold">Copied XML!</span>`;
+                    setTimeout(() => { if (btn) btn.innerHTML = orig; }, 2000);
+                }
             });
         });
 
-        document.getElementById('copy-prompt').addEventListener('click', (e) => {
+        document.getElementById('copy-prompt').addEventListener('click', () => {
             if (!lastRawJson) return;
+            const btn = document.getElementById('copy-prompt');
             const query = document.getElementById('serp-query').value;
             const xmlData = formatResultsToXml(lastRawJson, lastSearchType, query, currentSessionId);
             const payload = `Task / Question: ${query}\n\nContext / References:\n${xmlData}`;
             navigator.clipboard.writeText(payload).then(() => {
-                const btn = e.currentTarget;
-                const orig = btn.innerHTML;
-                btn.innerHTML = `<span class="text-white font-semibold">Copied!</span>`;
-                setTimeout(() => btn.innerHTML = orig, 2000);
+                if (btn) {
+                    const orig = btn.innerHTML;
+                    btn.innerHTML = `<span class="text-white font-semibold">Copied!</span>`;
+                    setTimeout(() => { if (btn) btn.innerHTML = orig; }, 2000);
+                }
             });
         });
 
