@@ -259,6 +259,45 @@ def test_search_metadata_filters(db_conn, monkeypatch):
     assert len(res_fail) == 0
 
 
+def test_search_multi_path_filters(db_conn, monkeypatch):
+    config = Config(db_path=":memory:")
+    store = Store(config, connection=db_conn)
+
+    cursor = db_conn.cursor()
+    from qmd.utils import compress_text
+    from qmd.store import encode_vector
+
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h_a', 'common text in doc a', 'now')")
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h_b', 'common text in doc b', 'now')")
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h_c', 'common text in doc c', 'now')")
+
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'src/core/engine.md', 'Engine', 'h_a', 'now')")
+    id_a = cursor.lastrowid
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'src/utils/helpers.md', 'Helpers', 'h_b', 'now')")
+    id_b = cursor.lastrowid
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'docs/guide.md', 'Guide', 'h_c', 'now')")
+    id_c = cursor.lastrowid
+
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'c', 'src/core/engine.md', 'Engine', 'common text in doc a')", (id_a,))
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'c', 'src/utils/helpers.md', 'Helpers', 'common text in doc b')", (id_b,))
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'c', 'docs/guide.md', 'Guide', 'common text in doc c')", (id_c,))
+
+    dummy_vec = encode_vector([0.0] * 768)
+    for doc_id, h, p, t in [(id_a, 'h_a', 'src/core/engine.md', 'Engine'), (id_b, 'h_b', 'src/utils/helpers.md', 'Helpers'), (id_c, 'h_c', 'docs/guide.md', 'Guide')]:
+        cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (doc_id, dummy_vec))
+        cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, ?, 0, ?, '')", (doc_id, h, compress_text(f"common text in {t}")))
+        cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'c', ?, ?, ?, '')", (doc_id, p, t, f"common text in {t}"))
+
+    db_conn.commit()
+
+    # Search with multiple path filters
+    res_multi = store.search_fts("common", path=["src/core", "docs/"])
+    found_paths = {r.path for r in res_multi}
+    assert "src/core/engine.md" in found_paths
+    assert "docs/guide.md" in found_paths
+    assert "src/utils/helpers.md" not in found_paths
+
+
 def test_search_vec_quantization(db_conn, monkeypatch):
     """Verify search_vec behavior under int8 quantization."""
     config = Config(db_path=":memory:", vector_quantization="int8")

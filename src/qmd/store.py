@@ -172,7 +172,7 @@ class Store:
         collection: Optional[str],
         lexical_query: Optional[str],
         title: Optional[str],
-        path: Optional[str],
+        path: Optional[Union[str, List[str]]],
         fts_limit: Optional[int],
         vec_limit: Optional[int],
         rerank_candidates: Optional[int]
@@ -180,6 +180,11 @@ class Store:
         db_last_updated = get_db_meta(self.conn, "last_updated") or ""
         embed_model = getattr(self.config, "embed_model", "")
         rerank_model = getattr(self.config, "rerank_model", "")
+
+        if isinstance(path, (list, tuple, set)):
+            path_val: Union[str, List[str]] = sorted([str(p).strip() for p in path if str(p).strip()])
+        else:
+            path_val = path or ""
 
         key_data = {
             "search_type": search_type,
@@ -190,7 +195,7 @@ class Store:
             "collection": collection or "",
             "lexical_query": lexical_query or "",
             "title": title or "",
-            "path": path or "",
+            "path": path_val,
             "fts_limit": fts_limit,
             "vec_limit": vec_limit,
             "rerank_candidates": rerank_candidates,
@@ -482,7 +487,7 @@ class Store:
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (vector_rowid, collection_name, rel_path, title, chunk_text, context_str))
 
-    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
+    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
         """Lexical search directly on chunks using chunks_fts."""
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
         # Allow pre-formatted FTS query expressions (quotes, AND, OR, NOT) to pass through directly
@@ -515,6 +520,13 @@ class Store:
             fts_query = " AND ".join([f'"{term}"' for term in terms])
         
         cursor = self.conn.cursor()
+
+        paths = []
+        if isinstance(path, str):
+            if path.strip():
+                paths = [p.strip() for p in path.split(',') if p.strip()]
+        elif isinstance(path, (list, tuple, set)):
+            paths = [str(p).strip() for p in path if str(p).strip()]
         
         base_sql = """
             SELECT f.filepath, f.title, f.body, f.rank, f.collection, f.rowid, m.seq_id, COALESCE(f.headers, '')
@@ -525,7 +537,9 @@ class Store:
         filters_sql = ""
         if collection: filters_sql += " AND f.collection = ?"
         if title: filters_sql += " AND f.title LIKE ?"
-        if path: filters_sql += " AND f.filepath LIKE ?"
+        if paths:
+            path_clauses = " OR ".join(["f.filepath LIKE ?" for _ in paths])
+            filters_sql += f" AND ({path_clauses})"
         
         order_sql = " ORDER BY f.rank LIMIT ?"
         
@@ -536,7 +550,8 @@ class Store:
             p = [q_val]
             if collection: p.append(collection)
             if title: p.append(f"%{title}%")
-            if path: p.append(f"%{path}%")
+            for p_val in paths:
+                p.append(f"%{p_val}%")
             p.append(sql_limit)
             return p
 
@@ -596,7 +611,7 @@ class Store:
             return vecs[0]
         return []
 
-    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[str] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
+    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
         query_text = self.llm.format_query_for_embedding(query)
         query_vec = self.get_query_embedding(query_text)
@@ -607,12 +622,19 @@ class Store:
         stored_quant = get_db_meta(self.conn, "vector_quantization")
         quant_type = (stored_quant or getattr(self.config, "vector_quantization", "none") or "none").lower()
 
+        paths = []
+        if isinstance(path, str):
+            if path.strip():
+                paths = [p.strip() for p in path.split(',') if p.strip()]
+        elif isinstance(path, (list, tuple, set)):
+            paths = [str(p).strip() for p in path if str(p).strip()]
+
         # Check if sqlite-vec is active and virtual table is set up
         if is_sqlite_vec_active(self.conn):
             try:
                 query_blob = encode_vector(query_vec, quant_type)
                 extra_seen = (len(exclude_seen_set) * 2) if exclude_seen_set else 0
-                k_val = (limit * 5 + extra_seen) if (collection or title or path or exclude_seen_set) else limit
+                k_val = (limit * 5 + extra_seen) if (collection or title or paths or exclude_seen_set) else limit
 
                 query_sql = """
                     SELECT v.rowid, v.distance, m.chunk_text, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, '')
@@ -629,9 +651,11 @@ class Store:
                 if title:
                     query_sql += " AND d.title LIKE ?"
                     params.append(f"%{title}%")
-                if path:
-                    query_sql += " AND d.path LIKE ?"
-                    params.append(f"%{path}%")
+                if paths:
+                    path_clauses = " OR ".join(["d.path LIKE ?" for _ in paths])
+                    query_sql += f" AND ({path_clauses})"
+                    for p_val in paths:
+                        params.append(f"%{p_val}%")
 
                 cursor.execute(query_sql, tuple(params))
                 candidates = []
@@ -674,9 +698,10 @@ class Store:
         if title:
             where_clauses.append("d.title LIKE ?")
             params.append(f"%{title}%")
-        if path:
-            where_clauses.append("d.path LIKE ?")
-            params.append(f"%{path}%")
+        if paths:
+            where_clauses.append("(" + " OR ".join(["d.path LIKE ?" for _ in paths]) + ")")
+            for p_val in paths:
+                params.append(f"%{p_val}%")
             
         if where_clauses:
             query_sql += " WHERE " + " AND ".join(where_clauses)
@@ -719,7 +744,7 @@ class Store:
         collection: Optional[str] = None, 
         lexical_query: Optional[str] = None, 
         title: Optional[str] = None, 
-        path: Optional[str] = None,
+        path: Optional[Union[str, List[str]]] = None,
         fts_limit: Optional[int] = None,
         vec_limit: Optional[int] = None,
         rerank_candidates: Optional[int] = None,
@@ -943,7 +968,7 @@ class Store:
         collection: Optional[str] = None, 
         lexical_query: Optional[str] = None, 
         title: Optional[str] = None, 
-        path: Optional[str] = None,
+        path: Optional[Union[str, List[str]]] = None,
         top_containers: int = 3,
         fts_limit: Optional[int] = None,
         vec_limit: Optional[int] = None,
@@ -1455,7 +1480,7 @@ class Store:
         is_regex: bool = False,
         case_sensitive: bool = False,
         collection: Optional[str] = None,
-        path: Optional[str] = None,
+        path: Optional[Union[str, List[str]]] = None,
         limit: int = 50
     ) -> List[Dict[str, Any]]:
         """Performs direct string or regular expression pattern search across decompressed document bodies."""
@@ -1471,6 +1496,13 @@ class Store:
         else:
             regex = re.compile(re.escape(pattern), flags)
 
+        paths = []
+        if isinstance(path, str):
+            if path.strip():
+                paths = [p.strip() for p in path.split(',') if p.strip()]
+        elif isinstance(path, (list, tuple, set)):
+            paths = [str(p).strip() for p in path if str(p).strip()]
+
         cursor = self.conn.cursor()
         query_sql = """
             SELECT d.collection, d.path, d.title, c.body
@@ -1482,9 +1514,10 @@ class Store:
         if collection:
             where_clauses.append("d.collection = ?")
             params.append(collection)
-        if path:
-            where_clauses.append("d.path LIKE ?")
-            params.append(f"%{path}%")
+        if paths:
+            where_clauses.append("(" + " OR ".join(["d.path LIKE ?" for _ in paths]) + ")")
+            for p_val in paths:
+                params.append(f"%{p_val}%")
 
         if where_clauses:
             query_sql += " WHERE " + " AND ".join(where_clauses)

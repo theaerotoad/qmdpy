@@ -55,3 +55,13 @@ def test_web_search_session_and_exclude_seen(web_client):
     data2 = res2.get_json()
     assert data2['session_id'] == 'web_sess_1'
     assert data2['excluded_count'] > 0
+
+    # 3. Search with multi-path parameter
+    res3 = web_client.post('/api/search', json={
+        'query': 'document',
+        'limit': 5,
+        'paths': ['doc1.md', 'another/path.md']
+    })
+    assert res3.status_code == 200
+    data3 = res3.get_json()
+    assert len(data3['results']) > 0

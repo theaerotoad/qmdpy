@@ -442,41 +442,52 @@
     <!-- ================================================================= -->
     <div id="scope-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-hidden hidden">
         <div id="scope-backdrop" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity opacity-0 duration-200" onclick="closeScopePicker()"></div>
-        <div id="scope-panel" class="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200 flex flex-col max-h-[85vh]">
+        <div id="scope-panel" class="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200 flex flex-col max-h-[85vh]">
             <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex-shrink-0">
-                <div class="flex items-center gap-2">
-                    <svg class="w-5 h-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                    <div>
-                        <h2 class="text-base font-semibold text-slate-900 dark:text-white">Directory Scope Picker</h2>
-                        <p class="text-xs text-slate-500 dark:text-slate-400">Select a collection, folder, or file to constrain your searches</p>
+                <div class="flex items-center gap-2 min-w-0 pr-2">
+                    <svg class="w-5 h-5 text-blue-500 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-base font-semibold text-slate-900 dark:text-white truncate">Directory Scope Picker</h2>
+                            <span id="scope-selected-count" class="hidden text-[11px] font-sans font-medium px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">0 selected</span>
+                        </div>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 truncate">Multi-select collections, folders, or files to constrain searches</p>
                     </div>
                 </div>
-                <button type="button" onclick="closeScopePicker()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition focus:outline-none">
+                <button type="button" onclick="closeScopePicker()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition focus:outline-none flex-shrink-0">
                     <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
             </div>
 
             <!-- Scope Search Filter Input -->
-            <div class="px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex-shrink-0">
-                <div class="relative flex items-center">
-                    <div class="absolute left-3 text-slate-400">
+            <div class="px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex-shrink-0 flex items-center justify-between gap-3">
+                <div class="relative flex-1">
+                    <div class="absolute left-3 top-2 text-slate-400">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                     </div>
                     <input type="text" id="scope-tree-filter" placeholder="Filter directories or files (e.g. src/ or guide)..." class="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
                 </div>
+                <button type="button" onclick="clearAllScopes()" class="text-xs text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition whitespace-nowrap font-medium px-2 py-1">
+                    Clear Selection
+                </button>
             </div>
 
             <!-- Scope Interactive Directory Tree Content -->
-            <div id="scope-picker-tree" class="flex-1 overflow-y-auto p-6 space-y-3 text-xs font-mono"></div>
+            <div id="scope-picker-tree" class="flex-1 overflow-y-auto p-5 space-y-3 text-xs font-mono"></div>
 
             <!-- Modal Footer -->
-            <div class="px-6 py-3.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
-                <button type="button" onclick="clearAllScopes(); closeScopePicker();" class="text-xs text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition font-medium">
-                    Reset to Everywhere
-                </button>
-                <button type="button" onclick="closeScopePicker()" class="px-4 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition shadow-sm">
-                    Done
-                </button>
+            <div class="px-6 py-3.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0 text-xs">
+                <div id="scope-selection-summary" class="text-slate-500 dark:text-slate-400 truncate max-w-xs font-sans">
+                    Searching everywhere (no scope filters)
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="clearAllScopes(); closeScopePicker();" class="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition font-medium px-3 py-1.5">
+                        Reset to Everywhere
+                    </button>
+                    <button type="button" onclick="closeScopePicker()" class="px-4 py-1.5 font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition shadow-sm">
+                        Apply & Close
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -630,12 +641,30 @@
         let treeFilterTimer = null;
         let scopeFilterTimer = null;
 
-        // Active Scope State (Collection & Path Filter Chips)
-        const activeScope = {
-            collection: '',
-            path: '',
-            type: '' // 'collection' | 'folder' | 'file'
-        };
+        // Active Multi-Select Scope State: Array of { id, collection, path, type, label }
+        let selectedScopes = [];
+
+        function getScopeId(collection, path) {
+            return `${collection || ''}::${path || ''}`;
+        }
+
+        function isScopeSelected(collection, path) {
+            const id = getScopeId(collection, path);
+            return selectedScopes.some(s => s.id === id);
+        }
+
+        function formatPathMiddle(pathStr, maxLen = 28) {
+            if (!pathStr || pathStr.length <= maxLen) return pathStr;
+            const parts = pathStr.split('/');
+            if (parts.length > 2) {
+                const first = parts[0];
+                const last = parts[parts.length - 1];
+                const mid = `${first}/.../${last}`;
+                if (mid.length <= maxLen) return mid;
+            }
+            const half = Math.max(4, Math.floor((maxLen - 3) / 2));
+            return pathStr.slice(0, half) + '...' + pathStr.slice(pathStr.length - half);
+        }
 
         // Session ID Management Utilities
         const SESSION_STORAGE_KEY = 'qmd_active_session_id';
@@ -880,39 +909,115 @@
             });
         });
 
-        // Scope Management & Filter Chip Handling
-        function setScope(collection = '', path = '', type = '') {
-            activeScope.collection = collection || '';
-            activeScope.path = path || '';
-            activeScope.type = type || '';
+        // Multi-Select Scope Management & Filter Chip Handling
+        function toggleScope(collection = '', path = '', type = '', label = '') {
+            const id = getScopeId(collection, path);
+            const existingIdx = selectedScopes.findIndex(s => s.id === id);
+            
+            if (existingIdx >= 0) {
+                selectedScopes.splice(existingIdx, 1);
+            } else {
+                selectedScopes.push({
+                    id,
+                    collection: collection || '',
+                    path: path || '',
+                    type: type || (path ? (path.endsWith('/') ? 'folder' : 'file') : 'collection'),
+                    label: label || path || collection || 'All'
+                });
+            }
 
-            // Update underlying form fields
-            document.querySelectorAll('.collection-select').forEach(sel => sel.value = activeScope.collection);
-            document.querySelectorAll('.path-input').forEach(inp => inp.value = activeScope.path);
-
-            renderScopeChips();
+            updateScopeUI();
         }
 
-        function clearScopeCollection() {
-            setScope('', activeScope.path, activeScope.path ? activeScope.type : '');
-        }
-
-        function clearScopePath() {
-            setScope(activeScope.collection, '', activeScope.collection ? 'collection' : '');
+        function removeScope(id) {
+            selectedScopes = selectedScopes.filter(s => s.id !== id);
+            updateScopeUI();
         }
 
         function clearAllScopes() {
-            setScope('', '', '');
+            selectedScopes = [];
+            document.querySelectorAll('.collection-select').forEach(sel => sel.value = '');
+            document.querySelectorAll('.path-input').forEach(inp => inp.value = '');
+            updateScopeUI();
+        }
+
+        function updateScopeUI() {
+            const paths = selectedScopes.filter(s => s.path).map(s => s.path);
+            const collections = [...new Set(selectedScopes.map(s => s.collection).filter(Boolean))];
+
+            if (paths.length > 0) {
+                document.querySelectorAll('.path-input').forEach(inp => inp.value = paths.join(', '));
+            } else {
+                document.querySelectorAll('.path-input').forEach(inp => inp.value = '');
+            }
+
+            if (collections.length === 1 && !paths.length) {
+                document.querySelectorAll('.collection-select').forEach(sel => sel.value = collections[0]);
+            }
+
+            renderScopeChips();
+            updateScopePickerSelectionIndicators();
+        }
+
+        function updateScopePickerSelectionIndicators() {
+            const selectedCountEl = document.getElementById('scope-selected-count');
+            const summaryEl = document.getElementById('scope-selection-summary');
+
+            const count = selectedScopes.length;
+            if (selectedCountEl) {
+                if (count > 0) {
+                    selectedCountEl.textContent = `${count} selected`;
+                    selectedCountEl.classList.remove('hidden');
+                } else {
+                    selectedCountEl.classList.add('hidden');
+                }
+            }
+
+            if (summaryEl) {
+                if (count === 0) {
+                    summaryEl.textContent = "Searching everywhere (no scope filters)";
+                } else {
+                    const folders = selectedScopes.filter(s => s.type === 'folder').length;
+                    const files = selectedScopes.filter(s => s.type === 'file').length;
+                    const colls = selectedScopes.filter(s => s.type === 'collection').length;
+                    const parts = [];
+                    if (colls) parts.push(`${colls} collection(s)`);
+                    if (folders) parts.push(`${folders} folder(s)`);
+                    if (files) parts.push(`${files} file(s)`);
+                    summaryEl.textContent = `${count} active scope(s): ${parts.join(', ')}`;
+                }
+            }
+
+            document.querySelectorAll('.scope-item-row').forEach(row => {
+                const coll = row.dataset.scopeColl || '';
+                const p = row.dataset.scopePath || '';
+                const isSelected = isScopeSelected(coll, p);
+                const btn = row.querySelector('.scope-toggle-btn');
+                const checkbox = row.querySelector('.scope-checkbox');
+
+                if (isSelected) {
+                    row.classList.add('bg-blue-50/70', 'dark:bg-blue-950/40', 'border-blue-300', 'dark:border-blue-800');
+                    if (btn) {
+                        btn.className = "scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition bg-blue-600 text-white flex-shrink-0 shadow-sm";
+                        btn.textContent = "✓ Scoped";
+                    }
+                    if (checkbox) checkbox.checked = true;
+                } else {
+                    row.classList.remove('bg-blue-50/70', 'dark:bg-blue-950/40', 'border-blue-300', 'dark:border-blue-800');
+                    if (btn) {
+                        btn.className = "scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-700 flex-shrink-0";
+                        btn.textContent = "+ Scope";
+                    }
+                    if (checkbox) checkbox.checked = false;
+                }
+            });
         }
 
         function renderScopeChips() {
             const heroChips = document.getElementById('hero-scope-chips');
             const serpChips = document.getElementById('serp-scope-chips');
-            
-            const hasCollection = Boolean(activeScope.collection);
-            const hasPath = Boolean(activeScope.path);
 
-            if (!hasCollection && !hasPath) {
+            if (selectedScopes.length === 0) {
                 if (heroChips) { heroChips.innerHTML = ''; heroChips.classList.add('hidden'); }
                 if (serpChips) { serpChips.innerHTML = ''; serpChips.classList.add('hidden'); }
                 return;
@@ -920,27 +1025,38 @@
 
             let chipsHtml = '';
 
-            if (hasCollection) {
+            selectedScopes.forEach(scope => {
+                const fullPath = scope.path || scope.collection;
+                const displayPath = formatPathMiddle(fullPath, 24);
+
+                let icon = '';
+                let bgStyle = '';
+
+                if (scope.type === 'collection') {
+                    icon = `<svg class="w-3 h-3 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>`;
+                    bgStyle = 'bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300';
+                } else if (scope.type === 'folder') {
+                    icon = `<svg class="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>`;
+                    bgStyle = 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300';
+                } else {
+                    icon = `<svg class="w-3 h-3 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`;
+                    bgStyle = 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300';
+                }
+
                 chipsHtml += `
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 shadow-sm">
-                        <svg class="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                        <span>${escapeHtml(activeScope.collection)}</span>
-                        <button type="button" onclick="clearScopeCollection()" class="hover:text-red-500 transition ml-0.5 focus:outline-none" title="Remove collection filter">✕</button>
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono border shadow-sm max-w-[260px] sm:max-w-xs ${bgStyle}" title="${escapeXmlAttr(fullPath)}">
+                        ${icon}
+                        <span class="truncate min-w-0" title="${escapeXmlAttr(fullPath)}">${escapeHtml(displayPath)}</span>
+                        <button type="button" onclick="removeScope('${escapeXmlAttr(scope.id)}')" class="hover:text-red-500 transition ml-0.5 flex-shrink-0 focus:outline-none" title="Remove scope">✕</button>
                     </span>
                 `;
-            }
+            });
 
-            if (hasPath) {
-                const icon = activeScope.type === 'file' 
-                    ? `<svg class="w-3 h-3 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`
-                    : `<svg class="w-3 h-3 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>`;
-
+            if (selectedScopes.length > 1) {
                 chipsHtml += `
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 shadow-sm">
-                        ${icon}
-                        <span>${escapeHtml(activeScope.path)}</span>
-                        <button type="button" onclick="clearScopePath()" class="hover:text-red-500 transition ml-0.5 focus:outline-none" title="Remove path filter">✕</button>
-                    </span>
+                    <button type="button" onclick="clearAllScopes()" class="text-[11px] text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 underline transition ml-1 py-1 whitespace-nowrap" title="Clear all selected scopes">
+                        Clear all (${selectedScopes.length})
+                    </button>
                 `;
             }
 
@@ -1007,17 +1123,21 @@
                 const collDiv = document.createElement('div');
                 collDiv.className = "bg-slate-50 dark:bg-slate-950/60 rounded-xl p-3 border border-slate-200 dark:border-slate-800/80";
 
-                const isCollSelected = activeScope.collection === item.collection && !activeScope.path;
+                const isCollSelected = isScopeSelected(item.collection, '');
 
                 const collTitle = document.createElement('div');
-                collTitle.className = "flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800/80 mb-2";
+                collTitle.className = `scope-item-row flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800/80 mb-2 px-2 py-1 rounded-lg transition ${isCollSelected ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800' : ''}`;
+                collTitle.dataset.scopeColl = item.collection;
+                collTitle.dataset.scopePath = '';
+
                 collTitle.innerHTML = `
-                    <div class="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
-                        <svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                        <span>${escapeHtml(item.collection)}/</span>
+                    <div class="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2 min-w-0 pr-2 cursor-pointer" onclick="toggleScope('${escapeXmlAttr(item.collection)}', '', 'collection', '${escapeXmlAttr(item.collection)}/')">
+                        <input type="checkbox" class="scope-checkbox rounded text-blue-600 focus:ring-0 cursor-pointer pointer-events-none" ${isCollSelected ? 'checked' : ''}>
+                        <svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        <span class="truncate" title="${escapeXmlAttr(item.collection)}/">${escapeHtml(item.collection)}/</span>
                     </div>
-                    <button type="button" class="px-2.5 py-1 rounded text-[11px] font-sans font-medium transition ${isCollSelected ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'}" onclick="setScope('${escapeXmlAttr(item.collection)}', '', 'collection'); closeScopePicker();">
-                        ${isCollSelected ? '✓ Active Scope' : 'Select Collection'}
+                    <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition ${isCollSelected ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-700'}" onclick="toggleScope('${escapeXmlAttr(item.collection)}', '', 'collection', '${escapeXmlAttr(item.collection)}/')">
+                        ${isCollSelected ? '✓ Scoped' : '+ Scope'}
                     </button>
                 `;
                 collDiv.appendChild(collTitle);
@@ -1032,22 +1152,25 @@
                         if (child.type === 'directory') {
                             row.className = "space-y-1";
                             const folderPath = (currentPath ? currentPath + '/' : '') + child.name + '/';
-                            const isFolderSelected = activeScope.collection === collName && activeScope.path === folderPath;
+                            const isFolderSelected = isScopeSelected(collName, folderPath);
 
                             const dirHeader = document.createElement('div');
-                            dirHeader.className = "flex items-center justify-between text-amber-600 dark:text-amber-400 font-semibold py-0.5 group";
+                            dirHeader.className = `scope-item-row flex items-center justify-between text-amber-600 dark:text-amber-400 font-semibold py-1 px-1.5 rounded-lg group transition border border-transparent ${isFolderSelected ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800' : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/40'}`;
+                            dirHeader.dataset.scopeColl = collName;
+                            dirHeader.dataset.scopePath = folderPath;
+
                             dirHeader.innerHTML = `
-                                <div class="flex items-center gap-1 cursor-pointer select-none dir-toggle flex-1">
-                                    <svg class="w-3 h-3 transform transition-transform text-slate-400 dark:text-slate-500 dir-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                                    <svg class="w-3.5 h-3.5 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
-                                    <span>${escapeHtml(child.name)}/</span>
+                                <div class="flex items-center gap-1.5 cursor-pointer select-none dir-toggle flex-1 min-w-0 pr-2">
+                                    <svg class="w-3 h-3 transform transition-transform text-slate-400 dark:text-slate-500 dir-chevron flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                    <svg class="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
+                                    <span class="truncate" title="${escapeXmlAttr(folderPath)}">${escapeHtml(child.name)}/</span>
                                 </div>
-                                <button type="button" class="px-2 py-0.5 rounded text-[10px] font-sans font-medium transition opacity-80 hover:opacity-100 ${isFolderSelected ? 'bg-amber-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'}" onclick="setScope('${escapeXmlAttr(collName)}', '${escapeXmlAttr(folderPath)}', 'folder'); closeScopePicker();">
-                                    ${isFolderSelected ? '✓ Active Folder' : 'Scope Folder'}
+                                <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition opacity-90 hover:opacity-100 flex-shrink-0 ${isFolderSelected ? 'bg-amber-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'}" onclick="toggleScope('${escapeXmlAttr(collName)}', '${escapeXmlAttr(folderPath)}', 'folder', '${escapeXmlAttr(folderPath)}')">
+                                    ${isFolderSelected ? '✓ Scoped' : '+ Scope'}
                                 </button>
                             `;
                             const childContainer = document.createElement('div');
-                            childContainer.className = "pl-3.5 border-l border-slate-200 dark:border-slate-800 ml-1.5 space-y-1";
+                            childContainer.className = "pl-3.5 border-l border-slate-200 dark:border-slate-800 ml-2 space-y-1";
 
                             dirHeader.querySelector('.dir-toggle').onclick = () => {
                                 childContainer.classList.toggle('hidden');
@@ -1058,18 +1181,21 @@
                             renderPickerNode(child, childContainer, collName, (currentPath ? currentPath + '/' : '') + child.name);
                             row.appendChild(childContainer);
                         } else {
-                            const isFileSelected = activeScope.collection === collName && activeScope.path === child.path;
-                            row.className = "flex items-center justify-between text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50 px-2 py-1 rounded transition select-none group";
-                            const titleStr = child.title && child.title !== child.name ? `<span class="text-slate-400 dark:text-slate-500 text-[10px] truncate max-w-[120px]">(${escapeHtml(child.title)})</span>` : '';
+                            const isFileSelected = isScopeSelected(collName, child.path);
+                            row.className = `scope-item-row flex items-center justify-between text-slate-700 dark:text-slate-300 px-2 py-1 rounded-lg transition select-none group border border-transparent ${isFileSelected ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-800' : 'hover:bg-slate-100 dark:hover:bg-slate-800/50'}`;
+                            row.dataset.scopeColl = collName;
+                            row.dataset.scopePath = child.path;
+
+                            const titleStr = child.title && child.title !== child.name ? `<span class="text-slate-400 dark:text-slate-500 text-[10px] truncate max-w-[130px] flex-shrink-0">(${escapeHtml(child.title)})</span>` : '';
                             
                             row.innerHTML = `
-                                <div class="flex items-center gap-1.5 truncate flex-1 pr-2">
+                                <div class="flex items-center gap-1.5 truncate flex-1 min-w-0 pr-2 cursor-pointer" onclick="toggleScope('${escapeXmlAttr(collName)}', '${escapeXmlAttr(child.path)}', 'file', '${escapeXmlAttr(child.name)}')">
                                     <svg class="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                    <span class="truncate">${escapeHtml(child.name)}</span>
+                                    <span class="truncate" title="${escapeXmlAttr(child.path)}">${escapeHtml(child.name)}</span>
                                     ${titleStr}
                                 </div>
-                                <button type="button" class="px-2 py-0.5 rounded text-[10px] font-sans font-medium transition opacity-80 hover:opacity-100 flex-shrink-0 ${isFileSelected ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-700'}" onclick="setScope('${escapeXmlAttr(collName)}', '${escapeXmlAttr(child.path)}', 'file'); closeScopePicker();">
-                                    ${isFileSelected ? '✓ Active File' : 'Scope File'}
+                                <button type="button" class="scope-toggle-btn px-2 py-0.5 rounded text-[10px] font-sans font-medium transition opacity-90 hover:opacity-100 flex-shrink-0 ${isFileSelected ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-700'}" onclick="toggleScope('${escapeXmlAttr(collName)}', '${escapeXmlAttr(child.path)}', 'file', '${escapeXmlAttr(child.name)}')">
+                                    ${isFileSelected ? '✓ Scoped' : '+ Scope'}
                                 </button>
                             `;
                         }
@@ -1081,6 +1207,8 @@
                 collDiv.appendChild(treeContainer);
                 container.appendChild(collDiv);
             });
+
+            updateScopePickerSelectionIndicators();
         }
 
         document.getElementById('scope-tree-filter').addEventListener('input', (e) => {
@@ -1337,6 +1465,19 @@
             `;
             toolbarEl.classList.add('hidden');
 
+            const scopedPaths = selectedScopes.filter(s => s.path).map(s => s.path);
+            const manualPathInput = document.getElementById(`${source}-path`).value.trim();
+            if (manualPathInput) {
+                const parts = manualPathInput.split(',').map(p => p.trim()).filter(Boolean);
+                parts.forEach(p => {
+                    if (!scopedPaths.includes(p)) scopedPaths.push(p);
+                });
+            }
+
+            const collFilter = document.getElementById(`${source}-collection-filter`).value;
+            const collScopes = selectedScopes.filter(s => s.type === 'collection' || !s.path).map(s => s.collection);
+            const activeCollection = collFilter || (collScopes.length === 1 ? collScopes[0] : null);
+
             try {
                 if (activeMode === 'grep') {
                     const payload = {
@@ -1344,8 +1485,9 @@
                         regex: document.getElementById('serp-grep-regex').checked,
                         case_sensitive: document.getElementById('serp-grep-case').checked,
                         limit: parseInt(document.getElementById('serp-limit').value) || 50,
-                        collection: document.getElementById('serp-collection-filter').value || null,
-                        path: document.getElementById('serp-path').value.trim() || null
+                        collection: activeCollection,
+                        path: scopedPaths.length === 1 ? scopedPaths[0] : (scopedPaths.length > 1 ? scopedPaths : null),
+                        paths: scopedPaths.length > 0 ? scopedPaths : undefined
                     };
 
                     const res = await fetch('/api/grep', {
@@ -1371,10 +1513,11 @@
                         exclude_seen: document.getElementById('serp-exclude-seen').checked,
                         redact_pii: document.getElementById('serp-redact-pii').checked,
                         limit: parseInt(document.getElementById('serp-limit').value) || 10,
-                        collection: document.getElementById('serp-collection-filter').value || null,
+                        collection: activeCollection,
                         lex: document.getElementById('serp-lex').value.trim() || null,
                         title: document.getElementById('serp-title').value.trim() || null,
-                        path: document.getElementById('serp-path').value.trim() || null,
+                        path: scopedPaths.length === 1 ? scopedPaths[0] : (scopedPaths.length > 1 ? scopedPaths : (manualPathInput || null)),
+                        paths: scopedPaths.length > 0 ? scopedPaths : undefined,
                         session_id: currentSessionId
                     };
 

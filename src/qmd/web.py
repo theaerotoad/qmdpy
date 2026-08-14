@@ -44,6 +44,8 @@ def search():
         store = get_store()
         exclude_seen_set = get_seen_chunks_for_session(store.history_conn, session_id) if exclude_seen else set()
 
+        paths_input = data.get('paths') if data.get('paths') is not None else data.get('path')
+
         results = store.hybrid_search(
             query=query,
             limit=limit,
@@ -51,7 +53,7 @@ def search():
             collection=data.get('collection') if data.get('collection') else None,
             lexical_query=data.get('lex') if data.get('lex') else None,
             title=data.get('title') if data.get('title') else None,
-            path=data.get('path') if data.get('path') else None,
+            path=paths_input if paths_input else None,
             exclude_seen_set=exclude_seen_set
         )
 
@@ -230,7 +232,7 @@ def grep():
         is_regex = bool(data.get('regex', False))
         case_sensitive = bool(data.get('case_sensitive', False))
         collection = data.get('collection') or None
-        path = data.get('path') or None
+        paths_input = data.get('paths') if data.get('paths') is not None else data.get('path')
         limit = int(data.get('limit', 50))
 
         store = get_store()
@@ -240,7 +242,7 @@ def grep():
                 is_regex=is_regex,
                 case_sensitive=case_sensitive,
                 collection=collection,
-                path=path,
+                path=paths_input if paths_input else None,
                 limit=limit
             )
         except ValueError as e:
