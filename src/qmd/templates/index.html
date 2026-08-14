@@ -5,27 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QMD Knowledge Engine</title>
     <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {}
+            }
+        }
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         /* Custom styling for rendered markdown content & SERP snippet preview */
         .prose pre { background-color: #0f172a; padding: 0.875rem; border-radius: 0.375rem; overflow-x: auto; margin: 0.5rem 0; border: 1px solid #1e293b; }
-        .prose code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #93c5fd; font-size: 0.875em; }
+        .prose code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #2563eb; font-size: 0.875em; }
+        .dark .prose code { color: #93c5fd; }
         .prose p { margin-bottom: 0.5rem; line-height: 1.6; }
         .prose p:last-child { margin-bottom: 0; }
-        .prose h1, .prose h2, .prose h3 { font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.375rem; color: #f8fafc; }
-        .prose a { color: #60a5fa; text-decoration: underline; }
+        .prose h1, .prose h2, .prose h3 { font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.375rem; color: #0f172a; }
+        .dark .prose h1, .dark .prose h2, .dark .prose h3 { color: #f8fafc; }
+        .prose a { color: #2563eb; text-decoration: underline; }
+        .dark .prose a { color: #60a5fa; }
         .prose ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; }
         .prose table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; text-align: left; font-size: 0.875rem; }
-        .prose th, .prose td { border: 1px solid #334155; padding: 0.4rem 0.6rem; }
-        .prose th { background-color: #1e293b; color: #e2e8f0; }
+        .prose th, .prose td { border: 1px solid #cbd5e1; padding: 0.4rem 0.6rem; }
+        .dark .prose th, .dark .prose td { border: 1px solid #334155; }
+        .prose th { background-color: #f1f5f9; color: #1e293b; }
+        .dark .prose th { background-color: #1e293b; color: #e2e8f0; }
 
         /* Highlight mark styling */
         mark.qmd-highlight {
-            background-color: rgba(234, 179, 8, 0.22);
-            color: #fef08a;
+            background-color: rgba(234, 179, 8, 0.25);
+            color: #854d0e;
             padding: 0.05rem 0.2rem;
             border-radius: 0.2rem;
             font-weight: 600;
+        }
+        .dark mark.qmd-highlight {
+            background-color: rgba(234, 179, 8, 0.22);
+            color: #fef08a;
         }
 
         /* Layout State Transitions */
@@ -39,12 +56,14 @@
 
         /* Custom scrollbar styling */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-full font-sans antialiased selection:bg-blue-600 selection:text-white">
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-full font-sans antialiased selection:bg-blue-600 selection:text-white transition-colors duration-150">
     <div id="app-container" class="state-hero min-h-screen flex flex-col">
         
         <!-- ================================================================= -->
@@ -52,16 +71,20 @@
         <!-- ================================================================= -->
         <div id="hero-section" class="flex-1 flex-col justify-center items-center px-4 py-12 max-w-4xl mx-auto w-full">
             <!-- Top Utility Bar (Hero Mode) -->
-            <div class="w-full flex justify-between items-center mb-16 text-xs text-slate-400">
+            <div class="w-full flex justify-between items-center mb-16 text-xs text-slate-500 dark:text-slate-400">
                 <div class="flex items-center gap-2">
-                    <span id="hero-session-badge" class="font-mono bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-full text-slate-400">
-                        Session: <span class="session-id-val text-slate-200">-</span>
+                    <span id="hero-session-badge" class="font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-full shadow-sm">
+                        Session: <span class="session-id-val text-slate-800 dark:text-slate-200 font-semibold">-</span>
                     </span>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button type="button" class="btn-open-tree bg-slate-900 border border-slate-800 hover:border-slate-700 hover:text-slate-200 py-1.5 px-3 rounded-md flex items-center gap-1.5 transition">
-                        <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                    <button type="button" class="btn-open-tree bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200 py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition shadow-sm">
+                        <svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
                         Collection Tree
+                    </button>
+                    <button type="button" class="btn-open-settings bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200 py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Open Settings">
+                        <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        Settings
                     </button>
                     <div id="hero-collections-container" class="flex gap-1.5"></div>
                 </div>
@@ -69,10 +92,10 @@
 
             <!-- Hero Branding -->
             <div class="text-center mb-8">
-                <h1 class="text-5xl md:text-6xl font-black tracking-tight text-white mb-2 bg-gradient-to-r from-blue-400 via-sky-300 to-indigo-400 bg-clip-text text-transparent">
+                <h1 class="text-5xl md:text-6xl font-black tracking-tight mb-2 bg-gradient-to-r from-blue-600 via-sky-500 to-indigo-600 dark:from-blue-400 dark:via-sky-300 dark:to-indigo-400 bg-clip-text text-transparent">
                     Q M D
                 </h1>
-                <p class="text-slate-400 text-sm md:text-base font-medium tracking-wide">
+                <p class="text-slate-600 dark:text-slate-400 text-sm md:text-base font-medium tracking-wide">
                     Quick Markdown Knowledge Engine
                 </p>
             </div>
@@ -80,13 +103,13 @@
             <!-- Hero Main Search Box Form -->
             <div class="w-full max-w-2xl">
                 <form id="hero-search-form" class="space-y-4" onsubmit="handleFormSubmit(event, 'hero')">
-                    <div class="relative flex items-center shadow-2xl rounded-2xl bg-slate-900 border border-slate-800 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition duration-200">
-                        <div class="pl-4 text-slate-500 pointer-events-none">
+                    <div class="relative flex items-center shadow-xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition duration-200">
+                        <div class="pl-4 text-slate-400 dark:text-slate-500 pointer-events-none">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                         </div>
-                        <input type="text" id="hero-query" class="w-full bg-transparent text-white px-4 py-4 text-base focus:outline-none placeholder-slate-500" placeholder="Search your markdown knowledge base..." autocomplete="off" autofocus required>
+                        <input type="text" id="hero-query" class="w-full bg-transparent text-slate-900 dark:text-white px-4 py-4 text-base focus:outline-none placeholder-slate-400 dark:placeholder-slate-500" placeholder="Search your markdown knowledge base..." autocomplete="off" autofocus required>
                         <div class="pr-2 flex items-center gap-1.5">
-                            <button type="button" class="btn-open-tree text-slate-400 hover:text-slate-200 p-2 rounded-lg hover:bg-slate-800 transition" title="Browse Collection Files">
+                            <button type="button" class="btn-open-tree text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition" title="Browse Collection Files">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
                             </button>
                             <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-5 py-2.5 rounded-xl transition shadow-sm text-sm">
@@ -97,75 +120,75 @@
 
                     <!-- Search Mode Pills -->
                     <div class="flex flex-wrap justify-center items-center gap-2 text-xs pt-2">
-                        <div class="inline-flex bg-slate-900 p-1 rounded-xl border border-slate-800 shadow-inner">
-                            <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium bg-blue-600 text-white" data-mode="search">
+                        <div class="inline-flex bg-slate-200/70 dark:bg-slate-900 p-1 rounded-xl border border-slate-300 dark:border-slate-800 shadow-inner">
+                            <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium bg-blue-600 text-white shadow-sm" data-mode="search">
                                 Search
                             </button>
-                            <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium text-slate-400 hover:text-slate-200" data-mode="doc">
+                            <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-mode="doc">
                                 Document View
                             </button>
-                            <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium text-slate-400 hover:text-slate-200" data-mode="grep">
+                            <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-mode="grep">
                                 Grep
                             </button>
                         </div>
 
                         <!-- Options Dropdown Trigger -->
-                        <button type="button" class="toggle-advanced-btn bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 px-3 py-2 rounded-xl flex items-center gap-1.5 transition">
-                            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                        <button type="button" class="toggle-advanced-btn bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-2 rounded-xl flex items-center gap-1.5 transition shadow-sm">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
                             <span>Options</span>
                         </button>
                     </div>
 
                     <!-- Scope Shortcuts & Quick Settings (Hero Mode) -->
-                    <div class="flex flex-wrap justify-center items-center gap-3 text-xs text-slate-400 pt-1">
+                    <div class="flex flex-wrap justify-center items-center gap-3 text-xs text-slate-500 dark:text-slate-400 pt-1">
                         <div class="flex items-center gap-1.5">
                             <span>Collection:</span>
-                            <select id="hero-collection-filter" class="collection-select bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-blue-500">
+                            <select id="hero-collection-filter" class="collection-select bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 shadow-sm">
                                 <option value="">All Collections</option>
                             </select>
                         </div>
                         <div class="flex items-center gap-1.5">
                             <span>Limit:</span>
-                            <input type="number" id="hero-limit" class="limit-input w-16 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-center text-slate-200 focus:outline-none focus:border-blue-500" value="10">
+                            <input type="number" id="hero-limit" class="limit-input w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-center text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 shadow-sm" value="10">
                         </div>
                     </div>
 
                     <!-- Advanced Filters Expandable Drawer -->
-                    <div id="hero-advanced-panel" class="hidden bg-slate-900/90 border border-slate-800 rounded-2xl p-5 mt-4 space-y-4 shadow-xl">
+                    <div id="hero-advanced-panel" class="hidden bg-white/95 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 mt-4 space-y-4 shadow-xl">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs">
                             <div>
-                                <label class="block text-slate-400 mb-1 font-medium">Lexical Override (FTS)</label>
-                                <input type="text" id="hero-lex" class="lex-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500" placeholder="e.g. strict terms">
+                                <label class="block text-slate-600 dark:text-slate-400 mb-1 font-medium">Lexical Override (FTS)</label>
+                                <input type="text" id="hero-lex" class="lex-input w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500" placeholder="e.g. strict terms">
                             </div>
                             <div>
-                                <label class="block text-slate-400 mb-1 font-medium">Title Filter</label>
-                                <input type="text" id="hero-title" class="title-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500" placeholder="e.g. store">
+                                <label class="block text-slate-600 dark:text-slate-400 mb-1 font-medium">Title Filter</label>
+                                <input type="text" id="hero-title" class="title-input w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500" placeholder="e.g. store">
                             </div>
                             <div>
-                                <label class="block text-slate-400 mb-1 font-medium">Path Filter</label>
-                                <input type="text" id="hero-path" class="path-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500" placeholder="e.g. src/qmd/">
+                                <label class="block text-slate-600 dark:text-slate-400 mb-1 font-medium">Path Filter</label>
+                                <input type="text" id="hero-path" class="path-input w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500" placeholder="e.g. src/qmd/">
                             </div>
                         </div>
                         
-                        <div class="flex flex-wrap gap-4 text-xs pt-2 border-t border-slate-800 items-center text-slate-300">
-                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white" id="hero-label-rerank">
-                                <input type="checkbox" id="hero-rerank" class="rerank-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                        <div class="flex flex-wrap gap-4 text-xs pt-2 border-t border-slate-200 dark:border-slate-800 items-center text-slate-700 dark:text-slate-300">
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 dark:hover:text-white" id="hero-label-rerank">
+                                <input type="checkbox" id="hero-rerank" class="rerank-check rounded bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
                                 <span>LLM Reranking</span>
                             </label>
-                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white hidden" id="hero-label-regex">
-                                <input type="checkbox" id="hero-grep-regex" class="regex-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 dark:hover:text-white hidden" id="hero-label-regex">
+                                <input type="checkbox" id="hero-grep-regex" class="regex-check rounded bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
                                 <span>Regex Pattern</span>
                             </label>
-                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white hidden" id="hero-label-case">
-                                <input type="checkbox" id="hero-grep-case" class="case-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 dark:hover:text-white hidden" id="hero-label-case">
+                                <input type="checkbox" id="hero-grep-case" class="case-check rounded bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
                                 <span>Case Sensitive</span>
                             </label>
-                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white">
-                                <input type="checkbox" id="hero-exclude-seen" class="exclude-seen-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 dark:hover:text-white">
+                                <input type="checkbox" id="hero-exclude-seen" class="exclude-seen-check rounded bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
                                 <span>Exclude Seen Chunks</span>
                             </label>
-                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-white">
-                                <input type="checkbox" id="hero-redact-pii" class="redact-pii-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                            <label class="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 dark:hover:text-white">
+                                <input type="checkbox" id="hero-redact-pii" class="redact-pii-check rounded bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
                                 <span>Redact PII</span>
                             </label>
                         </div>
@@ -177,21 +200,21 @@
         <!-- ================================================================= -->
         <!-- STATE B: SERP HEADER BAR (Sticky Top Header for Results)          -->
         <!-- ================================================================= -->
-        <header id="serp-top-bar" class="sticky top-0 z-30 bg-slate-950/95 backdrop-blur border-b border-slate-800 shadow-md">
+        <header id="serp-top-bar" class="sticky top-0 z-30 bg-white/95 dark:bg-slate-950/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-sm">
             <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
                 <!-- Mini Logo (Returns to Hero) -->
                 <a href="javascript:void(0)" onclick="returnToHero()" class="flex items-center gap-2 group flex-shrink-0">
-                    <span class="text-2xl font-black tracking-tight bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent group-hover:opacity-90 transition">
+                    <span class="text-2xl font-black tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent group-hover:opacity-90 transition">
                         QMD
                     </span>
                 </a>
 
                 <!-- Compact SERP Search Input -->
                 <form id="serp-search-form" class="flex-1 max-w-2xl flex items-center" onsubmit="handleFormSubmit(event, 'serp')">
-                    <div class="relative w-full flex items-center bg-slate-900 border border-slate-800 rounded-xl focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition">
-                        <input type="text" id="serp-query" class="w-full bg-transparent text-white pl-4 pr-16 py-2 text-sm focus:outline-none placeholder-slate-500" placeholder="Search markdown..." autocomplete="off" required>
+                    <div class="relative w-full flex items-center bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition">
+                        <input type="text" id="serp-query" class="w-full bg-transparent text-slate-900 dark:text-white pl-4 pr-16 py-2 text-sm focus:outline-none placeholder-slate-400 dark:placeholder-slate-500" placeholder="Search markdown..." autocomplete="off" required>
                         <div class="absolute right-1.5 flex items-center gap-1">
-                            <button type="button" class="btn-open-tree text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 transition" title="Browse Collection Files">
+                            <button type="button" class="btn-open-tree text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition" title="Browse Collection Files">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
                             </button>
                             <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-3 py-1 rounded-lg text-xs transition">
@@ -201,48 +224,52 @@
                     </div>
                 </form>
 
-                <!-- Header Actions & Session Pill -->
+                <!-- Header Actions, Session Pill & Settings -->
                 <div class="flex items-center gap-2 flex-shrink-0 text-xs">
-                    <span id="serp-session-badge" class="font-mono bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-md text-slate-400 hidden sm:inline-block">
-                        Session: <span class="session-id-val text-slate-200">-</span>
+                    <span id="serp-session-badge" class="font-mono bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-md text-slate-500 dark:text-slate-400 hidden sm:inline-block">
+                        Session: <span class="session-id-val text-slate-800 dark:text-slate-200 font-semibold">-</span>
                     </span>
-                    <button type="button" class="btn-open-tree bg-slate-900 border border-slate-800 hover:border-slate-700 hover:text-slate-200 py-1 px-2.5 rounded-md flex items-center gap-1.5 transition text-slate-300">
-                        <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                    <button type="button" class="btn-open-tree bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 py-1 px-2.5 rounded-md flex items-center gap-1.5 transition text-slate-700 dark:text-slate-300">
+                        <svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
                         Tree
+                    </button>
+                    <button type="button" class="btn-open-settings bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 py-1 px-2.5 rounded-md flex items-center gap-1.5 transition text-slate-700 dark:text-slate-300" title="Settings">
+                        <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        Settings
                     </button>
                 </div>
             </div>
 
             <!-- SERP Secondary Filter & Mode Strip -->
-            <div class="max-w-6xl mx-auto px-4 py-2 border-t border-slate-900 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+            <div class="max-w-6xl mx-auto px-4 py-2 border-t border-slate-100 dark:border-slate-900 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
                 <div class="flex items-center gap-3">
-                    <div class="inline-flex bg-slate-900 p-0.5 rounded-lg border border-slate-800">
-                        <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium bg-blue-600 text-white" data-mode="search">
+                    <div class="inline-flex bg-slate-100 dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium bg-blue-600 text-white shadow-sm" data-mode="search">
                             Search
                         </button>
-                        <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium text-slate-400 hover:text-slate-200" data-mode="doc">
+                        <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-mode="doc">
                             Doc View
                         </button>
-                        <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium text-slate-400 hover:text-slate-200" data-mode="grep">
+                        <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-mode="grep">
                             Grep
                         </button>
                     </div>
 
-                    <div class="flex items-center gap-1.5 border-l border-slate-800 pl-3">
+                    <div class="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-800 pl-3">
                         <span>Col:</span>
-                        <select id="serp-collection-filter" class="collection-select bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-slate-200 focus:outline-none">
+                        <select id="serp-collection-filter" class="collection-select bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-2 py-0.5 text-slate-800 dark:text-slate-200 focus:outline-none">
                             <option value="">All</option>
                         </select>
                     </div>
 
                     <div class="flex items-center gap-1.5">
                         <span>Limit:</span>
-                        <input type="number" id="serp-limit" class="limit-input w-12 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-center text-slate-200 focus:outline-none" value="10">
+                        <input type="number" id="serp-limit" class="limit-input w-12 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-1.5 py-0.5 text-center text-slate-800 dark:text-slate-200 focus:outline-none" value="10">
                     </div>
                 </div>
 
                 <div class="flex items-center gap-3">
-                    <button type="button" class="toggle-advanced-btn hover:text-slate-200 flex items-center gap-1 transition">
+                    <button type="button" class="toggle-advanced-btn hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1 transition">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
                         <span>More Filters</span>
                     </button>
@@ -251,41 +278,41 @@
             </div>
 
             <!-- SERP Advanced Filters Dropdown Drawer -->
-            <div id="serp-advanced-panel" class="hidden bg-slate-900 border-t border-b border-slate-800 px-4 py-3">
+            <div id="serp-advanced-panel" class="hidden bg-slate-50 dark:bg-slate-900 border-t border-b border-slate-200 dark:border-slate-800 px-4 py-3">
                 <div class="max-w-6xl mx-auto space-y-3">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                         <div>
-                            <label class="block text-slate-400 mb-1 font-medium">Lexical Override (FTS)</label>
-                            <input type="text" id="serp-lex" class="lex-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded px-2.5 py-1 focus:outline-none focus:border-blue-500" placeholder="e.g. strict terms">
+                            <label class="block text-slate-600 dark:text-slate-400 mb-1 font-medium">Lexical Override (FTS)</label>
+                            <input type="text" id="serp-lex" class="lex-input w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded px-2.5 py-1 focus:outline-none focus:border-blue-500" placeholder="e.g. strict terms">
                         </div>
                         <div>
-                            <label class="block text-slate-400 mb-1 font-medium">Title Filter</label>
-                            <input type="text" id="serp-title" class="title-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded px-2.5 py-1 focus:outline-none focus:border-blue-500" placeholder="e.g. store">
+                            <label class="block text-slate-600 dark:text-slate-400 mb-1 font-medium">Title Filter</label>
+                            <input type="text" id="serp-title" class="title-input w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded px-2.5 py-1 focus:outline-none focus:border-blue-500" placeholder="e.g. store">
                         </div>
                         <div>
-                            <label class="block text-slate-400 mb-1 font-medium">Path Filter</label>
-                            <input type="text" id="serp-path" class="path-input w-full bg-slate-950 border border-slate-800 text-slate-200 rounded px-2.5 py-1 focus:outline-none focus:border-blue-500" placeholder="e.g. src/qmd/">
+                            <label class="block text-slate-600 dark:text-slate-400 mb-1 font-medium">Path Filter</label>
+                            <input type="text" id="serp-path" class="path-input w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded px-2.5 py-1 focus:outline-none focus:border-blue-500" placeholder="e.g. src/qmd/">
                         </div>
                     </div>
-                    <div class="flex flex-wrap gap-4 text-xs pt-2 border-t border-slate-800 items-center text-slate-300">
-                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-white" id="serp-label-rerank">
-                            <input type="checkbox" id="serp-rerank" class="rerank-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                    <div class="flex flex-wrap gap-4 text-xs pt-2 border-t border-slate-200 dark:border-slate-800 items-center text-slate-700 dark:text-slate-300">
+                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 dark:hover:text-white" id="serp-label-rerank">
+                            <input type="checkbox" id="serp-rerank" class="rerank-check rounded bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
                             <span>LLM Rerank</span>
                         </label>
-                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-white hidden" id="serp-label-regex">
-                            <input type="checkbox" id="serp-grep-regex" class="regex-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 dark:hover:text-white hidden" id="serp-label-regex">
+                            <input type="checkbox" id="serp-grep-regex" class="regex-check rounded bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
                             <span>Regex</span>
                         </label>
-                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-white hidden" id="serp-label-case">
-                            <input type="checkbox" id="serp-grep-case" class="case-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 dark:hover:text-white hidden" id="serp-label-case">
+                            <input type="checkbox" id="serp-grep-case" class="case-check rounded bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
                             <span>Case Sensitive</span>
                         </label>
-                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-white">
-                            <input type="checkbox" id="serp-exclude-seen" class="exclude-seen-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 dark:hover:text-white">
+                            <input type="checkbox" id="serp-exclude-seen" class="exclude-seen-check rounded bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
                             <span>Exclude Seen</span>
                         </label>
-                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-white">
-                            <input type="checkbox" id="serp-redact-pii" class="redact-pii-check rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                        <label class="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 dark:hover:text-white">
+                            <input type="checkbox" id="serp-redact-pii" class="redact-pii-check rounded bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
                             <span>Redact PII</span>
                         </label>
                     </div>
@@ -298,11 +325,11 @@
         <!-- ================================================================= -->
         <main id="results-wrapper" class="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
             <!-- Results Stats & Context Export Toolbar -->
-            <div id="results-toolbar" class="hidden flex flex-wrap items-center justify-between gap-3 pb-4 mb-6 border-b border-slate-800/80">
-                <div id="result-stats" class="text-xs text-slate-400 font-mono"></div>
+            <div id="results-toolbar" class="hidden flex flex-wrap items-center justify-between gap-3 pb-4 mb-6 border-b border-slate-200 dark:border-slate-800/80">
+                <div id="result-stats" class="text-xs text-slate-500 dark:text-slate-400 font-mono"></div>
                 <div class="flex items-center gap-2">
-                    <button id="copy-json" class="bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs py-1.5 px-3 rounded-lg transition flex items-center gap-1.5">
-                        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    <button id="copy-json" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300 text-xs py-1.5 px-3 rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                        <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         Copy XML for LLM
                     </button>
                     <button id="copy-prompt" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium py-1.5 px-3 rounded-lg transition shadow-sm flex items-center gap-1.5">
@@ -318,33 +345,113 @@
     </div>
 
     <!-- ================================================================= -->
+    <!-- SETTINGS MODAL: Theme Selection (Light / Dark / System)           -->
+    <!-- ================================================================= -->
+    <div id="settings-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-hidden hidden">
+        <div id="settings-backdrop" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity opacity-0 duration-200" onclick="closeSettings()"></div>
+        <div id="settings-panel" class="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+                <div class="flex items-center gap-2">
+                    <svg class="w-5 h-5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    <h2 class="text-base font-semibold text-slate-900 dark:text-white">Settings</h2>
+                </div>
+                <button type="button" onclick="closeSettings()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition focus:outline-none">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-6">
+                <div>
+                    <div class="mb-3">
+                        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Appearance</h3>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">Choose how the QMD interface looks to you.</p>
+                    </div>
+
+                    <!-- Theme Mode Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <!-- Light Option -->
+                        <button type="button" onclick="applyTheme('light')" class="theme-option-btn flex flex-col items-center justify-between p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 transition text-left cursor-pointer" data-theme="light">
+                            <div class="flex items-center justify-between w-full mb-3">
+                                <div class="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-500">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                                </div>
+                                <span class="theme-radio-indicator w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center"></span>
+                            </div>
+                            <div class="w-full">
+                                <div class="font-semibold text-xs text-slate-900 dark:text-white">Light</div>
+                                <div class="text-[11px] text-slate-500 dark:text-slate-400">Crisp daytime theme</div>
+                            </div>
+                        </button>
+
+                        <!-- Dark Option -->
+                        <button type="button" onclick="applyTheme('dark')" class="theme-option-btn flex flex-col items-center justify-between p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 transition text-left cursor-pointer" data-theme="dark">
+                            <div class="flex items-center justify-between w-full mb-3">
+                                <div class="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                                </div>
+                                <span class="theme-radio-indicator w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center"></span>
+                            </div>
+                            <div class="w-full">
+                                <div class="font-semibold text-xs text-slate-900 dark:text-white">Dark</div>
+                                <div class="text-[11px] text-slate-500 dark:text-slate-400">Deep slate contrast</div>
+                            </div>
+                        </button>
+
+                        <!-- System Option -->
+                        <button type="button" onclick="applyTheme('system')" class="theme-option-btn flex flex-col items-center justify-between p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 transition text-left cursor-pointer" data-theme="system">
+                            <div class="flex items-center justify-between w-full mb-3">
+                                <div class="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-500">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                </div>
+                                <span class="theme-radio-indicator w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center"></span>
+                            </div>
+                            <div class="w-full">
+                                <div class="font-semibold text-xs text-slate-900 dark:text-white">System</div>
+                                <div class="text-[11px] text-slate-500 dark:text-slate-400">Match device setting</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-3.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+                <button type="button" onclick="closeSettings()" class="px-4 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition shadow-sm">
+                    Done
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
     <!-- SLIDE-OVER PANELS: Document Viewer & Collection File Tree         -->
     <!-- ================================================================= -->
 
     <!-- Collection Tree Drawer -->
     <div id="tree-drawer" class="fixed inset-0 overflow-hidden z-40 pointer-events-none hidden">
         <div class="absolute inset-0 overflow-hidden">
-            <div id="tree-backdrop" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto duration-300"></div>
+            <div id="tree-backdrop" class="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto duration-300"></div>
             <div class="fixed inset-y-0 left-0 max-w-md w-full flex">
-                <div id="tree-panel" class="w-full bg-slate-900 border-r border-slate-800 shadow-2xl transform transition-transform -translate-x-full pointer-events-auto flex flex-col duration-300">
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950">
+                <div id="tree-panel" class="w-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-2xl transform transition-transform -translate-x-full pointer-events-auto flex flex-col duration-300">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
                         <div class="flex items-center gap-2">
-                            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                            <h2 class="text-base font-semibold text-white">Collection Files</h2>
+                            <svg class="w-5 h-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                            <h2 class="text-base font-semibold text-slate-900 dark:text-white">Collection Files</h2>
                         </div>
-                        <button id="close-tree" class="text-slate-400 hover:text-white transition focus:outline-none">
+                        <button id="close-tree" class="text-slate-400 hover:text-slate-600 dark:hover:text-white transition focus:outline-none">
                             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                     </div>
-                    <div class="px-6 py-3 border-b border-slate-800 bg-slate-900/50 flex flex-col gap-2 text-xs text-slate-400">
+                    <div class="px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
                         <div class="flex items-center justify-between">
                             <span>Directory Hierarchy</span>
-                            <button id="refresh-tree" class="hover:text-blue-400 flex items-center gap-1 transition">
+                            <button id="refresh-tree" class="hover:text-blue-500 dark:hover:text-blue-400 flex items-center gap-1 transition">
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                                 Refresh
                             </button>
                         </div>
-                        <input type="text" id="tree-filter-input" placeholder="Filter files (e.g. guide or .py)..." class="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+                        <input type="text" id="tree-filter-input" placeholder="Filter files (e.g. guide or .py)..." class="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
                     </div>
                     <div id="tree-content" class="flex-1 overflow-y-auto p-4 space-y-3 text-xs font-mono"></div>
                 </div>
@@ -355,19 +462,19 @@
     <!-- Document Slide-Over Viewer -->
     <div id="slide-over" class="fixed inset-0 overflow-hidden z-50 pointer-events-none hidden">
         <div class="absolute inset-0 overflow-hidden">
-            <div id="slide-backdrop" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto duration-300"></div>
+            <div id="slide-backdrop" class="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto duration-300"></div>
             <div class="fixed inset-y-0 right-0 max-w-3xl w-full flex">
-                <div id="slide-panel" class="w-full bg-slate-900 border-l border-slate-800 shadow-2xl transform transition-transform translate-x-full pointer-events-auto flex flex-col duration-300">
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950">
+                <div id="slide-panel" class="w-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl transform transition-transform translate-x-full pointer-events-auto flex flex-col duration-300">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
                         <div class="flex flex-col min-w-0 pr-4">
-                            <span id="slide-uri" class="text-xs font-mono text-slate-400 truncate"></span>
-                            <h2 id="slide-title" class="text-lg font-semibold text-white truncate">Document Title</h2>
+                            <span id="slide-uri" class="text-xs font-mono text-slate-500 dark:text-slate-400 truncate"></span>
+                            <h2 id="slide-title" class="text-lg font-semibold text-slate-900 dark:text-white truncate">Document Title</h2>
                         </div>
-                        <button id="close-slide" class="text-slate-400 hover:text-white transition focus:outline-none flex-shrink-0">
+                        <button id="close-slide" class="text-slate-400 hover:text-slate-600 dark:hover:text-white transition focus:outline-none flex-shrink-0">
                             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                     </div>
-                    <div id="slide-content" class="flex-1 overflow-y-auto p-8 prose prose-invert max-w-none"></div>
+                    <div id="slide-content" class="flex-1 overflow-y-auto p-8 prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200"></div>
                 </div>
             </div>
         </div>
@@ -383,6 +490,76 @@
         let lastSearchType = 'chunk';
         let currentSessionId = null;
         let treeFilterTimer = null;
+
+        // Theme Management (Light / Dark / System)
+        const THEME_STORAGE_KEY = 'qmd_theme_mode';
+        let currentThemeMode = localStorage.getItem(THEME_STORAGE_KEY) || 'system';
+
+        function applyTheme(mode) {
+            currentThemeMode = mode;
+            localStorage.setItem(THEME_STORAGE_KEY, mode);
+
+            const isDark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            
+            if (isDark) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+
+            // Update Theme Selector UI in Settings Modal
+            document.querySelectorAll('.theme-option-btn').forEach(btn => {
+                const isSelected = btn.dataset.theme === mode;
+                const indicator = btn.querySelector('.theme-radio-indicator');
+                if (isSelected) {
+                    btn.className = "theme-option-btn flex flex-col items-center justify-between p-3.5 rounded-xl border-2 border-blue-500 bg-blue-50/50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-100 transition text-left cursor-pointer shadow-sm";
+                    if (indicator) {
+                        indicator.className = "theme-radio-indicator w-4 h-4 rounded-full border-2 border-blue-500 bg-blue-500 flex items-center justify-center";
+                        indicator.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-white"></span>';
+                    }
+                } else {
+                    btn.className = "theme-option-btn flex flex-col items-center justify-between p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 transition text-left cursor-pointer";
+                    if (indicator) {
+                        indicator.className = "theme-radio-indicator w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center";
+                        indicator.innerHTML = '';
+                    }
+                }
+            });
+        }
+
+        // Listen for OS System Theme Preference changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            if (currentThemeMode === 'system') {
+                applyTheme('system');
+            }
+        });
+
+        // Settings Modal Handlers
+        function openSettings() {
+            const modal = document.getElementById('settings-modal');
+            const backdrop = document.getElementById('settings-backdrop');
+            const panel = document.getElementById('settings-panel');
+            
+            modal.classList.remove('hidden');
+            void modal.offsetWidth;
+            backdrop.classList.remove('opacity-0');
+            panel.classList.remove('scale-95', 'opacity-0');
+        }
+
+        function closeSettings() {
+            const backdrop = document.getElementById('settings-backdrop');
+            const panel = document.getElementById('settings-panel');
+            
+            backdrop.classList.add('opacity-0');
+            panel.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                document.getElementById('settings-modal').classList.add('hidden');
+            }, 150);
+        }
+
+        document.querySelectorAll('.btn-open-settings').forEach(btn => {
+            btn.addEventListener('click', openSettings);
+        });
 
         // UI State Switching (Hero vs SERP)
         function setAppState(state) {
@@ -407,7 +584,7 @@
             activeMode = mode;
             document.querySelectorAll('.mode-btn').forEach(btn => {
                 const isActive = btn.dataset.mode === mode;
-                btn.className = `mode-btn px-2.5 py-1 rounded-md transition font-medium ${isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`;
+                btn.className = `mode-btn px-2.5 py-1 rounded-md transition font-medium ${isActive ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`;
             });
 
             const isGrep = mode === 'grep';
@@ -616,7 +793,7 @@
                     // Update button
                     const btn = document.createElement('button');
                     btn.type = 'button';
-                    btn.className = "bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 py-1 px-2.5 rounded-md flex items-center gap-1 transition text-xs";
+                    btn.className = "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300 py-1 px-2.5 rounded-lg flex items-center gap-1 transition text-xs shadow-sm";
                     btn.innerHTML = `<svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> ${escapeHtml(c.name)}`;
                     btn.onclick = () => updateCollection(c.name, btn);
                     
@@ -640,8 +817,8 @@
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
-                    btn.classList.add('border-emerald-500', 'text-emerald-400');
-                    setTimeout(() => btn.classList.remove('border-emerald-500', 'text-emerald-400'), 2000);
+                    btn.classList.add('border-emerald-500', 'text-emerald-500');
+                    setTimeout(() => btn.classList.remove('border-emerald-500', 'text-emerald-500'), 2000);
                 } else {
                     alert(data.message);
                 }
@@ -696,7 +873,7 @@
                     lastRawJson = data.results;
                     lastSearchType = 'grep';
                     const timeStr = data.time_taken !== undefined ? ` (${data.time_taken}s)` : '';
-                    statsEl.innerHTML = `Found <span class="text-slate-200 font-semibold">${data.total_matches}</span> grep matches${timeStr}`;
+                    statsEl.innerHTML = `Found <span class="text-slate-800 dark:text-slate-200 font-semibold">${data.total_matches}</span> grep matches${timeStr}`;
                     toolbarEl.classList.remove('hidden');
                     renderResults(data.results, 'grep', query);
                 } else {
@@ -730,17 +907,17 @@
                     document.querySelectorAll('.session-id-val').forEach(el => el.textContent = currentSessionId);
 
                     const timeStr = data.time_taken !== undefined ? ` (${data.time_taken}s)` : '';
-                    const excludedMsg = data.excluded_count ? ` <span class="text-slate-500">•</span> Excluded <span class="text-amber-400 font-semibold">${data.excluded_count}</span> seen chunk(s)` : '';
-                    statsEl.innerHTML = `Found <span class="text-slate-200 font-semibold">${data.results.length}</span> ${data.type === 'doc' ? 'documents' : 'chunks'}${timeStr}${excludedMsg}`;
+                    const excludedMsg = data.excluded_count ? ` <span class="text-slate-400 dark:text-slate-600">•</span> Excluded <span class="text-amber-500 font-semibold">${data.excluded_count}</span> seen chunk(s)` : '';
+                    statsEl.innerHTML = `Found <span class="text-slate-800 dark:text-slate-200 font-semibold">${data.results.length}</span> ${data.type === 'doc' ? 'documents' : 'chunks'}${timeStr}${excludedMsg}`;
                     toolbarEl.classList.remove('hidden');
 
                     renderResults(data.results, data.type, query);
                 }
             } catch (err) {
                 resultsEl.innerHTML = `
-                    <div class="bg-red-950/40 border border-red-900/60 rounded-xl p-5 text-red-300 text-sm">
+                    <div class="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-5 text-red-700 dark:text-red-300 text-sm">
                         <div class="font-semibold mb-1">Search Execution Error</div>
-                        <div class="font-mono text-xs text-red-400">${escapeHtml(err.message)}</div>
+                        <div class="font-mono text-xs text-red-600 dark:text-red-400">${escapeHtml(err.message)}</div>
                     </div>
                 `;
             }
@@ -754,7 +931,7 @@
             if (!results || results.length === 0) {
                 container.innerHTML = `
                     <div class="text-center py-16 text-slate-500">
-                        <div class="text-base font-medium text-slate-400 mb-1">No matches found</div>
+                        <div class="text-base font-medium text-slate-700 dark:text-slate-400 mb-1">No matches found</div>
                         <div class="text-xs">Try broader search terms, clearing filters, or switching modes.</div>
                     </div>
                 `;
@@ -779,25 +956,25 @@
 
                 Object.values(grouped).forEach((doc, idx) => {
                     const card = document.createElement('div');
-                    card.className = "bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-sm hover:border-slate-700 transition";
+                    card.className = "bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:border-slate-300 dark:hover:border-slate-700 transition";
                     const uri = doc.collection ? `qmd://${doc.collection}/${doc.path}` : doc.path;
 
                     card.innerHTML = `
                         <!-- Breadcrumb & Header -->
-                        <div class="flex items-center justify-between gap-2 text-xs font-mono text-slate-400 mb-1">
-                            <span class="text-blue-400/90 truncate">${escapeHtml(uri)}</span>
-                            <span class="bg-slate-950 border border-slate-800 text-amber-400 px-2 py-0.5 rounded font-mono text-[11px]">${doc.matches.length} match(es)</span>
+                        <div class="flex items-center justify-between gap-2 text-xs font-mono text-slate-500 dark:text-slate-400 mb-1">
+                            <span class="text-blue-600 dark:text-blue-400/90 truncate">${escapeHtml(uri)}</span>
+                            <span class="bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded font-mono text-[11px]">${doc.matches.length} match(es)</span>
                         </div>
-                        <h3 class="text-base font-semibold text-blue-400 hover:text-blue-300 hover:underline cursor-pointer mb-3" onclick="openDocument('${escapeXmlAttr(doc.collection)}', '${escapeXmlAttr(doc.path)}', '')">
+                        <h3 class="text-lg font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer mb-3" onclick="openDocument('${escapeXmlAttr(doc.collection)}', '${escapeXmlAttr(doc.path)}', '')">
                             ${escapeHtml(doc.title || doc.path)}
                         </h3>
                         
                         <!-- Line Matches List -->
-                        <div class="space-y-1 font-mono text-xs bg-slate-950/70 p-3 rounded-lg border border-slate-900">
+                        <div class="space-y-1 font-mono text-xs bg-slate-50 dark:bg-slate-950/70 p-3 rounded-xl border border-slate-200 dark:border-slate-900">
                             ${doc.matches.map(m => `
-                                <div class="flex items-start gap-3 hover:bg-slate-800/60 p-1 rounded cursor-pointer transition select-none group" onclick="openDocument('${escapeXmlAttr(m.collection)}', '${escapeXmlAttr(m.path)}', '${escapeXmlAttr(m.line_text)}')">
-                                    <span class="text-sky-400 font-semibold w-12 text-right flex-shrink-0 group-hover:text-sky-300">L${m.line_number}:</span>
-                                    <span class="text-slate-200 break-all">${highlightKeywords(escapeHtml(m.line_text), query)}</span>
+                                <div class="flex items-start gap-3 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 p-1.5 rounded cursor-pointer transition select-none group" onclick="openDocument('${escapeXmlAttr(m.collection)}', '${escapeXmlAttr(m.path)}', '${escapeXmlAttr(m.line_text)}')">
+                                    <span class="text-sky-600 dark:text-sky-400 font-semibold w-12 text-right flex-shrink-0">L${m.line_number}:</span>
+                                    <span class="text-slate-800 dark:text-slate-200 break-all">${highlightKeywords(escapeHtml(m.line_text), query)}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -810,7 +987,7 @@
             // CHUNK & DOCUMENT SERP RESULT RENDERING
             results.forEach((item, index) => {
                 const card = document.createElement('div');
-                card.className = "bg-slate-900/80 border border-slate-800/90 rounded-2xl p-5 shadow-sm hover:border-slate-700 transition";
+                card.className = "bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/90 rounded-2xl p-5 shadow-sm hover:border-slate-300 dark:hover:border-slate-700 transition";
 
                 const uri = item.collection ? `qmd://${item.collection}/${item.path}` : item.path;
                 const section = item.headers || "";
@@ -820,20 +997,20 @@
                     const snippets = item.snippets || [];
                     card.innerHTML = `
                         <!-- SERP Breadcrumbs URI -->
-                        <div class="flex items-center gap-1.5 text-xs text-slate-400 font-mono mb-1.5">
-                            <span class="text-blue-400/90 font-medium">${escapeHtml(uri)}</span>
+                        <div class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono mb-1.5">
+                            <span class="text-blue-600 dark:text-blue-400 font-medium">${escapeHtml(uri)}</span>
                         </div>
 
                         <!-- SERP Clickable Blue Title -->
-                        <h3 class="text-xl font-semibold text-blue-400 hover:text-blue-300 hover:underline cursor-pointer mb-3" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '')">
+                        <h3 class="text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer mb-3" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '')">
                             ${escapeHtml(item.title || item.path)}
                         </h3>
 
                         <!-- Snippets List -->
                         <div class="space-y-3 my-3">
                             ${snippets.map((snip) => `
-                                <div class="cursor-pointer bg-slate-950/60 hover:bg-slate-950 p-4 rounded-xl border border-slate-800/80 hover:border-slate-700 transition text-sm text-slate-300 leading-relaxed" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(snip)}')">
-                                    <div class="prose prose-invert max-w-none text-xs text-slate-300">
+                                <div class="cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 transition text-sm text-slate-700 dark:text-slate-300 leading-relaxed" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(snip)}')">
+                                    <div class="prose dark:prose-invert max-w-none text-xs">
                                         ${marked.parse(snip)}
                                     </div>
                                 </div>
@@ -841,18 +1018,18 @@
                         </div>
 
                         <!-- Metadata & Quick Action Footer -->
-                        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800/80 text-xs font-mono text-slate-400">
+                        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500 dark:text-slate-400">
                             <div class="flex items-center gap-2">
-                                <span class="bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800 text-slate-300">Score: ${Number(item.score || 0).toFixed(4)}</span>
-                                <span class="bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800 text-slate-400">${snippets.length} snippet(s)</span>
-                                ${item.source ? `<span class="text-slate-500 uppercase text-[10px] tracking-wider font-sans">${escapeHtml(item.source)}</span>` : ''}
+                                <span class="bg-slate-100 dark:bg-slate-950 px-2.5 py-0.5 rounded border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">Score: ${Number(item.score || 0).toFixed(4)}</span>
+                                <span class="bg-slate-100 dark:bg-slate-950 px-2.5 py-0.5 rounded border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400">${snippets.length} snippet(s)</span>
+                                ${item.source ? `<span class="text-slate-400 uppercase text-[10px] tracking-wider font-sans">${escapeHtml(item.source)}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-2 font-sans">
-                                <button type="button" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '')" class="hover:bg-slate-800 px-2.5 py-1 rounded text-blue-400 hover:text-blue-300 transition flex items-center gap-1">
+                                <button type="button" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '')" class="hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition flex items-center gap-1">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                     Open Doc
                                 </button>
-                                <button type="button" onclick="copySingleXml(${index})" class="hover:bg-slate-800 px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition">
+                                <button type="button" onclick="copySingleXml(${index})" class="hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition">
                                     XML
                                 </button>
                             </div>
@@ -862,37 +1039,37 @@
                     // Chunk-level result card
                     card.innerHTML = `
                         <!-- SERP Breadcrumbs URI -->
-                        <div class="flex items-center gap-1.5 text-xs text-slate-400 font-mono mb-1.5">
-                            <span class="text-blue-400/90 font-medium">${escapeHtml(uri)}</span>
-                            ${section ? `<span class="text-slate-600">›</span><span class="text-slate-400 truncate">${escapeHtml(section)}</span>` : ''}
+                        <div class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono mb-1.5">
+                            <span class="text-blue-600 dark:text-blue-400 font-medium">${escapeHtml(uri)}</span>
+                            ${section ? `<span class="text-slate-400 dark:text-slate-600">›</span><span class="text-slate-600 dark:text-slate-400 truncate">${escapeHtml(section)}</span>` : ''}
                         </div>
 
                         <!-- SERP Clickable Blue Title -->
-                        <h3 class="text-xl font-semibold text-blue-400 hover:text-blue-300 hover:underline cursor-pointer mb-2.5" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')">
+                        <h3 class="text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer mb-2.5" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')">
                             ${escapeHtml(item.title || item.path)}
                         </h3>
 
                         <!-- Formatted Markdown Snippet -->
-                        <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 my-3 text-sm text-slate-300 leading-relaxed cursor-pointer hover:border-slate-700 transition" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')">
-                            <div class="prose prose-invert max-w-none text-xs text-slate-300">
+                        <div class="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 my-3 text-sm text-slate-700 dark:text-slate-300 leading-relaxed cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 transition" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')">
+                            <div class="prose dark:prose-invert max-w-none text-xs">
                                 ${marked.parse(item.text || '')}
                             </div>
                         </div>
 
                         <!-- Metadata & Quick Action Footer -->
-                        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800/80 text-xs font-mono text-slate-400">
+                        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500 dark:text-slate-400">
                             <div class="flex items-center gap-2">
-                                <span class="bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800 text-slate-300">Score: ${Number(item.score || 0).toFixed(4)}</span>
-                                ${item.rank ? `<span class="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-slate-400">#${item.rank}</span>` : ''}
-                                ${item.seq_id !== undefined ? `<span class="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-slate-400">seq: ${item.seq_id}</span>` : ''}
-                                ${item.source ? `<span class="text-slate-500 uppercase text-[10px] tracking-wider font-sans">${escapeHtml(item.source)}</span>` : ''}
+                                <span class="bg-slate-100 dark:bg-slate-950 px-2.5 py-0.5 rounded border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">Score: ${Number(item.score || 0).toFixed(4)}</span>
+                                ${item.rank ? `<span class="bg-slate-100 dark:bg-slate-950 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">#${item.rank}</span>` : ''}
+                                ${item.seq_id !== undefined ? `<span class="bg-slate-100 dark:bg-slate-950 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">seq: ${item.seq_id}</span>` : ''}
+                                ${item.source ? `<span class="text-slate-400 uppercase text-[10px] tracking-wider font-sans">${escapeHtml(item.source)}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-2 font-sans">
-                                <button type="button" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')" class="hover:bg-slate-800 px-2.5 py-1 rounded text-blue-400 hover:text-blue-300 transition flex items-center gap-1">
+                                <button type="button" onclick="openDocument('${escapeXmlAttr(item.collection)}', '${escapeXmlAttr(item.path)}', '${escapeXmlAttr(item.text)}')" class="hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition flex items-center gap-1">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                     Open Doc
                                 </button>
-                                <button type="button" onclick="copySingleXml(${index})" class="hover:bg-slate-800 px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition">
+                                <button type="button" onclick="copySingleXml(${index})" class="hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition">
                                     XML
                                 </button>
                             </div>
@@ -922,7 +1099,7 @@
             navigator.clipboard.writeText(xmlData).then(() => {
                 const btn = e.currentTarget;
                 const orig = btn.innerHTML;
-                btn.innerHTML = `<span class="text-emerald-400 font-semibold">Copied XML!</span>`;
+                btn.innerHTML = `<span class="text-emerald-500 font-semibold">Copied XML!</span>`;
                 setTimeout(() => btn.innerHTML = orig, 2000);
             });
         });
@@ -1003,7 +1180,7 @@
                     }
                 }, 300);
             } catch (err) {
-                contentEl.innerHTML = `<div class="text-red-400 p-4">Failed to load document: ${escapeHtml(err.message)}</div>`;
+                contentEl.innerHTML = `<div class="text-red-500 dark:text-red-400 p-4">Failed to load document: ${escapeHtml(err.message)}</div>`;
             }
         }
 
@@ -1032,7 +1209,7 @@
                 const data = await res.json();
                 renderCollectionTree(data);
             } catch (err) {
-                container.innerHTML = `<div class="text-red-400 p-2">Error: ${escapeHtml(err.message)}</div>`;
+                container.innerHTML = `<div class="text-red-500 dark:text-red-400 p-2">Error: ${escapeHtml(err.message)}</div>`;
             }
         }
 
@@ -1048,11 +1225,11 @@
 
             collections.forEach(item => {
                 const collDiv = document.createElement('div');
-                collDiv.className = "bg-slate-950/60 rounded-xl p-3 border border-slate-800/80";
+                collDiv.className = "bg-slate-50 dark:bg-slate-950/60 rounded-xl p-3 border border-slate-200 dark:border-slate-800/80";
 
                 const collTitle = document.createElement('div');
-                collTitle.className = "font-bold text-blue-400 flex items-center gap-1.5 pb-2 border-b border-slate-800/80 mb-2";
-                collTitle.innerHTML = `<svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg> ${escapeHtml(item.collection)}/`;
+                collTitle.className = "font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5 pb-2 border-b border-slate-200 dark:border-slate-800/80 mb-2";
+                collTitle.innerHTML = `<svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg> ${escapeHtml(item.collection)}/`;
                 collDiv.appendChild(collTitle);
 
                 const treeContainer = document.createElement('div');
@@ -1065,14 +1242,14 @@
                         if (child.type === 'directory') {
                             row.className = "space-y-1";
                             const dirHeader = document.createElement('div');
-                            dirHeader.className = "flex items-center gap-1 text-amber-400 font-semibold cursor-pointer hover:text-amber-300 select-none py-0.5";
+                            dirHeader.className = "flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold cursor-pointer hover:text-amber-500 select-none py-0.5";
                             dirHeader.innerHTML = `
-                                <svg class="w-3 h-3 transform transition-transform text-slate-500 dir-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                <svg class="w-3 h-3 transform transition-transform text-slate-400 dark:text-slate-500 dir-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                                 <svg class="w-3.5 h-3.5 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
                                 <span>${escapeHtml(child.name)}/</span>
                             `;
                             const childContainer = document.createElement('div');
-                            childContainer.className = "pl-3.5 border-l border-slate-800 ml-1.5 space-y-1";
+                            childContainer.className = "pl-3.5 border-l border-slate-200 dark:border-slate-800 ml-1.5 space-y-1";
 
                             dirHeader.onclick = () => {
                                 childContainer.classList.toggle('hidden');
@@ -1083,10 +1260,10 @@
                             renderNode(child, childContainer, collName);
                             row.appendChild(childContainer);
                         } else {
-                            row.className = "flex items-center gap-1.5 text-slate-300 hover:text-blue-300 hover:bg-slate-800/50 px-2 py-1 rounded cursor-pointer transition select-none group";
-                            const titleStr = child.title && child.title !== child.name ? `<span class="text-slate-500 text-[10px] group-hover:text-slate-400 truncate">(${escapeHtml(child.title)})</span>` : '';
+                            row.className = "flex items-center gap-1.5 text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-300 hover:bg-slate-100 dark:hover:bg-slate-800/50 px-2 py-1 rounded cursor-pointer transition select-none group";
+                            const titleStr = child.title && child.title !== child.name ? `<span class="text-slate-400 dark:text-slate-500 text-[10px] group-hover:text-slate-600 dark:group-hover:text-slate-400 truncate">(${escapeHtml(child.title)})</span>` : '';
                             row.innerHTML = `
-                                <svg class="w-3.5 h-3.5 text-slate-500 group-hover:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                <svg class="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                 <span class="truncate">${escapeHtml(child.name)}</span>
                                 ${titleStr}
                             `;
@@ -1144,7 +1321,9 @@
         // Global Escape Key Listener
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                if (!document.getElementById('slide-over').classList.contains('hidden')) {
+                if (!document.getElementById('settings-modal').classList.contains('hidden')) {
+                    closeSettings();
+                } else if (!document.getElementById('slide-over').classList.contains('hidden')) {
                     closeDocument();
                 } else if (!document.getElementById('tree-drawer').classList.contains('hidden')) {
                     closeTreeDrawer();
@@ -1152,7 +1331,8 @@
             }
         });
 
-        // Initialize on load
+        // Initialize Theme & Collections on Load
+        applyTheme(currentThemeMode);
         loadCollections();
     </script>
 </body>
