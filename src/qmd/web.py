@@ -7,7 +7,7 @@ from flask import Flask, request, jsonify, render_template, g
 from qmd.config import load_config
 from qmd.store import Store
 from qmd.main import group_results_by_doc
-from qmd.utils import decompress_text, redact_pii
+from qmd.utils import decompress_text, redact_pii, parse_query_directives
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
 
 app = Flask(__name__)
@@ -35,29 +35,48 @@ def search():
     try:
         t0 = time.time()
         data = request.json or {}
-        query = data.get('query', '')
-        limit = int(data.get('limit', 10))
+        raw_query = data.get('query', '')
+        clean_query, directives = parse_query_directives(raw_query)
+        query = clean_query if clean_query else raw_query
+
+        limit = directives.get('limit') if directives.get('limit') is not None else int(data.get('limit', 10))
         doc_view = data.get('doc', False)
         session_id = data.get('session_id') or secrets.token_hex(4)
-        exclude_seen = data.get('exclude_seen', False)
+
+        exclude_seen = directives.get('exclude_seen') if directives.get('exclude_seen') is not None else data.get('exclude_seen', False)
+        rerank = directives.get('rerank') if directives.get('rerank') is not None else data.get('rerank', False)
+        should_redact = directives.get('redact_pii') if directives.get('redact_pii') is not None else (data.get('redact_pii', False) or data.get('redact', False))
+
+        collection = directives.get('collection') or data.get('collection') or None
+        lexical_query = directives.get('lex') or data.get('lex') or None
+        title = directives.get('title') or data.get('title') or None
+
+        paths_input = data.get('paths') if data.get('paths') is not None else data.get('path')
+        if directives.get('path'):
+            if paths_input:
+                if isinstance(paths_input, list):
+                    if directives['path'] not in paths_input:
+                        paths_input = paths_input + [directives['path']]
+                else:
+                    paths_input = [paths_input, directives['path']]
+            else:
+                paths_input = directives['path']
 
         store = get_store()
         exclude_seen_set = get_seen_chunks_for_session(store.history_conn, session_id) if exclude_seen else set()
 
-        paths_input = data.get('paths') if data.get('paths') is not None else data.get('path')
-
         results = store.hybrid_search(
             query=query,
             limit=limit,
-            rerank=data.get('rerank', False),
-            collection=data.get('collection') if data.get('collection') else None,
-            lexical_query=data.get('lex') if data.get('lex') else None,
-            title=data.get('title') if data.get('title') else None,
+            rerank=rerank,
+            collection=collection,
+            lexical_query=lexical_query,
+            title=title,
             path=paths_input if paths_input else None,
             exclude_seen_set=exclude_seen_set
         )
 
-        if data.get('redact_pii', False) or data.get('redact', False):
+        if should_redact:
             for r in results:
                 r.text = redact_pii(r.text)
                 if hasattr(r, 'title') and r.title:
@@ -70,7 +89,7 @@ def search():
             session_id,
             event_type,
             query,
-            data.get('lex') if data.get('lex') else None,
+            lexical_query,
             str(store.config.db_path),
             db_last_updated
         )
@@ -217,7 +236,19 @@ def get_session_info(session_id):
 @app.route('/api/collections', methods=['GET'])
 def collections():
     cfg = get_config()
-    colls = [{"name": k, "path": v.path} for k, v in cfg.collections.items()]
+    store = get_store()
+    colls = []
+    for k, v in cfg.collections.items():
+        doc_count = 0
+        try:
+            cursor = store.conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM documents WHERE collection = ?", (k,))
+            row = cursor.fetchone()
+            if row:
+                doc_count = row[0]
+        except Exception:
+            pass
+        colls.append({"name": k, "path": str(v.path), "doc_count": doc_count})
     return jsonify(colls)
 
 @app.route('/api/grep', methods=['POST'])
@@ -225,15 +256,26 @@ def grep():
     try:
         t0 = time.time()
         data = request.json or {}
-        pattern = data.get('pattern', '')
+        raw_pattern = data.get('pattern', '')
+        clean_pattern, directives = parse_query_directives(raw_pattern)
+        pattern = clean_pattern if clean_pattern else raw_pattern
         if not pattern:
             return jsonify({"error": "Missing 'pattern' parameter"}), 400
 
-        is_regex = bool(data.get('regex', False))
-        case_sensitive = bool(data.get('case_sensitive', False))
-        collection = data.get('collection') or None
+        is_regex = directives.get('regex') if directives.get('regex') is not None else bool(data.get('regex', False))
+        case_sensitive = directives.get('case_sensitive') if directives.get('case_sensitive') is not None else bool(data.get('case_sensitive', False))
+        collection = directives.get('collection') or data.get('collection') or None
         paths_input = data.get('paths') if data.get('paths') is not None else data.get('path')
-        limit = int(data.get('limit', 50))
+        if directives.get('path'):
+            if paths_input:
+                if isinstance(paths_input, list):
+                    if directives['path'] not in paths_input:
+                        paths_input = paths_input + [directives['path']]
+                else:
+                    paths_input = [paths_input, directives['path']]
+            else:
+                paths_input = directives['path']
+        limit = directives.get('limit') if directives.get('limit') is not None else int(data.get('limit', 50))
 
         store = get_store()
         try:

@@ -1,6 +1,6 @@
 import hashlib
 import re
-from typing import List, Dict, Optional, Any, Union
+from typing import List, Dict, Optional, Any, Union, Tuple
 
 _SPACY_MODELS: Dict[str, Any] = {}
 
@@ -298,3 +298,107 @@ def parse_int_ranges(spec: Union[str, int]) -> Optional[List[int]]:
             result_set.add(int(part))
 
     return sorted(result_set)
+
+def parse_query_directives(query: str) -> Tuple[str, Dict[str, Any]]:
+    """
+    Parses inline cheat codes and directives from a query string.
+    
+    Supported tokens:
+      - title:"..." / t:"..." / title:...
+      - path:"..." / file:"..." / p:...
+      - col:... / in:... / c:...
+      - lex:"..." / fts:"..." / l:...
+      - limit:N / n:N
+      - pii:on / pii:off / pii:true / pii:false / --redact-pii / --no-pii
+      - seen:exclude / seen:on / seen:off / seen:true / seen:false / --exclude-seen
+      - rerank:on / rerank:off / rr:on / rr:off / rerank:true / rerank:false
+      - regex:on / regex:off / regex:true / regex:false
+      - case:on / case:off / case:true / case:false
+    
+    Returns:
+        (clean_query, directives_dict)
+    """
+    if not query:
+        return "", {}
+
+    text = query
+    directives: Dict[str, Any] = {}
+
+    def _extract_str(pattern: str) -> Optional[str]:
+        nonlocal text
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            return None
+        val = match.group(1) or match.group(2) or match.group(3)
+        text = text[:match.start()] + " " + text[match.end():]
+        return val
+
+    # Title filter
+    t = _extract_str(r'(?:title|t):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
+    if t is not None:
+        directives["title"] = t
+
+    # Path / File filter
+    p = _extract_str(r'(?:path|file|p):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
+    if p is not None:
+        directives["path"] = p
+
+    # Collection filter
+    c = _extract_str(r'(?:col|in|c):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
+    if c is not None:
+        directives["collection"] = c
+
+    # Lexical / FTS override
+    l = _extract_str(r'(?:lex|fts|l):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
+    if l is not None:
+        directives["lex"] = l
+
+    # Numeric limit
+    limit_match = re.search(r'(?:limit|n):(\d+)', text, re.IGNORECASE)
+    if limit_match:
+        directives["limit"] = int(limit_match.group(1))
+        text = text[:limit_match.start()] + " " + text[limit_match.end():]
+
+    # Redact PII flag
+    pii_match = re.search(r'(?:pii):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))|(--redact-pii|--no-pii)', text, re.IGNORECASE)
+    if pii_match:
+        raw_val = (pii_match.group(1) or pii_match.group(2) or pii_match.group(3) or pii_match.group(4) or "").lower()
+        if raw_val in ("on", "true", "--redact-pii"):
+            directives["redact_pii"] = True
+        elif raw_val in ("off", "false", "--no-pii"):
+            directives["redact_pii"] = False
+        text = text[:pii_match.start()] + " " + text[pii_match.end():]
+
+    # Exclude Seen flag
+    seen_match = re.search(r'(?:seen):(?:"(exclude|off|on|true|false)"|\'(exclude|off|on|true|false)\'|(exclude|off|on|true|false))|(--exclude-seen)', text, re.IGNORECASE)
+    if seen_match:
+        raw_val = (seen_match.group(1) or seen_match.group(2) or seen_match.group(3) or seen_match.group(4) or "").lower()
+        if raw_val in ("exclude", "on", "true", "--exclude-seen"):
+            directives["exclude_seen"] = True
+        elif raw_val in ("off", "false"):
+            directives["exclude_seen"] = False
+        text = text[:seen_match.start()] + " " + text[seen_match.end():]
+
+    # Rerank flag
+    rr_match = re.search(r'(?:rerank|rr):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))', text, re.IGNORECASE)
+    if rr_match:
+        raw_val = (rr_match.group(1) or rr_match.group(2) or rr_match.group(3) or "").lower()
+        directives["rerank"] = raw_val in ("on", "true")
+        text = text[:rr_match.start()] + " " + text[rr_match.end():]
+
+    # Regex flag (for grep)
+    regex_match = re.search(r'(?:regex):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))', text, re.IGNORECASE)
+    if regex_match:
+        raw_val = (regex_match.group(1) or regex_match.group(2) or regex_match.group(3) or "").lower()
+        directives["regex"] = raw_val in ("on", "true")
+        text = text[:regex_match.start()] + " " + text[regex_match.end():]
+
+    # Case sensitivity flag (for grep)
+    case_match = re.search(r'(?:case):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))', text, re.IGNORECASE)
+    if case_match:
+        raw_val = (case_match.group(1) or case_match.group(2) or case_match.group(3) or "").lower()
+        directives["case_sensitive"] = raw_val in ("on", "true")
+        text = text[:case_match.start()] + " " + text[case_match.end():]
+
+    clean_query = re.sub(r'\s+', ' ', text).strip()
+    return clean_query, directives
