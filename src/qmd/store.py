@@ -45,7 +45,7 @@ def encode_vector(vec: List[float], quant_type: str = "none") -> bytes:
         return struct.pack(f'{len(vec)}f', *vec)
 
 
-def _results_to_json(results: List[Result]) -> str:
+def _results_to_json(results: List['Result']) -> str:
     data = []
     for r in results:
         data.append({
