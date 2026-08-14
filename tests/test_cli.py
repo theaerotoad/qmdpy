@@ -86,3 +86,73 @@ def test_chunk_arg_parsing_seq_ranges(monkeypatch):
         mock_store.get_chunk_by_seq.return_value = [MagicMock(collection="wiki", path="notes.md", title="Notes", headers="", seq_id=1, text="Sample")]
         main()
         mock_store.get_chunk_by_seq.assert_called_once_with("wiki", "notes.md", seq_id=[1, 2, 3, 5], window=0)
+
+def test_xml_formatting_flat_and_doc(capsys):
+    from qmd.formatting import format_results_xml, format_doc_results_xml, format_chunks_xml, format_outline_xml
+    from qmd.store import Result
+
+    r1 = Result(path="doc.md", title='Special "Doc" & Co', text="First snippet with **markdown**", score=0.95, source="hybrid", rank=1, collection="main", seq_id=10, headers="Intro > Overview")
+    r2 = Result(path="doc.md", title='Special "Doc" & Co', text="Second snippet", score=0.80, source="hybrid", rank=2, collection="main", seq_id=15, headers="Details")
+
+    # Flat XML
+    format_results_xml([r1, r2], query="test query")
+    out = capsys.readouterr().out
+    assert '<search_results query="test query" total_matches="2">' in out
+    assert 'rank="1"' in out
+    assert 'prev_seq="9"' in out
+    assert 'next_seq="11"' in out
+    assert 'document="qmd://main/doc.md"' in out
+    assert 'title="Special &quot;Doc&quot; &amp; Co"' in out
+    assert 'First snippet with **markdown**' in out
+
+    # Doc-grouped sequential XML with gaps
+    grouped = [{
+        "title": 'Special "Doc" & Co',
+        "collection": "main",
+        "path": "doc.md",
+        "score": 0.95,
+        "chunks": [
+            {"seq_id": 10, "score": 0.95, "rank": 1, "headers": "Intro", "text": "Chunk 10 text"},
+            {"seq_id": 15, "score": 0.80, "rank": 2, "headers": "Details", "text": "Chunk 15 text"}
+        ]
+    }]
+    format_doc_results_xml(grouped, query="test query")
+    doc_out = capsys.readouterr().out
+    assert '<gap omitted_chunks="10" from_seq="0" to_seq="9" />' in doc_out
+    assert '<chunk seq="10" rank="1" score="0.9500" section="Intro">' in doc_out
+    assert '<gap omitted_chunks="4" from_seq="11" to_seq="14" />' in doc_out
+    assert '<chunk seq="15" rank="2" score="0.8000" section="Details">' in doc_out
+
+    # Chunks XML
+    format_chunks_xml([r1, r2])
+    chunk_out = capsys.readouterr().out
+    assert '<document uri="qmd://main/doc.md"' in chunk_out
+    assert '<gap omitted_chunks="4" from_seq="11" to_seq="14" />' in chunk_out
+
+    # Outline XML
+    outline = {
+        "collection": "main",
+        "path": "doc.md",
+        "title": "Doc",
+        "total_chunks": 20,
+        "total_chars": 5000,
+        "headings": [{"level": 1, "start_seq": 0, "end_seq": 9, "char_count": 2500, "text": "Intro & Setup"}]
+    }
+    format_outline_xml(outline)
+    outline_out = capsys.readouterr().out
+    assert '<outline uri="qmd://main/doc.md" title="Doc" total_chunks="20" total_chars="5000">' in outline_out
+    assert '<heading level="1" start_seq="0" end_seq="9" char_count="2500">Intro &amp; Setup</heading>' in outline_out
+
+def test_cli_xml_flags(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "helios", "--xml"])
+    with patch("qmd.main.Store") as MockStore, \
+         patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.hybrid_search.return_value = [
+            MagicMock(collection="space", path="helios.md", title="Helios", score=0.9, rank=1, seq_id=147, headers="Mission", text="Helios 1 deep space mission")
+        ]
+        main()
+        out = capsys.readouterr().out
+        assert '<search_results query="helios"' in out
+        assert '<result' in out
+        assert 'Helios 1 deep space mission' in out

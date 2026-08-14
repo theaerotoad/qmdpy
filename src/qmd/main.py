@@ -10,7 +10,11 @@ from typing import List, Dict, Tuple
 from qmd.config import load_config
 from qmd.store import Store, Result
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
-from qmd.formatting import format_results_cli, format_doc_results_cli, format_results_json, format_doc_results_json, format_outline_cli, format_chunks_cli, set_plain_mode, RED, GREEN, RESET
+from qmd.formatting import (
+    format_results_cli, format_doc_results_cli, format_results_json, format_doc_results_json,
+    format_outline_cli, format_chunks_cli, format_results_xml, format_doc_results_xml,
+    format_chunks_xml, format_outline_xml, set_plain_mode, RED, GREEN, RESET
+)
 from qmd.utils import redact_pii
 
 def _clean_header_part(part: str) -> str:
@@ -200,7 +204,8 @@ def group_results_by_doc(results: List[Result]) -> List[Dict]:
                 "rrf_score": getattr(r, "rrf_score", None),
                 "rrf_rank": getattr(r, "rrf_rank", None),
                 "source": r.source,
-                "headers": getattr(r, "headers", "")
+                "headers": getattr(r, "headers", ""),
+                "text": r.text
             })
             
     output_list = []
@@ -212,7 +217,8 @@ def group_results_by_doc(results: List[Result]) -> List[Dict]:
     return sorted(output_list, key=lambda x: x['score'], reverse=True)
 
 def handle_search(args, store: Store):
-    if getattr(args, "plain", False):
+    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
     query = " ".join(args.query)
@@ -300,17 +306,22 @@ def handle_search(args, store: Store):
 
         if args.json:
             format_doc_results_json(grouped, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
+        elif is_xml:
+            format_doc_results_xml(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
         else:
             format_doc_results_cli(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
     else:
         record_session_results(store.history_conn, session_id, event_id, results)
         if args.json:
             format_results_json(results, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
+        elif is_xml:
+            format_results_xml(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
         else:
             format_results_cli(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
 
 def handle_outline(args, store: Store):
-    if getattr(args, "plain", False):
+    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
     outline = store.get_document_outline(collection=args.collection, path=args.path)
@@ -325,11 +336,14 @@ def handle_outline(args, store: Store):
     if args.json:
         import json
         print(json.dumps(outline, indent=2))
+    elif is_xml:
+        format_outline_xml(outline)
     else:
         format_outline_cli(outline)
 
 def handle_chunk(args, store: Store):
-    if getattr(args, "plain", False):
+    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
     target = args.target
@@ -364,6 +378,8 @@ def handle_chunk(args, store: Store):
 
     if args.json:
         format_results_json(results)
+    elif is_xml:
+        format_chunks_xml(results, window=args.window)
     else:
         format_chunks_cli(results, window=args.window)
 
@@ -413,6 +429,8 @@ def main():
     search_parser.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
     search_parser.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")
     search_parser.add_argument("--json", action="store_true", help="Output results in JSON format")
+    search_parser.add_argument("--xml", action="store_true", help="Output results in XML format for LLM context")
+    search_parser.add_argument("--llm", action="store_true", help="Alias for --xml (optimizes output for LLM agent context)")
     search_parser.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
     search_parser.add_argument("-d", "--doc", action="store_true", help="Group results by document (Document View)")
     search_parser.add_argument("-r", "--rerank", action="store_true", help="Use LLM to rerank results")
@@ -431,6 +449,8 @@ def main():
     outline_parser.add_argument("path", help="Path or relative path to the document")
     outline_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
     outline_parser.add_argument("--json", action="store_true", help="Output outline as JSON")
+    outline_parser.add_argument("--xml", action="store_true", help="Output outline as XML for LLM context")
+    outline_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
     outline_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
     chunk_parser = subparsers.add_parser("chunk", help="Fetch specific chunk by rowid or path with surrounding context window", parents=[parent_parser])
@@ -439,6 +459,8 @@ def main():
     chunk_parser.add_argument("-w", "--window", type=int, default=0, help="Number of surrounding chunks to fetch on each side")
     chunk_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
     chunk_parser.add_argument("--json", action="store_true", help="Output chunks as JSON")
+    chunk_parser.add_argument("--xml", action="store_true", help="Output chunks as XML for LLM context")
+    chunk_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
     chunk_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
     update_parser = subparsers.add_parser("update", help="Update the index", parents=[parent_parser])
