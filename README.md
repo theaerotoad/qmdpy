@@ -9,6 +9,7 @@ You can install `qmd` as an editable local package. This allows you to modify th
 # From the project root
 pip install -e .
 
+
 ```
 
 **Alternative (No Install):**
@@ -16,6 +17,7 @@ You can run the module directly without installing by setting the python path:
 
 ```bash
 PYTHONPATH=src python3 -m qmd.main [command]
+
 
 ```
 
@@ -41,6 +43,7 @@ collections:
     path: "/home/user/work_notes"
     glob: "*.md"
 
+
 ```
 
 ### 3. Environment Variables
@@ -52,6 +55,7 @@ export QMD_LLM_URL="http://localhost:8080"  # Overrides YAML llm_url
 export EMBED_MODEL="nomic-embed-text"       # Must match your server's model alias
 export RERANK_MODEL="mxbai-rerank-xsmall"   # Optional
 export GENERATE_MODEL="llama-3.2-3b"        # Optional
+
 
 ```
 
@@ -69,9 +73,10 @@ qmd update --pull
 # Force Re-index (Ignore content hashes, re-process everything)
 qmd update --force
 
+
 ```
 
-**Searching:**
+**Searching & Web UI:**
 
 ```bash
 # Fast Local Search (Hybrid, FTS + Semantic Vector, No LLM)
@@ -79,6 +84,9 @@ qmd search "self improvement"
 
 # Deep Search (Uses LLM to Rerank Results)
 qmd search "architecture patterns" -r
+
+# Session Search with Exclude Seen Chunks
+qmd search "distributed systems" --session 8f3a1b9c --exclude-seen
 
 # Filtered Search (By Collection, Title, or Path)
 qmd search "docker" -c work -t "networking" -p "src/"
@@ -88,6 +96,10 @@ qmd search "python async" --doc --json | jq '.'
 
 # Lexical Override (Ignore vector nuance, force BM25 match)
 qmd search "error codes" --lex "ERR_CONNECTION_REFUSED"
+
+# Start Web UI
+qmd serve --port 5000
+
 
 ```
 
@@ -111,11 +123,7 @@ By offloading the "heavy lifting" (Embedding generation, Chat completion, and Re
 * **Hybrid:** Reciprocal Rank Fusion (RRF) combining FTS and Vector results.
 * **Rerank:** LLM-based re-ranking of top candidates via a custom `/v1/rerank` endpoint.
 * **Constraints:** Minimal dependencies. No local inference.
-
-
 * **Configuration:** YAML-based (`~/.config/qmd/index.yml`).
-
-
 * **Configuration:** YAML-based (`~/.config/qmd/index.yml`) with support for stripping links and tuning chunk sizes.
 
 ### 2. Tech Stack Proposal
@@ -152,12 +160,18 @@ qmd_python/
 │       ├── llm.py        # API Client (Embed/Chat/Rerank)
 │       ├── utils.py      # Hashing, Path Helpers
 │       ├── formatting.py # CLI Output (Colors, Snippets)
+│       ├── converters.py # Document Converters
+│       ├── epub.py       # EPUB Converter
+│       ├── web.py        # Web Server & Search API
+│       ├── templates/
+│       │   └── index.html # Web Search UI
 │       └── docparse/     # Structure-Aware Markdown Parsing
 │           ├── parser.py
 │           ├── grouper.py
 │           └── models.py
 └── tests/
     ├── ...
+
 
 ```
 
@@ -171,8 +185,6 @@ qmd_python/
 * `class Config`: Global settings (`llm_url`, `strip_links`, `max_chunk_size`) and collections.
 * `def load_config() -> Config`: Reads `~/.config/qmd/index.yml`, applying logic (Env > YAML > Default).
 
-
-
 **2. File:** `src/qmd/db.py`
 
 * **Purpose:** Manages the SQLite database connection and schema.
@@ -181,16 +193,12 @@ qmd_python/
 * `def get_connection(path: Path) -> sqlite3.Connection`: Connects with WAL mode enabled.
 * `def init_schema(conn: sqlite3.Connection)`: Idempotent creation of tables.
 
-
-
 **3. File:** `src/qmd/docparse/` (Module)
 
 * **Purpose:** Replaces naive text splitting. Parses Markdown into semantic blocks (headers, content) and groups them into optimal chunks using dynamic programming.
 * **Core Symbols:**
 * `parser.parse_markdown_to_blocks()`: Extracts structure and strips links/images if configured.
 * `grouper.group_blocks_into_chunks()`: Assembles chunks while preserving header context.
-
-
 
 **4. File:** `src/qmd/llm.py`
 
@@ -200,10 +208,6 @@ qmd_python/
 * `class LLMClient`:
 * `embed_batch()`: Batch calls to `/v1/embeddings`.
 * `rerank()`: Calls custom `/v1/rerank` endpoint.
-
-
-
-
 
 **5. File:** `src/qmd/store.py`
 
@@ -215,10 +219,6 @@ qmd_python/
 * `prune_orphaned_collections()`: Removes data for collections removed from config.
 * `hybrid_search(..., rerank_only=False)`: Runs FTS + Vec + RRF + Rerank. Handles deduplication and scoring.
 
-
-
-
-
 **6. File:** `src/qmd/formatting.py`
 
 * **Purpose:** Formats search results for the terminal.
@@ -226,8 +226,6 @@ qmd_python/
 * **Core Symbols:**
 * `def format_results_cli(results)`: Prints colorized output with snippets.
 * `def format_doc_results_cli(grouped_results)`: Prints Document View with merged snippets.
-
-
 
 **7. File:** `src/qmd/main.py`
 
@@ -237,53 +235,6 @@ qmd_python/
 * `def main()`: Entry point.
 * `def handle_search(args)`: Logic for `qmd search` (supports `-v`, `-d`, `-r`).
 * `def handle_update(args)`: Logic for `qmd update` (supports `--pull`, `--force`).
-
-
-
-## STEP 3: DATA MODELS / SCHEMAS
-
-### Database Schema (SQLite)
-
-```sql
--- 1. CAS: Content Addressable Storage (De-duplicates file content)
-CREATE TABLE IF NOT EXISTS content (
-    hash TEXT PRIMARY KEY,
-    body TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
--- 2. Metadata: File locations and status
-CREATE TABLE IF NOT EXISTS documents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    collection TEXT NOT NULL,
-    path TEXT NOT NULL,
-    title TEXT NOT NULL,
-    hash TEXT NOT NULL REFERENCES content(hash),
-    modified_at TEXT NOT NULL,
-    active INTEGER DEFAULT 1,
-    UNIQUE(collection, path)
-);
--- 3. FTS Index (BM25)
-CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
-    filepath, 
-    title, 
-    body, 
-    tokenize='porter unicode61'
-);
--- 4. Vector Storage (Standard Table)
-CREATE TABLE IF NOT EXISTS vectors (
-    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-    embedding BLOB NOT NULL -- Packed float array
-);
--- 5. Chunk Metadata (Maps vectors back to source docs)
-CREATE TABLE IF NOT EXISTS chunk_metadata (
-    rowid INTEGER PRIMARY KEY, -- FK to vectors.rowid
-    doc_hash TEXT NOT NULL,
-    seq_id INTEGER NOT NULL,   -- 0, 1, 2...
-    chunk_text TEXT NOT NULL,
-    FOREIGN KEY (rowid) REFERENCES vectors(rowid) ON DELETE CASCADE
-);
-
-```
 
 ## STEP 4: PROMPTS & TEMPLATES
 
@@ -325,17 +276,18 @@ vec: {single vector query}
 hyde: {complete hypothetical document passage from Step 2 on a SINGLE LINE}
 </format>
 
+
 ```
 
 ## Ideas for making this more useful down the line
 
-- [ ] Persistent search sessions (both for CLI, web, and an MCP version)
-- [ ] Chunk-level seen-state in requests (e.g. --exclude seen)
-- [ ] Novelty-aware follow-up retrieval (option to not share content that's been shared in earlier related searches)
-- [ ] Explicit chunk or chunk-fetch by ID
-- [ ] Cursor based paging (not sure yet how to best handle this)
-- [ ] Return document structure (e.g. markdown headings and sizes)
-- [ ] Return collection tree or subtree (for search narrowing)
-- [ ] Straight-up keyword level searching or filtering for documents (grep style?)
-- [ ] Allow (if available) additional document level or directory level summary / classification and metadata that could be used in searching or revealed when sharing results and documents ("File is a review document for XXXX..." "Directory contains PDF assembly drawings..." "Directory is listing of non-fiction books concerning epidemiological issues
-- [ ] Order multi-file listings by original directory order
+* [x] Persistent search sessions (both for CLI, web, and an MCP version)
+* [x] Chunk-level seen-state in requests (e.g. --exclude seen)
+* [x] Novelty-aware follow-up retrieval (option to not share content that's been shared in earlier related searches)
+* [ ] Explicit chunk or chunk-fetch by ID
+* [ ] Cursor based paging (not sure yet how to best handle this)
+* [ ] Return document structure (e.g. markdown headings and sizes)
+* [ ] Return collection tree or subtree (for search narrowing)
+* [ ] Straight-up keyword level searching or filtering for documents (grep style?)
+* [ ] Allow (if available) additional document level or directory level summary / classification and metadata that could be used in searching or revealed when sharing results and documents ("File is a review document for XXXX..." "Directory contains PDF assembly drawings..." "Directory is listing of non-fiction books concerning epidemiological issues
+* [ ] Order multi-file listings by original directory order
