@@ -105,7 +105,7 @@ def test_xml_formatting_flat_and_doc(capsys):
     assert 'title="Special &quot;Doc&quot; &amp; Co"' in out
     assert 'First snippet with **markdown**' in out
 
-    # Doc-grouped sequential XML with gaps
+    # Doc-grouped sequential XML with gaps (gap > 3 has no expand; gap <= 3 has expand)
     grouped = [{
         "title": 'Special "Doc" & Co',
         "collection": "main",
@@ -113,17 +113,21 @@ def test_xml_formatting_flat_and_doc(capsys):
         "score": 0.95,
         "chunks": [
             {"seq_id": 10, "score": 0.95, "rank": 1, "headers": "Intro", "text": "Chunk 10 text"},
-            {"seq_id": 15, "score": 0.80, "rank": 2, "headers": "Details", "text": "Chunk 15 text"}
+            {"seq_id": 13, "score": 0.85, "rank": 2, "headers": "Middle", "text": "Chunk 13 text"},
+            {"seq_id": 20, "score": 0.75, "rank": 3, "headers": "Details", "text": "Chunk 20 text"}
         ]
     }]
     format_doc_results_xml(grouped, query="test query")
     doc_out = capsys.readouterr().out
-    assert '<gap omitted_chunks="10" from_seq="0" to_seq="9" expand="qmd read \'main:doc.md:0-9\'" />' in doc_out
+    # Gap of 10 chunks (> 3): no expand
+    assert '<gap omitted_chunks="10" from_seq="0" to_seq="9" />' in doc_out
+    # Gap of 2 chunks (<= 3): includes expand
+    assert '<gap omitted_chunks="2" from_seq="11" to_seq="12" expand="qmd read \'main:doc.md:11-12\'" />' in doc_out
+    # Gap of 6 chunks (> 3): no expand
+    assert '<gap omitted_chunks="6" from_seq="14" to_seq="19" />' in doc_out
     assert '<chunk seq="10" rank="1" score="0.9500" chars="13" section="Intro"' in doc_out
     assert 'read="qmd read \'main:doc.md:10\'"' in doc_out
     assert 'outline="qmd outline \'main:doc.md\'"' in doc_out
-    assert '<gap omitted_chunks="4" from_seq="11" to_seq="14" expand="qmd read \'main:doc.md:11-14\'" />' in doc_out
-    assert '<chunk seq="15" rank="2" score="0.8000" chars="13" section="Details"' in doc_out
 
     # Chunks XML
     format_chunks_xml([r1, r2])
@@ -131,9 +135,9 @@ def test_xml_formatting_flat_and_doc(capsys):
     assert '<document uri="qmd://main/doc.md"' in chunk_out
     assert 'collection="main"' in chunk_out
     assert 'path="doc.md"' in chunk_out
-    assert '<gap omitted_chunks="4" from_seq="11" to_seq="14" expand="qmd read \'main:doc.md:11-14\'" />' in chunk_out
+    # Gap of 4 chunks (> 3): no expand attribute
+    assert '<gap omitted_chunks="4" from_seq="11" to_seq="14" />' in chunk_out
     assert '<chunk seq="10" chars="31" section="Intro &gt; Overview">' in chunk_out
-    # Chunks in read mode should not have redundant self-referential read attribute
     assert 'read="qmd read \'main:doc.md:10\'' not in chunk_out
 
     # Outline XML
@@ -269,10 +273,37 @@ def test_actionable_xml_attributes(capsys):
         "collection": "Books",
         "path": "space/apollo.epub",
         "score": 0.88,
-        "chunks": [{"seq_id": 70, "score": 0.88, "rank": 1, "headers": "Budget", "text": "Mission details"}]
+        "chunks": [
+            {"seq_id": 2, "score": 0.90, "rank": 1, "headers": "Intro", "text": "Launch"},
+            {"seq_id": 4, "score": 0.88, "rank": 2, "headers": "Budget", "text": "Mission details"}
+        ]
     }]
     format_doc_results_xml(grouped, query="apollo")
     doc_out = capsys.readouterr().out
-    assert 'expand="qmd read \'Books:space/apollo.epub:0-69\'"' in doc_out
-    assert 'read="qmd read \'Books:space/apollo.epub:70\'"' in doc_out
+    # Gap of 2 (0-1) is <= 3: has expand
+    assert '<gap omitted_chunks="2" from_seq="0" to_seq="1" expand="qmd read \'Books:space/apollo.epub:0-1\'" />' in doc_out
+    # Gap of 1 (seq 3) is <= 3: has expand
+    assert '<gap omitted_chunks="1" from_seq="3" to_seq="3" expand="qmd read \'Books:space/apollo.epub:3\'" />' in doc_out
+    assert 'read="qmd read \'Books:space/apollo.epub:4\'"' in doc_out
     assert 'outline="qmd outline \'Books:space/apollo.epub\'"' in doc_out
+
+def test_read_truncation_safety_cap(monkeypatch, capsys):
+    """Test that reading a huge range of chunks truncates and emits a resumption hint."""
+    from unittest.mock import MagicMock, patch
+    from qmd.store import Result
+
+    # Mock returning 50 chunks
+    mock_results = [
+        Result(collection="Books", path="apollo.epub", title="Apollo", text=f"Text {i}", score=1.0, source="vec", rank=i+1, seq_id=i)
+        for i in range(50)
+    ]
+    monkeypatch.setattr(sys, "argv", ["qmd", "read", "Books:apollo.epub:0-49", "--max-chunks", "10", "--xml"])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.get_chunk_by_seq.return_value = mock_results
+        main()
+        out = capsys.readouterr().out
+        assert '<chunk seq="0"' in out
+        assert '<chunk seq="9"' in out
+        assert '<chunk seq="10"' not in out
+        assert '<truncation omitted_chunks="40" reason="max_chunks_per_response limit (10) reached" resume="qmd read \'Books:apollo.epub:10-19\'"' in out

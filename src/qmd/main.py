@@ -448,12 +448,41 @@ def handle_chunk(args, store: Store):
             print(f"{RED}Error: Chunk not found.{RESET}")
         sys.exit(1)
 
+    # Apply max_chunks_per_response cap to prevent context explosion
+    max_chunks = getattr(args, "max_chunks", None)
+    if max_chunks is None:
+        max_chunks = getattr(store.config, "max_chunks_per_response", 30)
+
+    truncation_info = None
+    if max_chunks and len(results) > max_chunks:
+        omitted_remaining = len(results) - max_chunks
+        last_rendered = results[max_chunks - 1]
+        next_chunk = results[max_chunks]
+        next_start_seq = getattr(next_chunk, "seq_id", 0)
+        
+        # Calculate next page range
+        next_slice_len = min(omitted_remaining, max_chunks)
+        next_end_seq = next_start_seq + next_slice_len - 1
+        seq_range = f"{next_start_seq}-{next_end_seq}" if next_start_seq != next_end_seq else f"{next_start_seq}"
+        
+        target_path = spec["path"] or getattr(next_chunk, "path", "")
+        coll_name = coll or getattr(next_chunk, "collection", "")
+        resume_ref = f"{coll_name}:{target_path}:{seq_range}" if coll_name else f"{target_path}:{seq_range}"
+        resume_cmd = f"qmd read '{resume_ref}'"
+
+        truncation_info = {
+            "omitted_remaining": omitted_remaining,
+            "limit": max_chunks,
+            "resume_cmd": resume_cmd
+        }
+        results = results[:max_chunks]
+
     if args.json:
         format_results_json(results)
     elif is_xml:
-        format_chunks_xml(results, window=args.window)
+        format_chunks_xml(results, window=args.window, truncation_info=truncation_info)
     else:
-        format_chunks_cli(results, window=args.window)
+        format_chunks_cli(results, window=args.window, truncation_info=truncation_info)
 
 def handle_collection_tree(args, store: Store):
     is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
@@ -647,6 +676,7 @@ def build_parser():
     read_parser.add_argument("--seq", type=str, default=None, help="Sequence ID or range of chunk(s) (when target is a document path, e.g. 0, 1-5, 2,4,6-8)")
     read_parser.add_argument("-w", "--window", type=int, default=0, help="Number of surrounding chunks to fetch on each side")
     read_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
+    read_parser.add_argument("--max-chunks", type=int, default=None, help="Max chunks to return per read call (defaults to config max_chunks_per_response or 30)")
     read_parser.add_argument("--json", action="store_true", help="Output chunks as JSON")
     read_parser.add_argument("--xml", action="store_true", help="Output chunks as XML for LLM context")
     read_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
