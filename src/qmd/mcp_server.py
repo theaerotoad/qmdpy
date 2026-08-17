@@ -69,11 +69,18 @@ def run_mcp_server(config_path: Optional[str] = None):
         @mcp.tool()
         def qmd(command: str) -> str:
             """
-            Run searches in externally provided document database.
-            Examples: 'search "machine learning"', 'grep my_pattern', 'outline path/to/file.md', 'chunk 123-145'.
-            It is generally recommended to avoid complex flags unless necessary. 
-            The tool automatically enforces --xml formatting for optimal LLM context.
-            Recommend using "-d -r" when searching to return reranked and ordered results.
+            Search and inspect local document knowledge bases using QMD.
+            
+            Primary Commands:
+              - search "query" [--deep] [--session <id>] : Hybrid search. Use --deep for reranked doc grouping.
+              - read "<target>" : Inspect chunk(s) or ranges (e.g. 'Books:doc.epub:10-15', 'qmd://Books/doc.epub:3', or '10-15').
+              - outline "<target>" : Heading table of contents and chunk sequence map.
+              - tree [collection] [-p pattern] : Directory tree of indexed documents.
+              - grep "pattern" [-p path] : Exact substring or regex search.
+              - collections : List configured collections.
+              - guide : Output research workflow and command decision matrix.
+
+            Outputs are automatically formatted in XML with copy-pasteable read="..." attributes.
             """
             return execute_qmd_command(command, config_path)
             
@@ -87,7 +94,7 @@ def run_mcp_server(config_path: Optional[str] = None):
             return [
                 types.Tool(
                     name="qmd",
-                    description="Run searches in externally provided document database. Examples: 'search machine learning', 'grep pattern'. Automatically uses XML output.",
+                    description="Search and inspect local document knowledge bases. Commands: search, read, outline, tree, grep, collections, guide. Automatically outputs XML.",
                     inputSchema={
                         "type": "object",
                         "properties": {

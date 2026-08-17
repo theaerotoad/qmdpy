@@ -305,9 +305,41 @@ def handle_search(args, store: Store):
         db_last_updated
     )
 
+    # Determine max_chunks cap
+    max_chunks = getattr(args, "max_chunks", None)
+    if max_chunks is None:
+        cfg_val = getattr(getattr(store, "config", None), "max_chunks_per_response", 30)
+        max_chunks = cfg_val if isinstance(cfg_val, int) else 30
+
     if is_doc:
         grouped = group_results_by_doc(results)
-        grouped = grouped[:args.limit]
+        grouped = grouped[:limit]
+
+        # Enforce max_chunks cap across all grouped documents
+        truncation_info = None
+        if isinstance(max_chunks, int) and max_chunks > 0:
+            total_doc_chunks = sum(len(d.get("chunks", [])) for d in grouped)
+            if total_doc_chunks > max_chunks:
+                omitted = total_doc_chunks - max_chunks
+                truncation_info = {
+                    "omitted_remaining": omitted,
+                    "limit": max_chunks
+                }
+                curr_count = 0
+                new_grouped = []
+                for d in grouped:
+                    doc_chunks = d.get("chunks", [])
+                    if curr_count + len(doc_chunks) <= max_chunks:
+                        new_grouped.append(d)
+                        curr_count += len(doc_chunks)
+                    else:
+                        remaining_slots = max_chunks - curr_count
+                        if remaining_slots > 0:
+                            d["chunks"] = doc_chunks[:remaining_slots]
+                            new_grouped.append(d)
+                            curr_count += remaining_slots
+                        break
+                grouped = new_grouped
         
         # Record session results at chunk level
         shown_chunks = []
@@ -323,19 +355,28 @@ def handle_search(args, store: Store):
         record_session_results(store.history_conn, session_id, event_id, shown_chunks)
 
         if args.json:
-            format_doc_results_json(grouped, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
+            format_doc_results_json(grouped, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)
         elif is_xml:
-            format_doc_results_xml(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, seen_chunks=seen_chunks_count)
+            format_doc_results_xml(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, seen_chunks=seen_chunks_count, truncation_info=truncation_info)
         else:
-            format_doc_results_cli(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
+            format_doc_results_cli(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)
     else:
+        truncation_info = None
+        if isinstance(max_chunks, int) and max_chunks > 0 and len(results) > max_chunks:
+            omitted = len(results) - max_chunks
+            truncation_info = {
+                "omitted_remaining": omitted,
+                "limit": max_chunks
+            }
+            results = results[:max_chunks]
+
         record_session_results(store.history_conn, session_id, event_id, results)
         if args.json:
-            format_results_json(results, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
+            format_results_json(results, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)
         elif is_xml:
-            format_results_xml(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, seen_chunks=seen_chunks_count)
+            format_results_xml(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, seen_chunks=seen_chunks_count, truncation_info=truncation_info)
         else:
-            format_results_cli(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
+            format_results_cli(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)
 
 def handle_outline(args, store: Store):
     is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
@@ -527,6 +568,70 @@ def handle_collection_tree(args, store: Store):
     else:
         format_collection_tree_cli(tree_data)
 
+def handle_guide(args, store: Store):
+    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    if getattr(args, "plain", False) or is_xml:
+        set_plain_mode(True)
+
+    if is_xml:
+        guide_xml = """<qmd_guide>
+  <overview>QMD is a local search, retrieval, and document inspection engine designed for LLM agents.</overview>
+  <workflow>
+    <step num="1" name="Discovery">Use `qmd collections` or `qmd tree [collection]` to explore indexed files and paths.</step>
+    <step num="2" name="Search">Use `qmd search "query" --deep` for reranked, document-grouped results, or `qmd search "query" --session <id>` for multi-turn deduplication.</step>
+    <step num="3" name="Orient">Use `qmd outline "<target>"` to inspect heading hierarchies and chunk sequence spans.</step>
+    <step num="4" name="Read">Use `qmd read "<target>"` to fetch chunks/ranges, or execute exact `read="..."` / `expand="..."` attributes from search results.</step>
+    <step num="5" name="Pattern">Use `qmd grep "pattern"` for exact substring or regex matches across document text.</step>
+  </workflow>
+  <shorthand_targets>
+    <target syntax="coll:path:seq_range">e.g. `Books:history.epub:10-15` or `qmd://Books/history.epub:10-15`</target>
+    <target syntax="coll:path">e.g. `Books:history.epub` or `qmd://Books/history.epub`</target>
+    <target syntax="path:seq_range">e.g. `notes.md:0-3`</target>
+    <target syntax="row_ids">e.g. `10-15` or `22,40,25-27`</target>
+  </shorthand_targets>
+  <agent_tips>
+    <tip>Multi-turn sessions: pass `--session <id>` to automatically exclude previously seen chunks across query turns.</tip>
+    <tip>Presets: `--deep` combines LLM reranking and document grouping; `--broad` runs wide-to-narrow hierarchical search.</tip>
+    <tip>Agent hypermedia: copy-paste the `read="..."`, `outline="..."`, and `expand="..."` attributes directly into CLI calls.</tip>
+    <tip>Safety cap: large reads truncate at max_chunks (default 30) and provide a `resume="..."` command for the next slice.</tip>
+  </agent_tips>
+</qmd_guide>"""
+        print(guide_xml)
+    else:
+        guide_md = f"""{BOLD}QMD LLM Agent Research & Inspection Guide{RESET}
+
+{CYAN}## Workflow & Decision Matrix{RESET}
+1. {BOLD}Discovery & Hierarchy:{RESET}
+   - `qmd collections` - List indexed collections and paths
+   - `qmd tree [collection] [-p pattern]` - Explore document directory trees
+
+2. {BOLD}Retrieval & Search:{RESET}
+   - `qmd search "query" --deep` - Deep search: doc-grouped + LLM reranked (recommended default)
+   - `qmd search "query" --session <id>` - Session search (auto-deduplicates seen chunks)
+   - `qmd search "query" --broad` - Broad hierarchical search (wide-to-narrow)
+
+3. {BOLD}Document Structure & Orientation:{RESET}
+   - `qmd outline "<target>"` - Table of contents with chunk sequence mappings
+
+4. {BOLD}Targeted Reading:{RESET}
+   - `qmd read "<target>"` - Read specific chunks, ranges, or surrounding context
+   - Examples: `qmd read 'Books:doc.epub:10-15'`, `qmd read 'qmd://Books/doc.epub:3'`
+
+5. {BOLD}Exact Pattern Matching:{RESET}
+   - `qmd grep "pattern" [-c coll] [-p path]` - Fast literal or regex search
+
+{CYAN}## Target Shorthand Syntax{RESET}
+- Full URI: `qmd://<collection>/<path>[:<seq>]`
+- Shorthand: `<collection>:<path>[:<seq>]`
+- Relative: `<path>[:<seq>]`
+- Chunk Row IDs: `10-15` or `22,40,25-27`
+
+{CYAN}## Multi-Turn Agent Best Practices{RESET}
+- Pass `--session <id>` to avoid ingesting duplicate context on follow-up searches.
+- Follow actionable XML attributes (`read="..."`, `outline="..."`, `expand="..."`, `resume="..."`).
+- Large reads truncate at 30 chunks with a resume hint to protect context windows."""
+        print(guide_md.strip())
+
 def handle_collections_list(args, store: Store):
     if getattr(args, "plain", False):
         set_plain_mode(True)
@@ -633,6 +738,7 @@ def build_parser():
     mode_group.add_argument("-w", "--w2n", action="store_true", help="Use Wide-to-Narrow hierarchical search")
     mode_group.add_argument("--broad", action="store_true", help="Broad search: alias for Wide-to-Narrow hierarchical search (--w2n)")
     mode_group.add_argument("--limit", type=int, default=None, help="Number of final results to show")
+    mode_group.add_argument("--max-chunks", type=int, default=None, help="Max chunks to return (defaults to config max_chunks_per_response or 30)")
     mode_group.add_argument("--fts-limit", type=int, default=None, help="Max number of FTS (lexical) matches to retrieve")
     mode_group.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
     mode_group.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")
@@ -700,6 +806,11 @@ def build_parser():
     colls_parser.add_argument("--json", action="store_true", help="Output collections list as JSON")
     colls_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
+    guide_parser = subparsers.add_parser("guide", help="Emit LLM agent research guide and command decision matrix", parents=[parent_parser])
+    guide_parser.add_argument("--xml", action="store_true", help="Output guide in XML format")
+    guide_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
+    guide_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
+
     update_parser = subparsers.add_parser("update", help="Update the index", parents=[parent_parser])
     update_parser.add_argument("--pull", action="store_true", help="Run 'git pull' before indexing")
     update_parser.add_argument("-f", "--force", action="store_true", help="Force re-indexing of all files, ignoring hash checks")
@@ -742,6 +853,8 @@ def execute_command(args, store):
         handle_collection_tree(args, store)
     elif args.command in ["collections", "colls"]:
         handle_collections_list(args, store)
+    elif args.command == "guide":
+        handle_guide(args, store)
     elif args.command == "update":
         handle_update(args, store)
     elif args.command == "collection":
