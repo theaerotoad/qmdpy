@@ -38,6 +38,15 @@ def execute_qmd_command(command_str: str, config_path: Optional[str] = None, sto
     if attr_match:
         raw_cmd = attr_match.group(1).strip()
 
+    # Strip tool_call tags and tool prefixes e.g. <|tool_call>call:...<tool_call|>
+    raw_cmd = re.sub(r'^<\|?(?:tool_call|tool_calls)[^>]*>(?:call:)?', '', raw_cmd, flags=re.IGNORECASE).strip()
+    raw_cmd = re.sub(r'<\|?/(?:tool_call|tool_calls)?[^>]*>$', '', raw_cmd, flags=re.IGNORECASE).strip()
+    raw_cmd = re.sub(r'^call:\s*', '', raw_cmd, flags=re.IGNORECASE).strip()
+
+    # Strip surrounding backticks e.g. `qmd search "..."`
+    if raw_cmd.startswith('`') and raw_cmd.endswith('`') and len(raw_cmd) >= 2:
+        raw_cmd = raw_cmd[1:-1].strip()
+
     # Strip XML tag wrappers e.g. <command>...</command>
     tag_match = re.match(r'^<[^>]+>(.*)</[^>]+>$', raw_cmd, re.DOTALL)
     if tag_match:

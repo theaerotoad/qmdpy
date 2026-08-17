@@ -32,25 +32,60 @@ def get_store():
     return g.store
 
 def extract_batch_commands(input_data: Union[str, List[str]], max_commands: int = 5) -> List[str]:
-    """Extracts up to max_commands valid command lines from raw text, markdown blocks, or string lists."""
-    raw_lines = []
+    """Extracts up to max_commands valid command lines from raw text, LLM thinking blocks, tool calls, or XML blocks."""
     if isinstance(input_data, list):
-        for item in input_data:
-            if isinstance(item, str):
-                raw_lines.extend(item.splitlines())
+        text = "\n".join(str(item) for item in input_data)
     elif isinstance(input_data, str):
-        raw_lines = input_data.strip().splitlines()
+        text = input_data
     else:
         return []
 
+    # Strip out chain-of-thought blocks if present (e.g. <think>...</think>)
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
+
+    # 1. Try extracting commands from common LLM tool calling syntax and XML containers
+    extracted_candidates = []
+
+    # Matches <|tool_call|>call:command<|tool_call|> or <|tool_call>call:command<tool_call|>
+    for m in re.finditer(r'<\|?(?:tool_call|tool_calls)[^>]*>(?:call:)?\s*(.*?)\s*<\|?/(?:tool_call|tool_calls)?[^>]*>', text, re.DOTALL | re.IGNORECASE):
+        for candidate in m.group(1).splitlines():
+            c = candidate.strip()
+            if c:
+                extracted_candidates.append(c)
+
+    # Matches <qmd_commands>...</qmd_commands> or <commands>...</commands>
+    for m in re.finditer(r'<(?:qmd_commands|commands|batch_commands)>\s*(.*?)\s*</(?:qmd_commands|commands|batch_commands)>', text, re.DOTALL | re.IGNORECASE):
+        for candidate in m.group(1).splitlines():
+            c = candidate.strip()
+            if c:
+                extracted_candidates.append(c)
+
+    # Matches individual <command>...</command> or <call>...</call> tags
+    for m in re.finditer(r'<(?:command|call|cmd)>\s*(.*?)\s*</(?:command|call|cmd)>', text, re.DOTALL | re.IGNORECASE):
+        c = m.group(1).strip()
+        if c:
+            extracted_candidates.append(c)
+
+    # If dedicated tool call or XML wrapper tags were found, use them; otherwise, parse line-by-line
+    source_lines = extracted_candidates if extracted_candidates else text.splitlines()
+
     commands = []
-    for line in raw_lines:
+    for line in source_lines:
         line = line.strip()
         if not line or line.startswith("#") or line.startswith("```"):
             continue
 
+        # Strip special tool-call token prefixes/suffixes if embedded
+        line = re.sub(r'^<\|?(?:tool_call|tool_calls)[^>]*>(?:call:)?', '', line, flags=re.IGNORECASE).strip()
+        line = re.sub(r'<\|?/(?:tool_call|tool_calls)?[^>]*>$', '', line, flags=re.IGNORECASE).strip()
+        line = re.sub(r'^call:\s*', '', line, flags=re.IGNORECASE).strip()
+
         # Strip list numbering e.g. "1. ", "- ", "* "
         line = re.sub(r'^(?:\d+[\.\)]|\*|\-)\s+', '', line).strip()
+
+        # Strip inline backticks e.g. `qmd search "..."`
+        if line.startswith('`') and line.endswith('`') and len(line) >= 2:
+            line = line[1:-1].strip()
 
         # Strip XML attribute wrappers e.g. read="qmd read '...'" or outline="..."
         attr_match = re.match(r'^(?:read|outline|expand|resume)\s*=\s*["\'](.*)["\']$', line, re.IGNORECASE)

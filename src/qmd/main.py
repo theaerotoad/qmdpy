@@ -581,6 +581,15 @@ def handle_guide(args, store: Optional[Store] = None):
     if is_xml:
         guide_xml = """<qmd_guide>
   <overview>QMD is a local search, retrieval, and document inspection engine designed for LLM agents.</overview>
+  <batch_execution_format>
+When requested to perform research or retrieve data using QMD, emit 1 to 5 commands wrapped in a <qmd_commands> XML container:
+
+<qmd_commands>
+  qmd search "query" --deep
+  qmd outline "coll:path.md"
+  qmd read "coll:path.md:10-15"
+</qmd_commands>
+  </batch_execution_format>
   <workflow>
     <step num="1" name="Discovery">Use `qmd collections` or `qmd tree [collection]` to explore indexed files and paths.</step>
     <step num="2" name="Search">Use `qmd search "query" --deep` for reranked, document-grouped results, or `qmd search "query" --session <id>` for multi-turn deduplication.</step>
@@ -595,6 +604,7 @@ def handle_guide(args, store: Optional[Store] = None):
     <target syntax="row_ids">e.g. `10-15` or `22,40,25-27`</target>
   </shorthand_targets>
   <agent_tips>
+    <tip>Batch execution: emit 1 to 5 sequential commands in a <qmd_commands> block for unified batch processing.</tip>
     <tip>Multi-turn sessions: pass `--session <id>` to automatically exclude previously seen chunks across query turns.</tip>
     <tip>Presets: `--deep` combines LLM reranking and document grouping; `--broad` runs wide-to-narrow hierarchical search.</tip>
     <tip>Agent hypermedia: copy-paste the `read="..."`, `outline="..."`, and `expand="..."` attributes directly into CLI calls.</tip>
