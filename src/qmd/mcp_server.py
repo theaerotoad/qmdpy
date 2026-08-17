@@ -67,12 +67,13 @@ def run_mcp_server(config_path: Optional[str] = None):
         mcp = FastMCP("qmd")
 
         @mcp.tool()
-        def qmd_cli(command: str) -> str:
+        def qmd(command: str) -> str:
             """
-            Run Quick Markdown Search (qmd) commands. 
+            Run searches in externally provided document database.
             Examples: 'search "machine learning"', 'grep my_pattern', 'outline path/to/file.md', 'chunk 123-145'.
             It is generally recommended to avoid complex flags unless necessary. 
             The tool automatically enforces --xml formatting for optimal LLM context.
+            Recommend using "-d -r" when searching to return reranked and ordered results.
             """
             return execute_qmd_command(command, config_path)
             
@@ -85,14 +86,14 @@ def run_mcp_server(config_path: Optional[str] = None):
         async def list_tools() -> list[types.Tool]:
             return [
                 types.Tool(
-                    name="qmd_cli",
-                    description="Run Quick Markdown Search (qmd) commands. Examples: 'search machine learning', 'grep pattern'. Automatically uses XML output.",
+                    name="qmd",
+                    description="Run searches in externally provided document database. Examples: 'search machine learning', 'grep pattern'. Automatically uses XML output.",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "command": {
                                 "type": "string",
-                                "description": "The full CLI command string to pass to qmd (excluding the 'qmd' binary name)."
+                                "description": "Full command string to pass to qmd (excluding the 'qmd' binary name)."
                             }
                         },
                         "required": ["command"]
@@ -102,7 +103,7 @@ def run_mcp_server(config_path: Optional[str] = None):
 
         @app.call_tool()
         async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
-            if name != "qmd_cli":
+            if name != "qmd":
                 raise ValueError(f"Unknown tool: {name}")
 
             command_str = arguments.get("command", "")
