@@ -325,3 +325,71 @@ def test_read_truncation_safety_cap(monkeypatch, capsys):
         assert '<chunk seq="9"' in out
         assert '<chunk seq="10"' not in out
         assert '<truncation omitted_chunks="40" reason="max_chunks_per_response limit (10) reached" resume="qmd read \'Books:apollo.epub:10-19\'"' in out
+
+def test_env_var_qmd_config(monkeypatch, tmp_path):
+    """Test that QMD_CONFIG sets the default configuration path when -C is not passed."""
+    custom_cfg = tmp_path / "custom_config.yml"
+    custom_cfg.write_text("db_path: /tmp/custom.db\n")
+    
+    monkeypatch.setenv("QMD_CONFIG", str(custom_cfg))
+    monkeypatch.setattr(sys, "argv", ["qmd", "collections", "--plain"])
+    
+    with patch("qmd.main.Store") as MockStore:
+        main()
+        MockStore.assert_called_once()
+        # Verify load_config picked up the custom path
+        loaded_cfg = MockStore.call_args[0][0]
+        assert loaded_cfg.config_path == str(custom_cfg.resolve())
+
+def test_env_var_qmd_xml(monkeypatch, capsys):
+    """Test that QMD_XML='1' defaults command outputs to XML without --xml flag."""
+    monkeypatch.setenv("QMD_XML", "1")
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "apollo"])
+    
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.hybrid_search.return_value = [
+            MagicMock(collection="space", path="apollo.md", title="Apollo", score=0.95, rank=1, seq_id=1, headers="Intro", text="Apollo mission details")
+        ]
+        mock_store.last_exclusion_stats = {}
+        main()
+        out = capsys.readouterr().out
+        assert '<search_results query="apollo"' in out
+        assert '<result' in out
+        assert 'Apollo mission details' in out
+
+def test_env_var_qmd_deep(monkeypatch):
+    """Test that QMD_DEEP='1' automatically triggers deep search (reranking + doc grouping)."""
+    monkeypatch.setenv("QMD_DEEP", "1")
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "apollo"])
+    
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.hybrid_search.return_value = []
+        mock_store.last_exclusion_stats = {}
+        main()
+        mock_store.hybrid_search.assert_called_once()
+        assert mock_store.hybrid_search.call_args.kwargs["rerank"] is True
+
+def test_guide_command(monkeypatch, capsys):
+    """Test that qmd guide outputs the agent workflow matrix and XML."""
+    # Plain text guide
+    monkeypatch.setattr(sys, "argv", ["qmd", "guide", "--plain"])
+    with patch("qmd.main.Store"), patch("qmd.main.load_config"):
+        main()
+        out = capsys.readouterr().out
+        assert "QMD LLM Agent Research & Inspection Guide" in out
+        assert "qmd search" in out
+        assert "qmd read" in out
+        assert "qmd outline" in out
+        assert "qmd tree" in out
+
+    # XML guide
+    monkeypatch.setattr(sys, "argv", ["qmd", "guide", "--xml"])
+    with patch("qmd.main.Store"), patch("qmd.main.load_config"):
+        main()
+        out = capsys.readouterr().out
+        assert "<qmd_guide>" in out
+        assert "<workflow>" in out
+        assert "<shorthand_targets>" in out
+        assert "</qmd_guide>" in out
