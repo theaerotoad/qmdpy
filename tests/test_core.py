@@ -139,3 +139,61 @@ def test_vector_quantization_encoding():
     assert len(decoded_bit) == 4
     assert decoded_bit[0] == 1.0   # 0.5 > 0 -> 1.0
     assert decoded_bit[1] == -1.0  # -0.25 <= 0 -> -1.0
+
+def test_parse_target_spec():
+    from qmd.utils import parse_target_spec
+
+    # 1. Full URIs
+    t1 = parse_target_spec("qmd://Books/NASA/history.epub")
+    assert t1["collection"] == "Books"
+    assert t1["path"] == "NASA/history.epub"
+    assert t1["seq"] is None
+    assert t1["row_ids"] is None
+
+    t1_seq = parse_target_spec("qmd://Books/doc.md:0")
+    assert t1_seq["collection"] == "Books"
+    assert t1_seq["path"] == "doc.md"
+    assert t1_seq["seq"] == [0]
+
+    t1_range = parse_target_spec("qmd://Books/Space/apollo.epub:1-4")
+    assert t1_range["collection"] == "Books"
+    assert t1_range["path"] == "Space/apollo.epub"
+    assert t1_range["seq"] == [1, 2, 3, 4]
+
+    # 2. Shorthands (coll:path:seq)
+    t2 = parse_target_spec("Books:NASA/history.epub:1-5")
+    assert t2["collection"] == "Books"
+    assert t2["path"] == "NASA/history.epub"
+    assert t2["seq"] == [1, 2, 3, 4, 5]
+
+    t2_no_seq = parse_target_spec("Books:Space/apollo.epub")
+    assert t2_no_seq["collection"] == "Books"
+    assert t2_no_seq["path"] == "Space/apollo.epub"
+    assert t2_no_seq["seq"] is None
+
+    # 3. Relative targets (path:seq and path)
+    t3 = parse_target_spec("NASA/history.epub:3")
+    assert t3["collection"] is None
+    assert t3["path"] == "NASA/history.epub"
+    assert t3["seq"] == [3]
+
+    t3_plain = parse_target_spec("Space/apollo.epub")
+    assert t3_plain["collection"] is None
+    assert t3_plain["path"] == "Space/apollo.epub"
+    assert t3_plain["seq"] is None
+
+    # 4. Integer row IDs and ranges
+    t4 = parse_target_spec("10-15")
+    assert t4["row_ids"] == [10, 11, 12, 13, 14, 15]
+    assert t4["path"] is None
+
+    t4_comma = parse_target_spec("22,40,25-27")
+    assert t4_comma["row_ids"] == [22, 25, 26, 27, 40]
+
+    t4_int = parse_target_spec(42)
+    assert t4_int["row_ids"] == [42]
+
+    # 5. Default collection fallback
+    t5 = parse_target_spec("doc.md", default_collection="Notes")
+    assert t5["collection"] == "Notes"
+    assert t5["path"] == "doc.md"

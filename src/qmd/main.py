@@ -17,7 +17,7 @@ from qmd.formatting import (
     format_grep_cli, format_grep_json, format_grep_xml,
     set_plain_mode, RED, GREEN, RESET
 )
-from qmd.utils import redact_pii
+from qmd.utils import redact_pii, parse_target_spec, parse_int_ranges
 
 def _clean_header_part(part: str) -> str:
     """Strips leading/trailing markdown hashes, whitespace, and formatting."""
@@ -326,13 +326,17 @@ def handle_outline(args, store: Store):
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
-    outline = store.get_document_outline(collection=args.collection, path=args.path)
+    spec = parse_target_spec(args.path, default_collection=getattr(args, "collection", None))
+    coll = spec["collection"] or getattr(args, "collection", None)
+    target_path = spec["path"] if spec["path"] is not None else args.path
+
+    outline = store.get_document_outline(collection=coll, path=target_path)
     if not outline:
         if args.json:
             import json
             print(json.dumps({"error": "Document not found"}, indent=2))
         else:
-            print(f"{RED}Error: Document not found matching path '{args.path}'{RESET}")
+            print(f"{RED}Error: Document not found matching path '{target_path}'{RESET}")
         sys.exit(1)
 
     if args.json:
@@ -353,13 +357,22 @@ def handle_grep(args, store: Store):
     case_sensitive = getattr(args, "case_sensitive", False) and not getattr(args, "ignore_case", False)
     limit = getattr(args, "limit", 50) or 50
 
+    coll = getattr(args, "collection", None)
+    path = getattr(args, "path", None)
+    if path:
+        spec = parse_target_spec(path, default_collection=coll)
+        if spec["collection"]:
+            coll = spec["collection"]
+        if spec["path"]:
+            path = spec["path"]
+
     try:
         results = store.grep_search(
             pattern=pattern,
             is_regex=is_regex,
             case_sensitive=case_sensitive,
-            collection=getattr(args, "collection", None),
-            path=getattr(args, "path", None),
+            collection=coll,
+            path=path,
             limit=limit
         )
     except ValueError as e:
@@ -385,12 +398,12 @@ def handle_chunk(args, store: Store):
     target = args.target
     results = []
 
-    from qmd.utils import parse_int_ranges
+    spec = parse_target_spec(target, default_collection=getattr(args, "collection", None))
+    coll = spec["collection"] or getattr(args, "collection", None)
 
-    parsed_target_ids = parse_int_ranges(target)
-
-    if args.seq is not None:
-        seq_ids = parse_int_ranges(args.seq)
+    cli_seq = getattr(args, "seq", None)
+    if cli_seq is not None:
+        seq_ids = parse_int_ranges(cli_seq)
         if seq_ids is None:
             if args.json:
                 import json
@@ -398,11 +411,18 @@ def handle_chunk(args, store: Store):
             else:
                 print(f"{RED}Error: Invalid sequence range specification: '{args.seq}'{RESET}")
             sys.exit(1)
-        results = store.get_chunk_by_seq(args.collection, target, seq_id=seq_ids, window=args.window)
-    elif parsed_target_ids is not None:
-        results = store.get_chunk_by_id(parsed_target_ids, window=args.window)
     else:
-        results = store.get_chunk_by_seq(args.collection, target, seq_id=0, window=args.window)
+        seq_ids = spec["seq"]
+
+    if spec["row_ids"] is not None and cli_seq is None and spec["path"] is None:
+        results = store.get_chunk_by_id(spec["row_ids"], window=args.window)
+    elif spec["path"] is not None:
+        target_seq = seq_ids if seq_ids is not None else 0
+        results = store.get_chunk_by_seq(coll, spec["path"], seq_id=target_seq, window=args.window)
+    elif spec["row_ids"] is not None:
+        results = store.get_chunk_by_id(spec["row_ids"], window=args.window)
+    else:
+        results = store.get_chunk_by_seq(coll, target, seq_id=0, window=args.window)
 
     if not results:
         if args.json:
@@ -460,6 +480,17 @@ def handle_collection_tree(args, store: Store):
         format_collection_tree_xml(tree_data)
     else:
         format_collection_tree_cli(tree_data)
+
+def handle_collections_list(args, store: Store):
+    if getattr(args, "plain", False):
+        set_plain_mode(True)
+    if getattr(args, "json", False):
+        import json
+        data = {name: {"path": cfg.path, "glob": cfg.glob} for name, cfg in store.config.collections.items()}
+        print(json.dumps(data, indent=2))
+    else:
+        for name, cfg in store.config.collections.items():
+            print(f"{GREEN}{name}{RESET}: {cfg.path} ({cfg.glob})")
 
 def handle_update(args, store: Store):
     config = store.config
@@ -584,15 +615,32 @@ def build_parser():
     grep_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
     grep_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
-    chunk_parser = subparsers.add_parser("chunk", help="Fetch specific chunk by rowid or path with surrounding context window", parents=[parent_parser])
-    chunk_parser.add_argument("target", help="Document path OR chunk rowid/ranges (e.g. 234-299, 23,24,29, 22,40,25-37)")
-    chunk_parser.add_argument("--seq", type=str, default=None, help="Sequence ID or range of chunk(s) (when target is a document path, e.g. 0, 1-5, 2,4,6-8)")
-    chunk_parser.add_argument("-w", "--window", type=int, default=0, help="Number of surrounding chunks to fetch on each side")
-    chunk_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
-    chunk_parser.add_argument("--json", action="store_true", help="Output chunks as JSON")
-    chunk_parser.add_argument("--xml", action="store_true", help="Output chunks as XML for LLM context")
-    chunk_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
-    chunk_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
+    read_parser = subparsers.add_parser("read", aliases=["chunk", "get", "view"], help="Fetch specific chunk by rowid, path, or URI with surrounding context window", parents=[parent_parser])
+    read_parser.add_argument("target", help="Document path, URI (qmd://...), shorthand (coll:path:seq), OR chunk rowid/ranges")
+    read_parser.add_argument("--seq", type=str, default=None, help="Sequence ID or range of chunk(s) (when target is a document path, e.g. 0, 1-5, 2,4,6-8)")
+    read_parser.add_argument("-w", "--window", type=int, default=0, help="Number of surrounding chunks to fetch on each side")
+    read_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
+    read_parser.add_argument("--json", action="store_true", help="Output chunks as JSON")
+    read_parser.add_argument("--xml", action="store_true", help="Output chunks as XML for LLM context")
+    read_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
+    read_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
+
+    tree_parser = subparsers.add_parser("tree", help="Display hierarchical directory tree of indexed files", parents=[parent_parser])
+    tree_parser.add_argument("name", nargs="?", default=None, help="Optional collection name")
+    tree_parser.add_argument("-c", "--collection", type=str, default=None, help="Filter by collection name")
+    tree_parser.add_argument("-p", "--pattern", type=str, default=None, help="Pattern or substring to filter file paths and titles")
+    tree_parser.add_argument("-r", "--regex", action="store_true", help="Treat pattern as a regular expression")
+    tree_parser.add_argument("-s", "--case-sensitive", action="store_true", help="Perform case-sensitive matching")
+    tree_parser.add_argument("-i", "--ignore-case", action="store_true", help="Perform case-insensitive matching (default)")
+    tree_parser.add_argument("--depth", type=int, default=None, help="Maximum directory depth to display")
+    tree_parser.add_argument("--json", action="store_true", help="Output directory tree as JSON")
+    tree_parser.add_argument("--xml", action="store_true", help="Output directory tree as XML for LLM context")
+    tree_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
+    tree_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
+
+    colls_parser = subparsers.add_parser("collections", aliases=["colls"], help="List configured collections and paths", parents=[parent_parser])
+    colls_parser.add_argument("--json", action="store_true", help="Output collections list as JSON")
+    colls_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
     update_parser = subparsers.add_parser("update", help="Update the index", parents=[parent_parser])
     update_parser.add_argument("--pull", action="store_true", help="Run 'git pull' before indexing")
@@ -630,14 +678,17 @@ def execute_command(args, store):
         handle_outline(args, store)
     elif args.command == "grep":
         handle_grep(args, store)
-    elif args.command == "chunk":
+    elif args.command in ["read", "chunk", "get", "view"]:
         handle_chunk(args, store)
+    elif args.command == "tree":
+        handle_collection_tree(args, store)
+    elif args.command in ["collections", "colls"]:
+        handle_collections_list(args, store)
     elif args.command == "update":
         handle_update(args, store)
     elif args.command == "collection":
         if args.subcommand == "list":
-            for name, cfg in store.config.collections.items():
-                print(f"{GREEN}{name}{RESET}: {cfg.path} ({cfg.glob})")
+            handle_collections_list(args, store)
         elif args.subcommand == "tree":
             handle_collection_tree(args, store)
     elif args.command == "serve":

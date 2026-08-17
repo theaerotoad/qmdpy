@@ -299,6 +299,134 @@ def parse_int_ranges(spec: Union[str, int]) -> Optional[List[int]]:
 
     return sorted(result_set)
 
+def parse_target_spec(target: Union[str, int, None], default_collection: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Parses a target string or int into structured components:
+      - URIs: qmd://<collection>/<path>[:<seq_spec>]
+      - Shorthands: <collection>:<path>[:<seq_spec>]
+      - Relative targets: <path>:<seq_spec> or <path>
+      - Chunk row ID / ID ranges: e.g. 5, "10-15", "22,40,25-27"
+
+    Returns a dict:
+      {
+        "collection": Optional[str],
+        "path": Optional[str],
+        "seq": Optional[List[int]],
+        "seq_ids": Optional[List[int]],  # alias for seq
+        "row_ids": Optional[List[int]]
+      }
+    """
+    if target is None:
+        return {
+            "collection": default_collection,
+            "path": None,
+            "seq": None,
+            "seq_ids": None,
+            "row_ids": None
+        }
+
+    if isinstance(target, int):
+        return {
+            "collection": default_collection,
+            "path": None,
+            "seq": None,
+            "seq_ids": None,
+            "row_ids": [target]
+        }
+
+    if not isinstance(target, str):
+        return {
+            "collection": default_collection,
+            "path": None,
+            "seq": None,
+            "seq_ids": None,
+            "row_ids": None
+        }
+
+    s = target.strip()
+    if not s:
+        return {
+            "collection": default_collection,
+            "path": None,
+            "seq": None,
+            "seq_ids": None,
+            "row_ids": None
+        }
+
+    # 1. Pure row ID or integer ranges (e.g., "5", "10-15", "22,40,25-27")
+    if re.match(r'^[0-9,\-\s]+$', s):
+        parsed_ids = parse_int_ranges(s)
+        if parsed_ids is not None:
+            return {
+                "collection": default_collection,
+                "path": None,
+                "seq": None,
+                "seq_ids": None,
+                "row_ids": parsed_ids
+            }
+
+    # 2. URI scheme: qmd://<collection>/<path>[:<seq_spec>]
+    if s.startswith("qmd://"):
+        uri_body = s[6:]
+        seq = None
+        if ":" in uri_body:
+            body_part, seq_part = uri_body.rsplit(":", 1)
+            parsed_seq = parse_int_ranges(seq_part)
+            if parsed_seq is not None:
+                uri_body = body_part
+                seq = parsed_seq
+
+        coll = default_collection
+        if "/" in uri_body:
+            coll_part, path_part = uri_body.split("/", 1)
+            coll = coll_part if coll_part else default_collection
+            path = path_part
+        else:
+            path = uri_body
+
+        return {
+            "collection": coll,
+            "path": path,
+            "seq": seq,
+            "seq_ids": seq,
+            "row_ids": None
+        }
+
+    # 3. Check for Windows absolute path (e.g. C:\path or C:/path)
+    has_drive_letter = bool(re.match(r'^[a-zA-Z]:[\\/]', s))
+
+    coll = default_collection
+    path = s
+    seq = None
+
+    if not has_drive_letter and ":" in s:
+        parts = s.split(":")
+        last_seq = parse_int_ranges(parts[-1])
+        if last_seq is not None and len(parts) >= 2:
+            seq = last_seq
+            remaining = ":".join(parts[:-1])
+            if ":" in remaining:
+                coll_part, path_part = remaining.split(":", 1)
+                coll = coll_part if coll_part else default_collection
+                path = path_part
+            else:
+                path = remaining
+        else:
+            if len(parts) == 2:
+                coll = parts[0] if parts[0] else default_collection
+                path = parts[1]
+            else:
+                coll = parts[0] if parts[0] else default_collection
+                path = ":".join(parts[1:])
+
+    return {
+        "collection": coll,
+        "path": path,
+        "seq": seq,
+        "seq_ids": seq,
+        "row_ids": None
+    }
+
 def parse_query_directives(query: str) -> Tuple[str, Dict[str, Any]]:
     """
     Parses inline cheat codes and directives from a query string.
