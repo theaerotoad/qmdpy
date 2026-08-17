@@ -1,8 +1,9 @@
 import sys
 import shlex
 import io
+import re
 import contextlib
-from typing import Optional
+from typing import Optional, Any
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -17,7 +18,7 @@ except ImportError:
     except ImportError:
         MCP_AVAILABLE = False
 
-def execute_qmd_command(command_str: str, config_path: Optional[str] = None) -> str:
+def execute_qmd_command(command_str: str, config_path: Optional[str] = None, store: Optional[Any] = None) -> str:
     from qmd.main import build_parser, execute_command
     from qmd.config import load_config
     from qmd.store import Store
@@ -27,13 +28,37 @@ def execute_qmd_command(command_str: str, config_path: Optional[str] = None) -> 
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-    if not command_str:
+    if not command_str or not command_str.strip():
         return "Error: command cannot be empty."
 
+    raw_cmd = command_str.strip()
+
+    # Strip XML attribute wrappers e.g. read="qmd read '...'" or outline="..."
+    attr_match = re.match(r'^(?:read|outline|expand|resume)\s*=\s*["\'](.*)["\']$', raw_cmd, re.IGNORECASE)
+    if attr_match:
+        raw_cmd = attr_match.group(1).strip()
+
+    # Strip XML tag wrappers e.g. <command>...</command>
+    tag_match = re.match(r'^<[^>]+>(.*)</[^>]+>$', raw_cmd, re.DOTALL)
+    if tag_match:
+        raw_cmd = tag_match.group(1).strip()
+
     try:
-        args_list = shlex.split(command_str)
+        args_list = shlex.split(raw_cmd)
     except ValueError as e:
         return f"Error parsing command string: {e}"
+
+    if not args_list:
+        return "Error: command cannot be empty."
+
+    # Strip leading 'qmd' or python invocation
+    if args_list[0] in ("qmd", "./qmd", "qmd.exe"):
+        args_list = args_list[1:]
+    elif len(args_list) >= 3 and args_list[0] in ("python", "python3") and args_list[1] == "-m" and args_list[2] == "qmd.main":
+        args_list = args_list[3:]
+
+    if not args_list:
+        return "Error: no subcommand provided."
 
     parser = build_parser()
     f = io.StringIO()
@@ -42,22 +67,23 @@ def execute_qmd_command(command_str: str, config_path: Optional[str] = None) -> 
         with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
             args = parser.parse_args(args_list)
             
-            # The prompt says return the xml-formatted version of the outputs.
-            # We dynamically inject --xml if applicable to ensure clean LLM-friendly output.
+            # Dynamically inject --xml if applicable to ensure clean LLM-friendly output
             if hasattr(args, 'xml') and not getattr(args, 'json', False):
                 args.xml = True
                 
-            config = load_config(getattr(args, "config", config_path))
-            store = Store(config)
-            execute_command(args, store)
+            active_store = store
+            if active_store is None:
+                config = load_config(getattr(args, "config", config_path))
+                active_store = Store(config)
+            execute_command(args, active_store)
     except SystemExit:
-        # Commands like search might exit early or argparse might exit on --help
+        # Commands might exit on help or termination
         pass
     except Exception as e:
         import traceback
         traceback.print_exc(file=f)
 
-    output = f.getvalue()
+    output = f.getvalue().strip()
     if not output:
         output = "Command executed successfully with no output."
     return output

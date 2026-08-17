@@ -573,7 +573,7 @@ def handle_collection_tree(args, store: Store):
     else:
         format_collection_tree_cli(tree_data)
 
-def handle_guide(args, store: Store):
+def handle_guide(args, store: Optional[Store] = None):
     is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
@@ -602,6 +602,7 @@ def handle_guide(args, store: Store):
   </agent_tips>
 </qmd_guide>"""
         print(guide_xml)
+        return guide_xml
     else:
         guide_md = f"""{BOLD}QMD LLM Agent Research & Inspection Guide{RESET}
 
@@ -637,7 +638,9 @@ def handle_guide(args, store: Store):
 - Large reads truncate at 30 chunks with a resume hint to protect context windows."""
         if getattr(args, "plain", False):
             guide_md = strip_ansi(guide_md)
-        print(guide_md.strip())
+        res = guide_md.strip()
+        print(res)
+        return res
 
 def handle_collections_list(args, store: Store):
     if getattr(args, "plain", False):

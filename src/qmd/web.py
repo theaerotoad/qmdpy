@@ -1,13 +1,17 @@
 import os
+import re
 import json
 import time
 import secrets
+import argparse
+from typing import Union, List
 from flask import Flask, request, jsonify, render_template, g
 
 from qmd.config import load_config
 from qmd.store import Store
-from qmd.main import group_results_by_doc
-from qmd.formatting import format_results_xml, format_doc_results_xml, format_grep_xml
+from qmd.main import group_results_by_doc, handle_guide
+from qmd.formatting import format_results_xml, format_doc_results_xml, format_grep_xml, escape_xml_attr
+from qmd.mcp_server import execute_qmd_command
 from qmd.utils import decompress_text, redact_pii, parse_query_directives
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
 
@@ -26,6 +30,44 @@ def get_store():
     if 'store' not in g:
         g.store = Store(get_config())
     return g.store
+
+def extract_batch_commands(input_data: Union[str, List[str]], max_commands: int = 5) -> List[str]:
+    """Extracts up to max_commands valid command lines from raw text, markdown blocks, or string lists."""
+    raw_lines = []
+    if isinstance(input_data, list):
+        for item in input_data:
+            if isinstance(item, str):
+                raw_lines.extend(item.splitlines())
+    elif isinstance(input_data, str):
+        raw_lines = input_data.strip().splitlines()
+    else:
+        return []
+
+    commands = []
+    for line in raw_lines:
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("```"):
+            continue
+
+        # Strip list numbering e.g. "1. ", "- ", "* "
+        line = re.sub(r'^(?:\d+[\.\)]|\*|\-)\s+', '', line).strip()
+
+        # Strip XML attribute wrappers e.g. read="qmd read '...'" or outline="..."
+        attr_match = re.match(r'^(?:read|outline|expand|resume)\s*=\s*["\'](.*)["\']$', line, re.IGNORECASE)
+        if attr_match:
+            line = attr_match.group(1).strip()
+
+        # Strip XML tag wrappers e.g. <command>...</command>
+        tag_match = re.match(r'^<[^>]+>(.*)</[^>]+>$', line, re.DOTALL)
+        if tag_match:
+            line = tag_match.group(1).strip()
+
+        if line:
+            commands.append(line)
+            if len(commands) >= max_commands:
+                break
+
+    return commands
 
 @app.route('/')
 def index():
@@ -389,6 +431,75 @@ def update():
             return jsonify({"status": "error", "message": str(e)}), 500
             
     return jsonify({"status": "error", "message": "Collection not found"}), 404
+
+@app.route('/api/batch', methods=['POST'])
+def batch_execute():
+    try:
+        t0 = time.time()
+        data = request.json or {}
+        raw_commands = data.get('commands') if data.get('commands') is not None else data.get('text', '')
+        max_commands = int(data.get('max_commands', 5))
+
+        commands = extract_batch_commands(raw_commands, max_commands=max_commands)
+        if not commands:
+            return jsonify({"error": "No valid commands provided to execute."}), 400
+
+        store = get_store()
+        config_path = app.config.get('CONFIG_PATH')
+
+        results = []
+        for idx, cmd in enumerate(commands):
+            cmd_t0 = time.time()
+            output = execute_qmd_command(cmd, config_path=config_path, store=store)
+            cmd_time = round(time.time() - cmd_t0, 3)
+            is_err = output.startswith("Error:") or output.startswith("usage:")
+
+            results.append({
+                "index": idx + 1,
+                "command": cmd,
+                "output": output,
+                "status": "error" if is_err else "success",
+                "time_taken": cmd_time
+            })
+
+        total_time = round(time.time() - t0, 3)
+
+        # Build aggregated XML bundle
+        bundle_lines = [
+            f'<agent_context_bundle total_commands="{len(results)}" time_taken="{total_time}s">'
+        ]
+        for res in results:
+            cmd_esc = escape_xml_attr(res["command"])
+            status_esc = escape_xml_attr(res["status"])
+            bundle_lines.append(f'  <!-- Command {res["index"]}: {cmd_esc} -->')
+            bundle_lines.append(f'  <command_result index="{res["index"]}" command="{cmd_esc}" status="{status_esc}" time_taken="{res["time_taken"]}s">')
+            indented_output = "\n".join("    " + line if line.strip() else "" for line in res["output"].splitlines())
+            bundle_lines.append(indented_output)
+            bundle_lines.append('  </command_result>')
+        bundle_lines.append('</agent_context_bundle>')
+        aggregated_xml = "\n".join(bundle_lines)
+
+        return jsonify({
+            "results": results,
+            "total_commands": len(results),
+            "time_taken": total_time,
+            "xml": aggregated_xml
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/guide', methods=['GET'])
+def get_guide():
+    try:
+        fmt = request.args.get('format', 'xml').lower()
+        dummy_args = argparse.Namespace(xml=(fmt == 'xml'), llm=(fmt == 'xml'), plain=False, json=(fmt == 'json'))
+        guide_content = handle_guide(dummy_args, get_store())
+        return jsonify({
+            "guide": guide_content,
+            "format": fmt
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def start_server(port=5000, config_path=None):
     if config_path:
