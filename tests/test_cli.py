@@ -156,3 +156,42 @@ def test_cli_xml_flags(monkeypatch, capsys):
         assert '<search_results query="helios"' in out
         assert '<result' in out
         assert 'Helios 1 deep space mission' in out
+
+def test_helpall_flag(monkeypatch, capsys):
+    """Test that --helpall outputs help for all subcommands and exits with 0."""
+    monkeypatch.setattr(sys, "argv", ["qmd", "--helpall"])
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "Quick Markdown Search" in out
+    assert "search" in out
+    assert "outline" in out
+    assert "grep" in out
+    assert "chunk" in out
+    assert "update" in out
+    assert "collection" in out
+    assert "serve" in out
+    assert "mcp" in out
+    assert "=" * 80 in out
+
+def test_helpall_subcommand_flag(monkeypatch, capsys):
+    """Test that --helpall works when passed after a subcommand."""
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "--helpall"])
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "Quick Markdown Search" in out
+    assert "outline" in out
+    assert "grep" in out
+
+def test_format_help_all_direct():
+    """Test format_help_all helper function directly."""
+    from qmd.main import build_parser, format_help_all
+    parser = build_parser()
+    help_text = format_help_all(parser)
+    assert "Quick Markdown Search" in help_text
+    assert "usage: qmd search" in help_text
+    assert "usage: qmd grep" in help_text
+    assert "usage: qmd collection tree" in help_text

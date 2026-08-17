@@ -5,7 +5,7 @@ import os
 import secrets
 import re
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional, Set
 
 from qmd.config import load_config
 from qmd.store import Store, Result
@@ -493,11 +493,51 @@ def handle_update(args, store: Store):
     active_collections = list(config.collections.keys())
     store.prune_orphaned_collections(active_collections)
 
+class HelpAllAction(argparse.Action):
+    root_parser: Optional[argparse.ArgumentParser] = None
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, default=argparse.SUPPRESS, help="Show help for all commands and subcommands and exit"):
+        super().__init__(
+            option_strings=option_strings,
+            dest=dest,
+            default=default,
+            nargs=0,
+            help=help
+        )
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        target_parser = HelpAllAction.root_parser or parser
+        print(format_help_all(target_parser))
+        parser.exit(0)
+
+def format_help_all(parser: argparse.ArgumentParser) -> str:
+    """
+    Recursively collects and formats help text for the root parser and all subcommands.
+    """
+    sections = [parser.format_help().rstrip()]
+
+    def _collect_subparsers(p: argparse.ArgumentParser, seen: Set[int]):
+        for action in p._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                for name, subp in action.choices.items():
+                    if id(subp) in seen:
+                        continue
+                    seen.add(id(subp))
+                    sections.append(subp.format_help().rstrip())
+                    _collect_subparsers(subp, seen)
+
+    seen = {id(parser)}
+    _collect_subparsers(parser, seen)
+    separator = "\n\n" + "=" * 80 + "\n\n"
+    return separator.join(sections) + "\n"
+
 def build_parser():
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument("-C", "--config", type=str, default=argparse.SUPPRESS, help="Path to custom YAML configuration file")
+    parent_parser.add_argument("--helpall", action=HelpAllAction, help="Show help for all commands and subcommands and exit")
 
     parser = argparse.ArgumentParser(prog="qmd", description="Quick Markdown Search", parents=[parent_parser])
+    HelpAllAction.root_parser = parser
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     search_parser = subparsers.add_parser("search", aliases=["query", "q"], help="Search the index", parents=[parent_parser])
