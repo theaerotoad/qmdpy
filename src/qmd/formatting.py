@@ -331,13 +331,16 @@ def format_results_xml(results: List, query: str = "", verbose: bool = False, se
         lines.append(f'  <truncation omitted_chunks="{omitted}" reason="max_chunks_per_response limit ({limit_val}) reached" />')
 
     lines.append('</search_results>')
-    print("\n".join(lines))
+    output = "\n".join(lines)
+    print(output)
+    return output
 
 def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None, truncation_info: Optional[Dict] = None):
     """Outputs document-grouped results as structured XML in document-sequential order."""
     if not grouped_results:
-        print('<search_results query="" total_matches="0" total_documents="0">\n</search_results>')
-        return
+        output = '<search_results query="" total_matches="0" total_documents="0">\n</search_results>'
+        print(output)
+        return output
 
     query_attr = escape_xml_attr(query)
     total_matches = sum(len(d.get("chunks", [])) for d in grouped_results)
@@ -421,13 +424,16 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
         lines.append(f'  <truncation omitted_chunks="{omitted}" reason="max_chunks_per_response limit ({limit_val}) reached" />')
 
     lines.append('</search_results>')
-    print("\n".join(lines))
+    output = "\n".join(lines)
+    print(output)
+    return output
 
 def format_chunks_xml(results: List, window: int = 0, truncation_info: Optional[Dict] = None):
     """Outputs retrieved chunks in XML format."""
     if not results:
-        print('<document>\n</document>')
-        return
+        output = '<document>\n</document>'
+        print(output)
+        return output
 
     docs: Dict[Tuple[str, str], List] = {}
     doc_titles: Dict[Tuple[str, str], str] = {}
@@ -478,13 +484,16 @@ def format_chunks_xml(results: List, window: int = 0, truncation_info: Optional[
 
         lines.append('</document>')
 
-    print("\n".join(lines))
+    output = "\n".join(lines)
+    print(output)
+    return output
 
 def format_outline_xml(outline: Dict):
     """Outputs document heading outline as XML."""
     if not outline:
-        print('<outline>\n</outline>')
-        return
+        output = '<outline>\n</outline>'
+        print(output)
+        return output
 
     coll = outline.get('collection', '') or ""
     path = outline.get('path', '') or ""
@@ -511,7 +520,9 @@ def format_outline_xml(outline: Dict):
             f'  <heading level="{level}" start_seq="{start_seq}" end_seq="{end_seq}" char_count="{char_count}"{read_attr}>{text}</heading>'
         )
     lines.append('</outline>')
-    print("\n".join(lines))
+    output = "\n".join(lines)
+    print(output)
+    return output
 
 def format_chunks_cli(results: List, window: int = 0, truncation_info: Optional[Dict] = None):
     """Prints retrieved chunk(s) with context window headers."""
@@ -600,8 +611,9 @@ def format_collection_tree_json(tree_data: Union[Dict, List[Dict]]):
 def format_collection_tree_xml(tree_data: Union[Dict, List[Dict]]):
     """Outputs collection folder tree as XML for LLM context."""
     if not tree_data:
-        print('<collections>\n</collections>')
-        return
+        output = '<collections>\n</collections>'
+        print(output)
+        return output
 
     items = tree_data if isinstance(tree_data, list) else [tree_data]
     lines = []
@@ -643,7 +655,9 @@ def format_collection_tree_xml(tree_data: Union[Dict, List[Dict]]):
     if wrap_all:
         lines.append('</collections>')
 
-    print("\n".join(lines))
+    output = "\n".join(lines)
+    print(output)
+    return output
 
 def format_grep_cli(results: List[Dict], pattern: str = ""):
     """Prints grep pattern search results with line numbers and matches."""
@@ -688,8 +702,9 @@ def format_grep_xml(results: List[Dict], pattern: str = "", is_regex: bool = Fal
     total_matches = len(results)
 
     if not results:
-        print(f'<grep_results pattern="{pattern_attr}" is_regex="{regex_attr}" case_sensitive="{case_attr}" total_matches="0">\n</grep_results>')
-        return
+        output = f'<grep_results pattern="{pattern_attr}" is_regex="{regex_attr}" case_sensitive="{case_attr}" total_matches="0">\n</grep_results>'
+        print(output)
+        return output
 
     docs: Dict[Tuple[str, str], List[Dict]] = {}
     doc_titles: Dict[Tuple[str, str], str] = {}
@@ -718,4 +733,6 @@ def format_grep_xml(results: List[Dict], pattern: str = "", is_regex: bool = Fal
         lines.append('  </document>')
 
     lines.append('</grep_results>')
-    print("\n".join(lines))
+    output = "\n".join(lines)
+    print(output)
+    return output

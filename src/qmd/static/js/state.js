@@ -1,6 +1,7 @@
 // Application State & Configuration
 let activeMode = 'search';
 let lastRawJson = null;
+let lastRawXml = '';
 let lastSearchType = 'chunk';
 let currentSessionId = null;
 let currentExcludedCount = 0;

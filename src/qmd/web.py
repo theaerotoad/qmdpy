@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify, render_template, g
 from qmd.config import load_config
 from qmd.store import Store
 from qmd.main import group_results_by_doc
+from qmd.formatting import format_results_xml, format_doc_results_xml, format_grep_xml
 from qmd.utils import decompress_text, redact_pii, parse_query_directives
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
 
@@ -96,6 +97,8 @@ def search():
 
         excluded_count = store.last_exclusion_stats.get("excluded_chunks", 0)
 
+        seen_chunks_count = len(get_seen_chunks_for_session(store.history_conn, session_id))
+
         if doc_view:
             grouped = group_results_by_doc(results)[:limit]
             shown_chunks = []
@@ -109,18 +112,48 @@ def search():
                         "score": c.get("score", 0.0)
                     })
             record_session_results(store.history_conn, session_id, event_id, shown_chunks)
+            full_xml = format_doc_results_xml(
+                grouped_results=grouped,
+                query=query,
+                verbose=False,
+                session_id=session_id,
+                exclusion_stats=store.last_exclusion_stats,
+                seen_chunks=seen_chunks_count
+            )
+            for doc in grouped:
+                doc["xml"] = format_doc_results_xml(
+                    grouped_results=[doc],
+                    query=query,
+                    verbose=False,
+                    session_id=session_id
+                )
             time_taken = round(time.time() - t0, 3)
             return jsonify({
                 "results": grouped,
                 "type": "doc",
                 "session_id": session_id,
                 "excluded_count": excluded_count,
-                "time_taken": time_taken
+                "time_taken": time_taken,
+                "xml": full_xml
             })
         else:
             record_session_results(store.history_conn, session_id, event_id, results)
+            full_xml = format_results_xml(
+                results=results,
+                query=query,
+                verbose=False,
+                session_id=session_id,
+                exclusion_stats=store.last_exclusion_stats,
+                seen_chunks=seen_chunks_count
+            )
             out = []
-            for r in results:
+            for i, r in enumerate(results):
+                r_xml = format_results_xml(
+                    results=[r],
+                    query=query,
+                    verbose=False,
+                    session_id=session_id
+                )
                 out.append({
                     "path": r.path,
                     "title": r.title,
@@ -130,7 +163,8 @@ def search():
                     "collection": r.collection,
                     "seq_id": r.seq_id,
                     "headers": getattr(r, "headers", ""),
-                    "rank": getattr(r, "rank", None)
+                    "rank": getattr(r, "rank", None) or (i + 1),
+                    "xml": r_xml
                 })
             time_taken = round(time.time() - t0, 3)
             return jsonify({
@@ -138,7 +172,8 @@ def search():
                 "type": "chunk",
                 "session_id": session_id,
                 "excluded_count": excluded_count,
-                "time_taken": time_taken
+                "time_taken": time_taken,
+                "xml": full_xml
             })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -291,13 +326,20 @@ def grep():
             return jsonify({"error": str(e)}), 400
 
         time_taken = round(time.time() - t0, 3)
+        full_xml = format_grep_xml(
+            results=results,
+            pattern=pattern,
+            is_regex=is_regex,
+            case_sensitive=case_sensitive
+        )
         return jsonify({
             "results": results,
             "total_matches": len(results),
             "pattern": pattern,
             "regex": is_regex,
             "case_sensitive": case_sensitive,
-            "time_taken": time_taken
+            "time_taken": time_taken,
+            "xml": full_xml
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
