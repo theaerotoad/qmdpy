@@ -206,7 +206,7 @@ qmd grep "class \w+Model" --regex --xml
 
 ## Motivation & Overview
 
-We are re-implementing **QMD (Quick Markdown Search)**, originally a TypeScript/Node.js application, into a lean, modular **Python** CLI tool. The primary motivation is to create a maintainable, high-performance local search engine for personal knowledge bases (Markdown notes) that leverages modern AI capabilities without the heavy weight of local model inference.
+We are re-implementing **QMD (Now standing for Query Multiple Documents)**, originally a TypeScript/Node.js application, into a lean, modular **Python** CLI tool. The primary motivation is to create a maintainable, high-performance local search engine for personal knowledge bases (Markdown notes) that leverages modern AI capabilities without the heavy weight of local model inference.
 
 By offloading the "heavy lifting" (Embedding generation, Chat completion, and Reranking) to an external, OpenAI-compatible API server (specifically one running `llama.cpp`/`llamaswap`), we can strip away complex native dependencies like `node-llama-cpp`. The result will be a lightweight client that focuses purely on file indexing, SQLite management, and providing a fast, intuitive CLI experience.
 

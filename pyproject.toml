@@ -1,7 +1,7 @@
 [project]
 name = "qmdpy"
 version = "0.1.0"
-description = "Quick Markdown Search - Python Adaptation"
+description = "Query Multiple Documents - Python Adaptation"
 requires-python = ">=3.10"
 dependencies = [
     "httpx",

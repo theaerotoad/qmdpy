@@ -178,7 +178,7 @@ def test_helpall_flag(monkeypatch, capsys):
         main()
     assert excinfo.value.code == 0
     out = capsys.readouterr().out
-    assert "Quick Markdown Search" in out
+    assert "Query Multiple Documents" in out
     assert "search" in out
     assert "outline" in out
     assert "grep" in out
@@ -196,7 +196,7 @@ def test_helpall_subcommand_flag(monkeypatch, capsys):
         main()
     assert excinfo.value.code == 0
     out = capsys.readouterr().out
-    assert "Quick Markdown Search" in out
+    assert "Query Multiple Documents" in out
     assert "outline" in out
     assert "grep" in out
 
@@ -205,7 +205,7 @@ def test_format_help_all_direct():
     from qmd.main import build_parser, format_help_all
     parser = build_parser()
     help_text = format_help_all(parser)
-    assert "Quick Markdown Search" in help_text
+    assert "Query Multiple Documents" in help_text
     assert "usage: qmd search" in help_text
     assert "usage: qmd grep" in help_text
     assert "Target & Filters:" in help_text

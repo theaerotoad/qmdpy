@@ -738,7 +738,7 @@ def build_parser():
     parent_parser.add_argument("-C", "--config", type=str, default=argparse.SUPPRESS, help="Path to custom YAML configuration file")
     parent_parser.add_argument("--helpall", action=HelpAllAction, help="Show help for all commands and subcommands and exit")
 
-    parser = argparse.ArgumentParser(prog="qmd", description="Quick Markdown Search", parents=[parent_parser])
+    parser = argparse.ArgumentParser(prog="qmd", description="Query Multiple Documents", parents=[parent_parser])
     HelpAllAction.root_parser = parser
     subparsers = parser.add_subparsers(dest="command", required=True)
 
