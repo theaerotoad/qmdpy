@@ -1,0 +1,101 @@
+<!-- STATE A: HERO LANDING STATE -->
+<div id="hero-section" class="flex-1 flex-col justify-center items-center px-4 py-12 max-w-4xl mx-auto w-full">
+    <!-- Utility Header -->
+    <div class="w-full flex justify-between items-center mb-14 text-xs text-slate-500 dark:text-slate-400">
+        <button type="button" onclick="openSessionModal()" class="font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2 transition cursor-pointer text-slate-700 dark:text-slate-300 group" title="Manage Session">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Session: <strong class="session-id-val font-semibold text-slate-900 dark:text-white">-</strong></span>
+            <span class="session-excluded-badge hidden bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 text-[10px] font-mono px-1.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50"></span>
+            <svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+        </button>
+        <div class="flex items-center gap-2">
+            <button type="button" class="btn-open-tree bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200 py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm">
+                <svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                Tree
+            </button>
+            <button type="button" onclick="openSettings()" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200 py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm" title="Settings & Collections">
+                <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                Settings
+            </button>
+        </div>
+    </div>
+
+    <!-- Hero Branding -->
+    <div class="text-center mb-8">
+        <h1 class="text-5xl md:text-6xl font-black tracking-tight mb-2 bg-gradient-to-r from-blue-600 via-sky-500 to-indigo-600 dark:from-blue-400 dark:via-sky-300 dark:to-indigo-400 bg-clip-text text-transparent">
+            Q M D
+        </h1>
+        <p class="text-slate-600 dark:text-slate-400 text-sm md:text-base font-medium tracking-wide">
+            Quick Markdown Knowledge Engine
+        </p>
+    </div>
+
+    <!-- Hero Search Form -->
+    <div class="w-full max-w-2xl space-y-3">
+        <form id="hero-search-form" onsubmit="handleFormSubmit(event, 'hero')">
+            <div class="relative flex items-center shadow-xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition duration-200">
+                <div class="pl-4 text-slate-400 dark:text-slate-500 pointer-events-none">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                <input type="text" id="hero-query" list="past-queries-list" class="w-full bg-transparent text-slate-900 dark:text-white px-4 py-4 text-base focus:outline-none placeholder-slate-400 dark:placeholder-slate-500" placeholder="Search notes, title:&quot;space&quot;, pii:off..." autocomplete="off" autofocus required>
+                <div class="pr-2 flex items-center gap-1.5">
+                    <button type="button" onclick="openScopePicker()" class="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition" title="Choose Directory / File Scope">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                    </button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-5 py-2.5 rounded-xl transition shadow-sm text-sm">
+                        Search
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Active Scope Filter Chips -->
+        <div id="hero-scope-chips" class="hidden flex flex-wrap items-center justify-center gap-2 pt-1"></div>
+
+        <!-- Streamlined Pill Bar (Mode, Collection, Limit, Quick Toggles) -->
+        <div class="flex flex-wrap items-center justify-center gap-2 text-xs pt-1">
+            <div class="inline-flex bg-slate-200/70 dark:bg-slate-900 p-0.5 rounded-xl border border-slate-300 dark:border-slate-800 shadow-inner">
+                <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium bg-blue-600 text-white shadow-sm" data-mode="search">Search</button>
+                <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-mode="doc">Doc View</button>
+                <button type="button" class="mode-btn px-3 py-1.5 rounded-lg transition font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-mode="grep">Grep</button>
+            </div>
+
+            <select id="hero-collection-filter" class="collection-select bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none shadow-sm cursor-pointer">
+                <option value="">All Collections</option>
+            </select>
+
+            <div class="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 shadow-sm text-slate-500 dark:text-slate-400">
+                <span>Limit:</span>
+                <select id="hero-limit" class="limit-select bg-transparent text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+
+            <!-- Search Feature Pills -->
+            <div class="search-toggles flex items-center gap-1.5">
+                <button type="button" onclick="toggleFeature('rerank')" class="feature-btn-rerank bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm" title="Enable LLM Reranker (cheat code: rerank:on)">
+                    <span>✨ Rerank</span>
+                </button>
+                <button type="button" onclick="toggleFeature('exclude_seen')" class="feature-btn-seen bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm" title="Exclude seen chunks from current session (cheat code: seen:exclude)">
+                    <span>👁 Exclude Seen</span>
+                </button>
+                <button type="button" onclick="toggleFeature('redact_pii')" class="feature-btn-pii bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm" title="Redact emails/PII (cheat code: pii:on)">
+                    <span>🛡 Redact PII</span>
+                </button>
+            </div>
+
+            <!-- Grep Mode Specific Pills -->
+            <div class="grep-toggles hidden flex items-center gap-1.5">
+                <button type="button" onclick="toggleFeature('grep_regex')" class="feature-btn-regex bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm">
+                    <span>.* Regex</span>
+                </button>
+                <button type="button" onclick="toggleFeature('grep_case')" class="feature-btn-case bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm">
+                    <span>Aa Match Case</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,108 @@
+<!-- STATE B: STICKY SERP TOP BAR -->
+<header id="serp-top-bar" class="sticky top-0 z-30 bg-white/95 dark:bg-slate-950/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-between gap-4">
+        <a href="javascript:void(0)" onclick="returnToHero()" class="flex items-center gap-2 group flex-shrink-0">
+            <span class="text-2xl font-black tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent group-hover:opacity-90 transition">
+                QMD
+            </span>
+        </a>
+
+        <!-- Compact Search Input -->
+        <form id="serp-search-form" class="flex-1 max-w-2xl flex items-center" onsubmit="handleFormSubmit(event, 'serp')">
+            <div class="relative w-full flex items-center bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition">
+                <input type="text" id="serp-query" list="past-queries-list" class="w-full bg-transparent text-slate-900 dark:text-white pl-4 pr-20 py-2 text-sm focus:outline-none placeholder-slate-400 dark:placeholder-slate-500" placeholder="Search markdown..." autocomplete="off" required>
+                <div class="absolute right-1.5 flex items-center gap-1">
+                    <button type="button" onclick="openScopePicker()" class="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition" title="Choose Directory / File Scope">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                    </button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-3 py-1 rounded-lg text-xs transition">
+                        Search
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <div class="flex items-center gap-2 flex-shrink-0 text-xs">
+            <button type="button" onclick="openSessionModal()" class="font-mono bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300 flex items-center gap-1.5 transition cursor-pointer group" title="Manage Session">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Session: <strong class="session-id-val font-semibold text-slate-900 dark:text-white">-</strong></span>
+                <span class="session-excluded-badge hidden bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 text-[10px] font-mono px-1.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50"></span>
+            </button>
+            <button type="button" class="btn-open-tree bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 py-1 px-2.5 rounded-lg flex items-center gap-1.5 transition text-slate-700 dark:text-slate-300">
+                <svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                Tree
+            </button>
+            <button type="button" onclick="openSettings()" class="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 py-1 px-2.5 rounded-lg flex items-center gap-1.5 transition text-slate-700 dark:text-slate-300" title="Settings & Collections">
+                <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                Settings
+            </button>
+        </div>
+    </div>
+
+    <!-- SERP Secondary Pill Strip -->
+    <div class="max-w-6xl mx-auto px-4 py-2 border-t border-slate-100 dark:border-slate-900 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <div class="flex flex-wrap items-center gap-2">
+            <div class="inline-flex bg-slate-100 dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium bg-blue-600 text-white shadow-sm" data-mode="search">Search</button>
+                <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-mode="doc">Doc View</button>
+                <button type="button" class="mode-btn px-2.5 py-1 rounded-md transition font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-mode="grep">Grep</button>
+            </div>
+
+            <select id="serp-collection-filter" class="collection-select bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-lg px-2 py-1 focus:outline-none">
+                <option value="">All Collections</option>
+            </select>
+
+            <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1">
+                <span>Limit:</span>
+                <select id="serp-limit" class="limit-select bg-transparent text-slate-800 dark:text-slate-200 focus:outline-none">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+
+            <div class="search-toggles flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-800 pl-2">
+                <button type="button" onclick="toggleFeature('rerank')" class="feature-btn-rerank bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                    <span>✨ Rerank</span>
+                </button>
+                <button type="button" onclick="toggleFeature('exclude_seen')" class="feature-btn-seen bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                    <span>👁 Exclude Seen</span>
+                </button>
+                <button type="button" onclick="toggleFeature('redact_pii')" class="feature-btn-pii bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                    <span>🛡 Redact PII</span>
+                </button>
+            </div>
+
+            <div class="grep-toggles hidden flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-800 pl-2">
+                <button type="button" onclick="toggleFeature('grep_regex')" class="feature-btn-regex bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                    <span>.* Regex</span>
+                </button>
+                <button type="button" onclick="toggleFeature('grep_case')" class="feature-btn-case bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                    <span>Aa Match Case</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- SERP Scope Chips Strip -->
+        <div id="serp-scope-chips" class="hidden flex items-center gap-1.5"></div>
+    </div>
+</header>
+
+<!-- STATE B: RESULTS VIEWPORT -->
+<main id="results-wrapper" class="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
+    <div id="results-toolbar" class="hidden flex flex-wrap items-center justify-between gap-3 pb-4 mb-6 border-b border-slate-200 dark:border-slate-800/80">
+        <div id="result-stats" class="text-xs text-slate-500 dark:text-slate-400 font-mono"></div>
+        <div class="flex items-center gap-2">
+            <button id="copy-json" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300 text-xs py-1.5 px-3 rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                Copy XML for LLM
+            </button>
+            <button id="copy-prompt" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium py-1.5 px-3 rounded-lg transition shadow-sm flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                Copy Prompt &amp; References
+            </button>
+        </div>
+    </div>
+    <div id="results" class="space-y-6 pb-24"></div>
+</main>

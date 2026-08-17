@@ -1,0 +1,44 @@
+<!-- COLLECTION TREE SLIDE-OVER -->
+<div id="tree-drawer" class="fixed inset-0 overflow-hidden z-40 pointer-events-none hidden">
+    <div class="absolute inset-0 overflow-hidden">
+        <div id="tree-backdrop" class="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto duration-300" onclick="closeTreeDrawer()"></div>
+        <div class="fixed inset-y-0 left-0 max-w-md w-full flex">
+            <div id="tree-panel" class="w-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-2xl transform transition-transform -translate-x-full pointer-events-auto flex flex-col duration-300">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                        <h2 class="text-base font-semibold text-slate-900 dark:text-white">Collection Files</h2>
+                    </div>
+                    <button onclick="closeTreeDrawer()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white transition focus:outline-none">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+                <div class="px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <input type="text" id="tree-filter-input" placeholder="Filter files (e.g. guide or .md)..." class="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+                </div>
+                <div id="tree-content" class="flex-1 overflow-y-auto p-4 space-y-3 text-xs font-mono"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DOCUMENT SLIDE-OVER VIEWER -->
+<div id="slide-over" class="fixed inset-0 overflow-hidden z-50 pointer-events-none hidden">
+    <div class="absolute inset-0 overflow-hidden">
+        <div id="slide-backdrop" class="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto duration-300" onclick="closeDocument()"></div>
+        <div class="fixed inset-y-0 right-0 max-w-3xl w-full flex">
+            <div id="slide-panel" class="w-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl transform transition-transform translate-x-full pointer-events-auto flex flex-col duration-300">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+                    <div class="flex flex-col min-w-0 pr-4">
+                        <span id="slide-uri" class="text-xs font-mono text-slate-500 dark:text-slate-400 truncate"></span>
+                        <h2 id="slide-title" class="text-lg font-semibold text-slate-900 dark:text-white truncate">Document</h2>
+                    </div>
+                    <button onclick="closeDocument()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white transition focus:outline-none flex-shrink-0">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+                <div id="slide-content" class="flex-1 overflow-y-auto p-8 prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200"></div>
+            </div>
+        </div>
+    </div>
+</div>
