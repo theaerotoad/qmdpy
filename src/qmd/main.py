@@ -29,6 +29,11 @@ def _normalize_str(s: str) -> str:
     """Normalizes string for fuzzy comparison (lowercase, alphanumeric only)."""
     return re.sub(r'[^\w]', '', s.lower())
 
+def _is_xml_output(args) -> bool:
+    """Determines whether XML output is requested via flags or QMD_XML environment variable."""
+    env_xml = os.environ.get("QMD_XML", "").strip().lower() in ("1", "true", "yes", "on")
+    return bool(getattr(args, "xml", False) or getattr(args, "llm", False) or env_xml)
+
 def merge_overlapping_snippets(snippets: List[Tuple], doc_title: str = "") -> List[str]:
     """
     Takes a list of (seq_id, text) or (seq_id, text, headers). 
@@ -219,12 +224,12 @@ def group_results_by_doc(results: List[Result]) -> List[Dict]:
     return sorted(output_list, key=lambda x: x['score'], reverse=True)
 
 def handle_search(args, store: Store):
-    is_llm = getattr(args, "llm", False)
-    is_xml = getattr(args, "xml", False) or is_llm
+    is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
-    is_deep = getattr(args, "deep", False)
+    env_deep = os.environ.get("QMD_DEEP", "").strip().lower() in ("1", "true", "yes", "on")
+    is_deep = getattr(args, "deep", False) or env_deep
     rerank = getattr(args, "rerank", False) or is_deep
     is_doc = getattr(args, "doc", False) or is_deep
     is_w2n = getattr(args, "w2n", False) or getattr(args, "broad", False)
@@ -379,7 +384,7 @@ def handle_search(args, store: Store):
             format_results_cli(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)
 
 def handle_outline(args, store: Store):
-    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
@@ -405,7 +410,7 @@ def handle_outline(args, store: Store):
         format_outline_cli(outline)
 
 def handle_grep(args, store: Store):
-    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
@@ -448,7 +453,7 @@ def handle_grep(args, store: Store):
         format_grep_cli(results, pattern=pattern)
 
 def handle_chunk(args, store: Store):
-    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
@@ -527,7 +532,7 @@ def handle_chunk(args, store: Store):
         format_chunks_cli(results, window=args.window, truncation_info=truncation_info)
 
 def handle_collection_tree(args, store: Store):
-    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
@@ -569,7 +574,7 @@ def handle_collection_tree(args, store: Store):
         format_collection_tree_cli(tree_data)
 
 def handle_guide(args, store: Store):
-    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
