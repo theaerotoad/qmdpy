@@ -118,10 +118,12 @@ def test_xml_formatting_flat_and_doc(capsys):
     }]
     format_doc_results_xml(grouped, query="test query")
     doc_out = capsys.readouterr().out
-    assert '<gap omitted_chunks="10" from_seq="0" to_seq="9" />' in doc_out
-    assert '<chunk seq="10" rank="1" score="0.9500" section="Intro">' in doc_out
-    assert '<gap omitted_chunks="4" from_seq="11" to_seq="14" />' in doc_out
-    assert '<chunk seq="15" rank="2" score="0.8000" section="Details">' in doc_out
+    assert '<gap omitted_chunks="10" from_seq="0" to_seq="9" expand="qmd read \'main:doc.md:0-9\'" />' in doc_out
+    assert '<chunk seq="10" rank="1" score="0.9500" chars="13" section="Intro"' in doc_out
+    assert 'read="qmd read \'main:doc.md:10\'"' in doc_out
+    assert 'outline="qmd outline \'main:doc.md\'"' in doc_out
+    assert '<gap omitted_chunks="4" from_seq="11" to_seq="14" expand="qmd read \'main:doc.md:11-14\'" />' in doc_out
+    assert '<chunk seq="15" rank="2" score="0.8000" chars="13" section="Details"' in doc_out
 
     # Chunks XML
     format_chunks_xml([r1, r2])
@@ -145,8 +147,11 @@ def test_xml_formatting_flat_and_doc(capsys):
     }
     format_outline_xml(outline)
     outline_out = capsys.readouterr().out
-    assert '<outline uri="qmd://main/doc.md" title="Doc" total_chunks="20" total_chars="5000">' in outline_out
-    assert '<heading level="1" start_seq="0" end_seq="9" char_count="2500">Intro &amp; Setup</heading>' in outline_out
+    assert '<outline uri="qmd://main/doc.md"' in outline_out
+    assert 'collection="main"' in outline_out
+    assert 'path="doc.md"' in outline_out
+    assert 'title="Doc"' in outline_out
+    assert '<heading level="1" start_seq="0" end_seq="9" char_count="2500" read="qmd read \'main:doc.md:0-9\'">Intro &amp; Setup</heading>' in outline_out
 
 def test_cli_xml_flags(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["qmd", "search", "helios", "--xml"])
