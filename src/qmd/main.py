@@ -493,7 +493,7 @@ def handle_update(args, store: Store):
     active_collections = list(config.collections.keys())
     store.prune_orphaned_collections(active_collections)
 
-def main():
+def build_parser():
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument("-C", "--config", type=str, default=argparse.SUPPRESS, help="Path to custom YAML configuration file")
 
@@ -579,31 +579,49 @@ def main():
     serve_parser = subparsers.add_parser("serve", help="Start the web UI", parents=[parent_parser])
     serve_parser.add_argument("--port", type=int, default=5000, help="Port to run the server on")
 
+    mcp_parser = subparsers.add_parser("mcp", help="Start the stdio MCP server", parents=[parent_parser])
+
+    return parser
+
+def execute_command(args, store):
+    if args.command in ["search", "query", "q"]:
+        handle_search(args, store)
+    elif args.command == "outline":
+        handle_outline(args, store)
+    elif args.command == "grep":
+        handle_grep(args, store)
+    elif args.command == "chunk":
+        handle_chunk(args, store)
+    elif args.command == "update":
+        handle_update(args, store)
+    elif args.command == "collection":
+        if args.subcommand == "list":
+            for name, cfg in store.config.collections.items():
+                print(f"{GREEN}{name}{RESET}: {cfg.path} ({cfg.glob})")
+        elif args.subcommand == "tree":
+            handle_collection_tree(args, store)
+    elif args.command == "serve":
+        from qmd.web import start_server
+        start_server(port=args.port, config_path=getattr(args, "config", None))
+    elif args.command == "mcp":
+        from qmd.mcp_server import run_mcp_server
+        run_mcp_server(getattr(args, "config", None))
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
     config_path = getattr(args, "config", None)
+    
+    if args.command == "mcp":
+        from qmd.mcp_server import run_mcp_server
+        run_mcp_server(config_path)
+        return
+
     config = load_config(config_path)
     store = Store(config)
 
     try:
-        if args.command in ["search", "query", "q"]:
-            handle_search(args, store)
-        elif args.command == "outline":
-            handle_outline(args, store)
-        elif args.command == "grep":
-            handle_grep(args, store)
-        elif args.command == "chunk":
-            handle_chunk(args, store)
-        elif args.command == "update":
-            handle_update(args, store)
-        elif args.command == "collection":
-            if args.subcommand == "list":
-                for name, cfg in config.collections.items():
-                    print(f"{GREEN}{name}{RESET}: {cfg.path} ({cfg.glob})")
-            elif args.subcommand == "tree":
-                handle_collection_tree(args, store)
-        elif args.command == "serve":
-            from qmd.web import start_server
-            start_server(port=args.port, config_path=config_path)
+        execute_command(args, store)
     except Exception as e:
         print(f"{RED}Error: {e}{RESET}")
         sys.exit(1)
