@@ -127,7 +127,12 @@ def test_xml_formatting_flat_and_doc(capsys):
     format_chunks_xml([r1, r2])
     chunk_out = capsys.readouterr().out
     assert '<document uri="qmd://main/doc.md"' in chunk_out
-    assert '<gap omitted_chunks="4" from_seq="11" to_seq="14" />' in chunk_out
+    assert 'collection="main"' in chunk_out
+    assert 'path="doc.md"' in chunk_out
+    assert '<gap omitted_chunks="4" from_seq="11" to_seq="14" expand="qmd read \'main:doc.md:11-14\'" />' in chunk_out
+    assert '<chunk seq="10" chars="31" section="Intro &gt; Overview">' in chunk_out
+    # Chunks in read mode should not have redundant self-referential read attribute
+    assert 'read="qmd read \'main:doc.md:10\'' not in chunk_out
 
     # Outline XML
     outline = {

@@ -440,9 +440,7 @@ def format_chunks_xml(results: List, window: int = 0):
             chars = len(clean_text)
             chars_attr = f' chars="{chars}"'
             sec_attr = f' section="{escape_xml_attr(res.headers)}"' if getattr(res, 'headers', None) else ""
-            target_ref = f"{coll}:{path}:{seq}" if coll else f"{path}:{seq}"
-            read_attr = f' read="qmd read \'{escape_xml_attr(target_ref)}\'"'
-            lines.append(f'  <chunk seq="{seq}"{chars_attr}{sec_attr}{read_attr}>')
+            lines.append(f'  <chunk seq="{seq}"{chars_attr}{sec_attr}>')
             lines.append(clean_text)
             lines.append('  </chunk>')
             prev_seq = seq
