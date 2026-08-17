@@ -219,9 +219,15 @@ def group_results_by_doc(results: List[Result]) -> List[Dict]:
     return sorted(output_list, key=lambda x: x['score'], reverse=True)
 
 def handle_search(args, store: Store):
-    is_xml = getattr(args, "xml", False) or getattr(args, "llm", False)
+    is_llm = getattr(args, "llm", False)
+    is_xml = getattr(args, "xml", False) or is_llm
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
+
+    is_deep = getattr(args, "deep", False)
+    rerank = getattr(args, "rerank", False) or is_deep
+    is_doc = getattr(args, "doc", False) or is_deep
+    is_w2n = getattr(args, "w2n", False) or getattr(args, "broad", False)
 
     query = " ".join(args.query)
     limit = args.limit if getattr(args, "limit", None) is not None else getattr(store.config, "default_limit", 10)
@@ -230,20 +236,30 @@ def handle_search(args, store: Store):
     rerank_candidates = getattr(args, "rerank_candidates", None)
     
     session_id = getattr(args, "session", None)
+    has_explicit_session = session_id is not None
     if not session_id:
         session_id = secrets.token_hex(4)
 
-    exclude_seen = getattr(args, "exclude_seen", False)
-    exclude_seen_set = set()
-    if exclude_seen:
-        exclude_seen_set = get_seen_chunks_for_session(store.history_conn, session_id)
+    include_seen = getattr(args, "include_seen", False)
+    if has_explicit_session:
+        exclude_seen = not include_seen
+    else:
+        exclude_seen = getattr(args, "exclude_seen", False) and not include_seen
 
-    if getattr(args, "w2n", False):
+    exclude_seen_set = set()
+    seen_chunks_count = 0
+    if store.history_conn:
+        all_seen = get_seen_chunks_for_session(store.history_conn, session_id)
+        seen_chunks_count = len(all_seen)
+        if exclude_seen:
+            exclude_seen_set = all_seen
+
+    if is_w2n:
         results = store.wide_to_narrow_search(
             query,
             limit=limit,
             verbose=args.verbose,
-            rerank=args.rerank,
+            rerank=rerank,
             reranker_only=args.rerank_only,
             collection=args.collection,
             lexical_query=args.lex,
@@ -259,7 +275,7 @@ def handle_search(args, store: Store):
             query, 
             limit=limit, 
             verbose=args.verbose,
-            rerank=args.rerank,
+            rerank=rerank,
             reranker_only=args.rerank_only,
             collection=args.collection,
             lexical_query=args.lex,
@@ -277,7 +293,7 @@ def handle_search(args, store: Store):
             if hasattr(r, "title") and r.title:
                 r.title = redact_pii(r.title)
 
-    event_type = "doc_view" if args.doc else "search"
+    event_type = "doc_view" if is_doc else "search"
     db_last_updated = get_db_meta(store.conn, "last_updated")
     event_id = record_session_event(
         store.history_conn,
@@ -289,7 +305,7 @@ def handle_search(args, store: Store):
         db_last_updated
     )
 
-    if args.doc:
+    if is_doc:
         grouped = group_results_by_doc(results)
         grouped = grouped[:args.limit]
         
@@ -309,7 +325,7 @@ def handle_search(args, store: Store):
         if args.json:
             format_doc_results_json(grouped, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
         elif is_xml:
-            format_doc_results_xml(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
+            format_doc_results_xml(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, seen_chunks=seen_chunks_count)
         else:
             format_doc_results_cli(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
     else:
@@ -317,7 +333,7 @@ def handle_search(args, store: Store):
         if args.json:
             format_results_json(results, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
         elif is_xml:
-            format_results_xml(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
+            format_results_xml(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, seen_chunks=seen_chunks_count)
         else:
             format_results_cli(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats)
 
@@ -571,28 +587,39 @@ def build_parser():
     HelpAllAction.root_parser = parser
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    search_parser = subparsers.add_parser("search", aliases=["query", "q"], help="Search the index", parents=[parent_parser])
+    search_parser = subparsers.add_parser("search", aliases=["query", "q"], help="Hybrid vector + lexical search", parents=[parent_parser])
     search_parser.add_argument("query", nargs="+", help="The search terms")
-    search_parser.add_argument("--limit", type=int, default=None, help="Number of final results to show")
-    search_parser.add_argument("--fts-limit", type=int, default=None, help="Max number of FTS (lexical) matches to retrieve")
-    search_parser.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
-    search_parser.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")
-    search_parser.add_argument("--json", action="store_true", help="Output results in JSON format")
-    search_parser.add_argument("--xml", action="store_true", help="Output results in XML format for LLM context")
-    search_parser.add_argument("--llm", action="store_true", help="Alias for --xml (optimizes output for LLM agent context)")
-    search_parser.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
-    search_parser.add_argument("-d", "--doc", action="store_true", help="Group results by document (Document View)")
-    search_parser.add_argument("-r", "--rerank", action="store_true", help="Use LLM to rerank results")
-    search_parser.add_argument("--rerank-only", action="store_true", help="Sort results purely by reranker score (implies --rerank)")
-    search_parser.add_argument("-c", "--collection", type=str, help="Filter results by a specific collection")
-    search_parser.add_argument("-t", "--title", type=str, help="Filter results by a specific title (substring match)")
-    search_parser.add_argument("-p", "--path", type=str, help="Filter results by a specific path (substring match)")
-    search_parser.add_argument("--lex", type=str, help="Override the lexical (FTS) search terms")
-    search_parser.add_argument("-w", "--w2n", action="store_true", help="Use Wide-to-Narrow hierarchical search")
-    search_parser.add_argument("--redact-pii", "--redact", action="store_true", help="Redact email addresses and phone numbers from search results")
-    search_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
-    search_parser.add_argument("--session", type=str, help="Session ID for tracking history and excluding seen results")
-    search_parser.add_argument("--exclude-seen", action="store_true", help="Exclude previously seen chunks from the active session")
+
+    filter_group = search_parser.add_argument_group("Target & Filters")
+    filter_group.add_argument("-c", "--collection", type=str, help="Filter results by a specific collection")
+    filter_group.add_argument("-p", "--path", type=str, help="Filter results by a specific path (substring match)")
+    filter_group.add_argument("-t", "--title", type=str, help="Filter results by a specific title (substring match)")
+    filter_group.add_argument("--lex", type=str, help="Override the lexical (FTS) search terms")
+
+    mode_group = search_parser.add_argument_group("Search Mode & Quality")
+    mode_group.add_argument("--deep", action="store_true", help="Deep search: document grouping with LLM reranking (implies -r -d)")
+    mode_group.add_argument("-r", "--rerank", action="store_true", help="Use LLM to rerank results")
+    mode_group.add_argument("--rerank-only", action="store_true", help="Sort results purely by reranker score (implies --rerank)")
+    mode_group.add_argument("-w", "--w2n", action="store_true", help="Use Wide-to-Narrow hierarchical search")
+    mode_group.add_argument("--broad", action="store_true", help="Broad search: alias for Wide-to-Narrow hierarchical search (--w2n)")
+    mode_group.add_argument("--limit", type=int, default=None, help="Number of final results to show")
+    mode_group.add_argument("--fts-limit", type=int, default=None, help="Max number of FTS (lexical) matches to retrieve")
+    mode_group.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
+    mode_group.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")
+
+    session_group = search_parser.add_argument_group("Session & History")
+    session_group.add_argument("--session", type=str, help="Session ID for tracking history and deduplication")
+    session_group.add_argument("--exclude-seen", action="store_true", help="Exclude previously seen chunks from the active session")
+    session_group.add_argument("--include-seen", action="store_true", help="Include previously seen chunks (overrides default session deduplication)")
+
+    output_group = search_parser.add_argument_group("Output & Formatting")
+    output_group.add_argument("--xml", action="store_true", help="Output results in XML format for LLM context")
+    output_group.add_argument("--llm", action="store_true", help="Alias for --xml (optimizes output for LLM agent context)")
+    output_group.add_argument("--json", action="store_true", help="Output results in JSON format")
+    output_group.add_argument("-d", "--doc", action="store_true", help="Group results by document (Document View)")
+    output_group.add_argument("--redact-pii", "--redact", action="store_true", help="Redact email addresses and phone numbers from search results")
+    output_group.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
+    output_group.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
 
     outline_parser = subparsers.add_parser("outline", help="Show heading outline and chunk mapping for a document", parents=[parent_parser])
     outline_parser.add_argument("path", help="Path or relative path to the document")

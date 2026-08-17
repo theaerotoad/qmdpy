@@ -48,3 +48,45 @@ def test_session_creation_and_exclude_seen(db_conn, tmp_path):
         assert key not in seen
         
     assert store.last_exclusion_stats["excluded_chunks"] > 0
+
+def test_cli_session_implicit_deduplication(db_conn, tmp_path, monkeypatch):
+    """Test CLI level implicit session deduplication and override with --include-seen."""
+    import sys
+    from unittest.mock import patch
+    from qmd.main import main
+
+    history_db_path = tmp_path / "history.db"
+    config = Config(
+        db_path=str(tmp_path / "main.db"),
+        history_db_path=str(history_db_path)
+    )
+    init_schema(db_conn)
+
+    # 1. First run with --session
+    session_id = "agent_sess_42"
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "test", "--session", session_id])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config", return_value=config), \
+         patch("qmd.main.get_seen_chunks_for_session", return_value={("col", "doc.md", 0)}):
+        mock_store = MockStore.return_value
+        mock_store.history_conn = MagicMock()
+        mock_store.config = config
+        mock_store.conn = db_conn
+        mock_store.last_exclusion_stats = {}
+        mock_store.hybrid_search.return_value = []
+        main()
+        # Implicitly excludes seen
+        assert mock_store.hybrid_search.call_args.kwargs["exclude_seen_set"] == {("col", "doc.md", 0)}
+
+    # 2. Second run with --session and --include-seen
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "test", "--session", session_id, "--include-seen"])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config", return_value=config), \
+         patch("qmd.main.get_seen_chunks_for_session", return_value={("col", "doc.md", 0)}):
+        mock_store = MockStore.return_value
+        mock_store.history_conn = MagicMock()
+        mock_store.config = config
+        mock_store.conn = db_conn
+        mock_store.last_exclusion_stats = {}
+        mock_store.hybrid_search.return_value = []
+        main()
+        # Explicit override sets exclude_seen_set to empty
+        assert mock_store.hybrid_search.call_args.kwargs["exclude_seen_set"] == set()

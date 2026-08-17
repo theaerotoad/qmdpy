@@ -194,4 +194,75 @@ def test_format_help_all_direct():
     assert "Quick Markdown Search" in help_text
     assert "usage: qmd search" in help_text
     assert "usage: qmd grep" in help_text
-    assert "usage: qmd collection tree" in help_text
+    assert "Target & Filters:" in help_text
+    assert "Search Mode & Quality:" in help_text
+    assert "Session & History:" in help_text
+
+def test_search_presets_deep_and_broad(monkeypatch):
+    """Test that --deep and --broad presets activate the expected flags."""
+    # Test --deep (implies rerank and doc)
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "apollo", "--deep"])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.hybrid_search.return_value = []
+        main()
+        mock_store.hybrid_search.assert_called_once()
+        assert mock_store.hybrid_search.call_args.kwargs["rerank"] is True
+
+    # Test --broad (implies w2n)
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "apollo", "--broad"])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.wide_to_narrow_search.return_value = []
+        main()
+        mock_store.wide_to_narrow_search.assert_called_once()
+
+def test_session_smart_defaults(monkeypatch):
+    """Test that --session implies exclude_seen unless --include-seen is provided."""
+    # With --session: exclude_seen should default to True
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "query", "--session", "sess1"])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"), \
+         patch("qmd.main.get_seen_chunks_for_session", return_value={("c", "p", 1)}):
+        mock_store = MockStore.return_value
+        mock_store.hybrid_search.return_value = []
+        main()
+        assert mock_store.hybrid_search.call_args.kwargs["exclude_seen_set"] == {("c", "p", 1)}
+
+    # With --session and --include-seen: exclude_seen_set should be empty set
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "query", "--session", "sess1", "--include-seen"])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"), \
+         patch("qmd.main.get_seen_chunks_for_session", return_value={("c", "p", 1)}):
+        mock_store = MockStore.return_value
+        mock_store.hybrid_search.return_value = []
+        main()
+        assert mock_store.hybrid_search.call_args.kwargs["exclude_seen_set"] == set()
+
+def test_actionable_xml_attributes(capsys):
+    """Test that Phase 5 actionable XML attributes are rendered."""
+    from qmd.formatting import format_results_xml, format_doc_results_xml, format_outline_xml
+    from qmd.store import Result
+
+    r = Result(path="space/apollo.epub", title="Apollo", text="Mission details here", score=0.88, source="hybrid", rank=1, collection="Books", seq_id=70, headers="Budget > FY67")
+
+    format_results_xml([r], query="apollo", session_id="test_sess", seen_chunks=5)
+    out = capsys.readouterr().out
+    assert 'session_id="test_sess"' in out
+    assert 'seen_chunks="5"' in out
+    assert 'next_query_hint="--session test_sess"' in out
+    assert 'read="qmd read \'Books:space/apollo.epub:70\'"' in out
+    assert 'outline="qmd outline \'Books:space/apollo.epub\'"' in out
+    assert 'chars=' in out
+
+    # Test doc results XML gap and chunk
+    grouped = [{
+        "title": "Apollo",
+        "collection": "Books",
+        "path": "space/apollo.epub",
+        "score": 0.88,
+        "chunks": [{"seq_id": 70, "score": 0.88, "rank": 1, "headers": "Budget", "text": "Mission details"}]
+    }]
+    format_doc_results_xml(grouped, query="apollo")
+    doc_out = capsys.readouterr().out
+    assert 'expand="qmd read \'Books:space/apollo.epub:0-69\'"' in doc_out
+    assert 'read="qmd read \'Books:space/apollo.epub:70\'"' in doc_out
+    assert 'outline="qmd outline \'Books:space/apollo.epub\'"' in doc_out

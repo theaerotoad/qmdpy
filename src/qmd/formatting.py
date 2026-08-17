@@ -41,7 +41,7 @@ def escape_xml_attr(val: Any) -> str:
     if val is None:
         return ""
     clean = strip_ansi(str(val))
-    return html.escape(clean, quote=True)
+    return clean.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
 def extract_lexical_terms(query: str) -> List[str]:
     """Extracts lexical (FTS) search terms from query or FTS expression."""
@@ -257,16 +257,18 @@ def format_outline_cli(outline: Dict):
         print(f"{indent}{CYAN}{level_hashes}{RESET} {BOLD}{h['text']}{RESET} {YELLOW}{seq_str}{RESET} {DIM}({h['char_count']} chars){RESET}")
     print()
 
-def format_results_xml(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
+def format_results_xml(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None):
     """Outputs flat search results as XML for LLM context."""
     query_attr = escape_xml_attr(query)
     total_matches = len(results)
     session_attr = f' session_id="{escape_xml_attr(session_id)}"' if session_id else ""
+    seen_attr = f' seen_chunks="{seen_chunks}"' if seen_chunks is not None and session_id else ""
+    hint_attr = f' next_query_hint="--session {escape_xml_attr(session_id)}"' if session_id else ""
     excl_attr = ""
     if isinstance(exclusion_stats, dict) and exclusion_stats.get("excluded_chunks", 0) > 0:
         excl_attr = f' excluded_chunks="{exclusion_stats["excluded_chunks"]}" excluded_docs="{exclusion_stats.get("excluded_docs", 0)}"'
 
-    lines = [f'<search_results query="{query_attr}" total_matches="{total_matches}"{session_attr}{excl_attr}>']
+    lines = [f'<search_results query="{query_attr}" total_matches="{total_matches}"{session_attr}{seen_attr}{hint_attr}{excl_attr}>']
 
     for i, res in enumerate(results):
         rank = res.rank if res.rank is not None else (i + 1)
@@ -276,17 +278,30 @@ def format_results_xml(results: List, query: str = "", verbose: bool = False, se
         next_seq = seq + 1
         doc_uri = f"qmd://{res.collection}/{res.path}" if res.collection else res.path
         section = getattr(res, 'headers', '') or ""
+        coll_attr = f' collection="{escape_xml_attr(res.collection)}"' if res.collection else ""
+        path_attr = f' path="{escape_xml_attr(res.path)}"' if res.path else ""
+
+        target_ref = f"{res.collection}:{res.path}:{seq}" if res.collection else f"{res.path}:{seq}"
+        outline_ref = f"{res.collection}:{res.path}" if res.collection else f"{res.path}"
+        read_cmd = f"qmd read '{target_ref}'"
+        outline_cmd = f"qmd outline '{outline_ref}'"
+
+        clean_text = strip_ansi(res.text).strip()
+        chars = len(clean_text)
 
         res_tag = (
             f'  <result\n'
             f'    rank="{rank}"\n'
             f'    score="{score_str}"\n'
-            f'    document="{escape_xml_attr(doc_uri)}"\n'
+            f'    document="{escape_xml_attr(doc_uri)}"{coll_attr}{path_attr}\n'
             f'    seq="{seq}"\n'
+            f'    chars="{chars}"\n'
             f'    title="{escape_xml_attr(res.title)}"\n'
             f'    section="{escape_xml_attr(section)}"\n'
             f'    prev_seq="{prev_seq}"\n'
-            f'    next_seq="{next_seq}"'
+            f'    next_seq="{next_seq}"\n'
+            f'    read="{escape_xml_attr(read_cmd)}"\n'
+            f'    outline="{escape_xml_attr(outline_cmd)}"'
         )
         if verbose:
             if getattr(res, 'fts_score', None) is not None:
@@ -297,7 +312,6 @@ def format_results_xml(results: List, query: str = "", verbose: bool = False, se
                 res_tag += f'\n    rrf_score="{res.rrf_score:.4f}" rrf_rank="{res.rrf_rank}"'
         res_tag += '>'
 
-        clean_text = strip_ansi(res.text).strip()
         lines.append(res_tag)
         lines.append(clean_text)
         lines.append('  </result>')
@@ -305,7 +319,7 @@ def format_results_xml(results: List, query: str = "", verbose: bool = False, se
     lines.append('</search_results>')
     print("\n".join(lines))
 
-def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
+def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None):
     """Outputs document-grouped results as structured XML in document-sequential order."""
     if not grouped_results:
         print('<search_results query="" total_matches="0" total_documents="0">\n</search_results>')
@@ -315,16 +329,25 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
     total_matches = sum(len(d.get("chunks", [])) for d in grouped_results)
     total_docs = len(grouped_results)
     session_attr = f' session_id="{escape_xml_attr(session_id)}"' if session_id else ""
+    seen_attr = f' seen_chunks="{seen_chunks}"' if seen_chunks is not None and session_id else ""
+    hint_attr = f' next_query_hint="--session {escape_xml_attr(session_id)}"' if session_id else ""
     excl_attr = ""
     if isinstance(exclusion_stats, dict) and exclusion_stats.get("excluded_chunks", 0) > 0:
         excl_attr = f' excluded_chunks="{exclusion_stats["excluded_chunks"]}" excluded_docs="{exclusion_stats.get("excluded_docs", 0)}"'
 
-    lines = [f'<search_results query="{query_attr}" total_matches="{total_matches}" total_documents="{total_docs}"{session_attr}{excl_attr}>']
+    lines = [f'<search_results query="{query_attr}" total_matches="{total_matches}" total_documents="{total_docs}"{session_attr}{seen_attr}{hint_attr}{excl_attr}>']
 
     for doc in grouped_results:
-        doc_uri = f"qmd://{doc['collection']}/{doc['path']}" if doc.get('collection') else doc.get('path', '')
+        coll = doc.get('collection', '') or ""
+        path = doc.get('path', '') or ""
+        doc_uri = f"qmd://{coll}/{path}" if coll else path
         title_attr = escape_xml_attr(doc.get('title', ''))
-        lines.append(f'  <document uri="{escape_xml_attr(doc_uri)}" title="{title_attr}">')
+        coll_attr = f' collection="{escape_xml_attr(coll)}"' if coll else ""
+        path_attr = f' path="{escape_xml_attr(path)}"' if path else ""
+        lines.append(f'  <document uri="{escape_xml_attr(doc_uri)}"{coll_attr}{path_attr} title="{title_attr}">')
+
+        outline_ref = f"{coll}:{path}" if coll else path
+        doc_outline_cmd = f"qmd outline '{outline_ref}'"
 
         raw_chunks = doc.get("chunks", [])
         sorted_chunks = sorted(raw_chunks, key=lambda x: x.get("seq_id", 0))
@@ -342,19 +365,32 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
             seq = c.get("seq_id", 0)
             if prev_end_seq is None:
                 if seq > 0:
-                    lines.append(f'    <gap omitted_chunks="{seq}" from_seq="0" to_seq="{seq - 1}" />')
+                    gap_ref = f"{coll}:{path}:0-{seq - 1}" if coll else f"{path}:0-{seq - 1}"
+                    lines.append(f'    <gap omitted_chunks="{seq}" from_seq="0" to_seq="{seq - 1}" expand="qmd read \'{escape_xml_attr(gap_ref)}\'" />')
             else:
                 gap = seq - prev_end_seq - 1
                 if gap > 0:
-                    lines.append(f'    <gap omitted_chunks="{gap}" from_seq="{prev_end_seq + 1}" to_seq="{seq - 1}" />')
+                    gap_from = prev_end_seq + 1
+                    gap_to = seq - 1
+                    gap_range = f"{gap_from}-{gap_to}" if gap_from != gap_to else f"{gap_from}"
+                    gap_ref = f"{coll}:{path}:{gap_range}" if coll else f"{path}:{gap_range}"
+                    lines.append(f'    <gap omitted_chunks="{gap}" from_seq="{gap_from}" to_seq="{gap_to}" expand="qmd read \'{escape_xml_attr(gap_ref)}\'" />')
 
             rank = c.get("rank")
             rank_attr = f' rank="{rank}"' if rank is not None else ""
             score_attr = f' score="{c["score"]:.4f}"' if "score" in c else ""
             section_attr = f' section="{escape_xml_attr(c.get("headers", ""))}"' if c.get("headers") else ""
 
-            lines.append(f'    <chunk seq="{seq}"{rank_attr}{score_attr}{section_attr}>')
-            lines.append(strip_ansi(c.get("text", "")).strip())
+            chunk_text = strip_ansi(c.get("text", "")).strip()
+            chars = len(chunk_text)
+            chars_attr = f' chars="{chars}"'
+
+            chunk_ref = f"{coll}:{path}:{seq}" if coll else f"{path}:{seq}"
+            read_attr = f' read="qmd read \'{escape_xml_attr(chunk_ref)}\'"'
+            outline_attr = f' outline="{escape_xml_attr(doc_outline_cmd)}"'
+
+            lines.append(f'    <chunk seq="{seq}"{rank_attr}{score_attr}{chars_attr}{section_attr}{read_attr}{outline_attr}>')
+            lines.append(chunk_text)
             lines.append('    </chunk>')
             prev_end_seq = seq
 
@@ -383,7 +419,9 @@ def format_chunks_xml(results: List, window: int = 0):
         coll, path = key
         uri = f"qmd://{coll}/{path}" if coll else path
         title = doc_titles[key]
-        lines.append(f'<document uri="{escape_xml_attr(uri)}" title="{escape_xml_attr(title)}">')
+        coll_attr = f' collection="{escape_xml_attr(coll)}"' if coll else ""
+        path_attr = f' path="{escape_xml_attr(path)}"' if path else ""
+        lines.append(f'<document uri="{escape_xml_attr(uri)}"{coll_attr}{path_attr} title="{escape_xml_attr(title)}">')
 
         sorted_chunks = sorted(chunk_list, key=lambda x: x.seq_id)
         prev_seq = None
@@ -392,11 +430,20 @@ def format_chunks_xml(results: List, window: int = 0):
             if prev_seq is not None:
                 gap = seq - prev_seq - 1
                 if gap > 0:
-                    lines.append(f'  <gap omitted_chunks="{gap}" from_seq="{prev_seq + 1}" to_seq="{seq - 1}" />')
+                    gap_from = prev_seq + 1
+                    gap_to = seq - 1
+                    gap_range = f"{gap_from}-{gap_to}" if gap_from != gap_to else f"{gap_from}"
+                    gap_ref = f"{coll}:{path}:{gap_range}" if coll else f"{path}:{gap_range}"
+                    lines.append(f'  <gap omitted_chunks="{gap}" from_seq="{gap_from}" to_seq="{gap_to}" expand="qmd read \'{escape_xml_attr(gap_ref)}\'" />')
 
+            clean_text = strip_ansi(res.text).strip()
+            chars = len(clean_text)
+            chars_attr = f' chars="{chars}"'
             sec_attr = f' section="{escape_xml_attr(res.headers)}"' if getattr(res, 'headers', None) else ""
-            lines.append(f'  <chunk seq="{seq}"{sec_attr}>')
-            lines.append(strip_ansi(res.text).strip())
+            target_ref = f"{coll}:{path}:{seq}" if coll else f"{path}:{seq}"
+            read_attr = f' read="qmd read \'{escape_xml_attr(target_ref)}\'"'
+            lines.append(f'  <chunk seq="{seq}"{chars_attr}{sec_attr}{read_attr}>')
+            lines.append(clean_text)
             lines.append('  </chunk>')
             prev_seq = seq
 
@@ -410,13 +457,17 @@ def format_outline_xml(outline: Dict):
         print('<outline>\n</outline>')
         return
 
-    uri = f"qmd://{outline['collection']}/{outline['path']}" if outline.get('collection') else outline.get('path', '')
+    coll = outline.get('collection', '') or ""
+    path = outline.get('path', '') or ""
+    uri = f"qmd://{coll}/{path}" if coll else path
     title = escape_xml_attr(outline.get('title', ''))
     total_chunks = outline.get('total_chunks', 0)
     total_chars = outline.get('total_chars', 0)
+    coll_attr = f' collection="{escape_xml_attr(coll)}"' if coll else ""
+    path_attr = f' path="{escape_xml_attr(path)}"' if path else ""
 
     lines = [
-        f'<outline uri="{escape_xml_attr(uri)}" title="{title}" total_chunks="{total_chunks}" total_chars="{total_chars}">'
+        f'<outline uri="{escape_xml_attr(uri)}"{coll_attr}{path_attr} title="{title}" total_chunks="{total_chunks}" total_chars="{total_chars}">'
     ]
     for h in outline.get('headings', []):
         level = h.get('level', 1)
@@ -424,8 +475,11 @@ def format_outline_xml(outline: Dict):
         end_seq = h.get('end_seq', 0)
         char_count = h.get('char_count', 0)
         text = escape_xml_attr(h.get('text', ''))
+        seq_range = f"{start_seq}-{end_seq}" if start_seq != end_seq else f"{start_seq}"
+        read_ref = f"{coll}:{path}:{seq_range}" if coll else f"{path}:{seq_range}"
+        read_attr = f' read="qmd read \'{escape_xml_attr(read_ref)}\'"'
         lines.append(
-            f'  <heading level="{level}" start_seq="{start_seq}" end_seq="{end_seq}" char_count="{char_count}">{text}</heading>'
+            f'  <heading level="{level}" start_seq="{start_seq}" end_seq="{end_seq}" char_count="{char_count}"{read_attr}>{text}</heading>'
         )
     lines.append('</outline>')
     print("\n".join(lines))
