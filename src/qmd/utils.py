@@ -1,5 +1,6 @@
 import hashlib
 import re
+import html
 from typing import List, Dict, Optional, Any, Union, Tuple
 
 _SPACY_MODELS: Dict[str, Any] = {}
@@ -352,6 +353,13 @@ def parse_target_spec(target: Union[str, int, None], default_collection: Optiona
             "seq_ids": None,
             "row_ids": None
         }
+
+    # Defensively unescape HTML/XML entities (&amp; -> &, &quot; -> ", etc.)
+    # and strip any surrounding wrapper quotes from copy-pasting
+    s = html.unescape(s).strip()
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        s = s[1:-1].strip()
+        s = html.unescape(s).strip()
 
     # 1. Pure row ID or integer ranges (e.g., "5", "10-15", "22,40,25-27")
     if re.match(r'^[0-9,\-\s]+$', s):

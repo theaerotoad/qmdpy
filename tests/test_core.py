@@ -197,3 +197,14 @@ def test_parse_target_spec():
     t5 = parse_target_spec("doc.md", default_collection="Notes")
     assert t5["collection"] == "Notes"
     assert t5["path"] == "doc.md"
+
+    # 6. HTML/XML entity unescaping and quote stripping
+    t6 = parse_target_spec("Books:Non-Fiction/Space/Cosmos &amp; Culture.epub:622")
+    assert t6["collection"] == "Books"
+    assert t6["path"] == "Non-Fiction/Space/Cosmos & Culture.epub"
+    assert t6["seq"] == [622]
+
+    t6_quoted = parse_target_spec("'qmd://Books/Special &amp; Doc.md:1-3'")
+    assert t6_quoted["collection"] == "Books"
+    assert t6_quoted["path"] == "Special & Doc.md"
+    assert t6_quoted["seq"] == [1, 2, 3]
