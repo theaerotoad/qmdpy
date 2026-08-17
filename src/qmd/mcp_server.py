@@ -21,7 +21,12 @@ def execute_qmd_command(command_str: str, config_path: Optional[str] = None) -> 
     from qmd.main import build_parser, execute_command
     from qmd.config import load_config
     from qmd.store import Store
+    import logging
     
+    # Suppress noisy HTTP logs that might pollute the XML output
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
     if not command_str:
         return "Error: command cannot be empty."
 
