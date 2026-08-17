@@ -81,7 +81,7 @@ collections:
 
 ### 3. Environment Variables
 
-QMD offloads heavy lifting to an OpenAI-compatible server (like `llama.cpp` or `Ollama`).
+QMD supports optional environment variables to streamline CLI, agent, and server workflows:
 
 ```bash
 export QMD_LLM_URL="http://localhost:8080"  # Overrides YAML llm_url
@@ -89,6 +89,10 @@ export EMBED_MODEL="nomic-embed-text"       # Must match your server's model ali
 export RERANK_MODEL="mxbai-rerank-xsmall"   # Optional
 export GENERATE_MODEL="llama-3.2-3b"        # Optional
 
+# Configuration & Output Defaults
+export QMD_CONFIG="/path/to/custom_config.yml" # Default config file (overrides ~/.config/qmd/index.yml)
+export QMD_XML="1"                            # Default all command outputs to XML (for LLM agent contexts)
+export QMD_DEEP="1"                           # Default all searches to --deep mode (doc-grouped + reranked)
 ```
 
 ### 4. Usage Commands
