@@ -319,6 +319,8 @@ def format_results_xml(results: List, query: str = "", verbose: bool = False, se
     lines.append('</search_results>')
     print("\n".join(lines))
 
+MAX_GAP_EXPAND_CHUNKS = 3
+
 def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None):
     """Outputs document-grouped results as structured XML in document-sequential order."""
     if not grouped_results:
@@ -365,8 +367,12 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
             seq = c.get("seq_id", 0)
             if prev_end_seq is None:
                 if seq > 0:
-                    gap_ref = f"{coll}:{path}:0-{seq - 1}" if coll else f"{path}:0-{seq - 1}"
-                    lines.append(f'    <gap omitted_chunks="{seq}" from_seq="0" to_seq="{seq - 1}" expand="qmd read \'{escape_xml_attr(gap_ref)}\'" />')
+                    gap_len = seq
+                    gap_to = seq - 1
+                    gap_range = f"0-{gap_to}" if gap_to > 0 else "0"
+                    gap_ref = f"{coll}:{path}:{gap_range}" if coll else f"{path}:{gap_range}"
+                    expand_attr = f' expand="qmd read \'{escape_xml_attr(gap_ref)}\'"' if gap_len <= MAX_GAP_EXPAND_CHUNKS else ""
+                    lines.append(f'    <gap omitted_chunks="{gap_len}" from_seq="0" to_seq="{gap_to}"{expand_attr} />')
             else:
                 gap = seq - prev_end_seq - 1
                 if gap > 0:
@@ -374,7 +380,8 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
                     gap_to = seq - 1
                     gap_range = f"{gap_from}-{gap_to}" if gap_from != gap_to else f"{gap_from}"
                     gap_ref = f"{coll}:{path}:{gap_range}" if coll else f"{path}:{gap_range}"
-                    lines.append(f'    <gap omitted_chunks="{gap}" from_seq="{gap_from}" to_seq="{gap_to}" expand="qmd read \'{escape_xml_attr(gap_ref)}\'" />')
+                    expand_attr = f' expand="qmd read \'{escape_xml_attr(gap_ref)}\'"' if gap <= MAX_GAP_EXPAND_CHUNKS else ""
+                    lines.append(f'    <gap omitted_chunks="{gap}" from_seq="{gap_from}" to_seq="{gap_to}"{expand_attr} />')
 
             rank = c.get("rank")
             rank_attr = f' rank="{rank}"' if rank is not None else ""
@@ -399,7 +406,7 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
     lines.append('</search_results>')
     print("\n".join(lines))
 
-def format_chunks_xml(results: List, window: int = 0):
+def format_chunks_xml(results: List, window: int = 0, truncation_info: Optional[Dict] = None):
     """Outputs retrieved chunks in XML format."""
     if not results:
         print('<document>\n</document>')
@@ -434,7 +441,8 @@ def format_chunks_xml(results: List, window: int = 0):
                     gap_to = seq - 1
                     gap_range = f"{gap_from}-{gap_to}" if gap_from != gap_to else f"{gap_from}"
                     gap_ref = f"{coll}:{path}:{gap_range}" if coll else f"{path}:{gap_range}"
-                    lines.append(f'  <gap omitted_chunks="{gap}" from_seq="{gap_from}" to_seq="{gap_to}" expand="qmd read \'{escape_xml_attr(gap_ref)}\'" />')
+                    expand_attr = f' expand="qmd read \'{escape_xml_attr(gap_ref)}\'"' if gap <= MAX_GAP_EXPAND_CHUNKS else ""
+                    lines.append(f'  <gap omitted_chunks="{gap}" from_seq="{gap_from}" to_seq="{gap_to}"{expand_attr} />')
 
             clean_text = strip_ansi(res.text).strip()
             chars = len(clean_text)
@@ -444,6 +452,12 @@ def format_chunks_xml(results: List, window: int = 0):
             lines.append(clean_text)
             lines.append('  </chunk>')
             prev_seq = seq
+
+        if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
+            omitted = truncation_info["omitted_remaining"]
+            limit = truncation_info.get("limit", len(results))
+            resume_cmd = escape_xml_attr(truncation_info.get("resume_cmd", ""))
+            lines.append(f'  <truncation omitted_chunks="{omitted}" reason="max_chunks_per_response limit ({limit}) reached" resume="{resume_cmd}" />')
 
         lines.append('</document>')
 
@@ -482,7 +496,7 @@ def format_outline_xml(outline: Dict):
     lines.append('</outline>')
     print("\n".join(lines))
 
-def format_chunks_cli(results: List, window: int = 0):
+def format_chunks_cli(results: List, window: int = 0, truncation_info: Optional[Dict] = None):
     """Prints retrieved chunk(s) with context window headers."""
     if not results:
         print(f"\n{RED}No chunks found.{RESET}")
@@ -499,6 +513,11 @@ def format_chunks_cli(results: List, window: int = 0):
             hdr_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
             print(f"{GREEN}Chunk {res.seq_id}{RESET}{hdr_str}")
             print(f"{res.text}\n")
+
+        if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
+            omitted = truncation_info["omitted_remaining"]
+            resume_cmd = truncation_info.get("resume_cmd", "")
+            print(f"{YELLOW}[... Truncated {omitted} remaining chunk(s) to protect context. Next page: {resume_cmd} ...]{RESET}\n")
     else:
         print(f"\n{DIM}Retrieved {len(results)} chunk(s) across {len(distinct_docs)} documents (window: ±{window}){RESET}\n")
         current_doc = None
@@ -512,6 +531,11 @@ def format_chunks_cli(results: List, window: int = 0):
             hdr_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
             print(f"{GREEN}Chunk {res.seq_id}{RESET}{hdr_str}")
             print(f"{res.text}\n")
+
+        if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
+            omitted = truncation_info["omitted_remaining"]
+            resume_cmd = truncation_info.get("resume_cmd", "")
+            print(f"{YELLOW}[... Truncated {omitted} remaining chunk(s) to protect context. Next page: {resume_cmd} ...]{RESET}\n")
 
 def format_collection_tree_cli(tree_data: Union[Dict, List[Dict]]):
     """Prints collection folder directory tree in ASCII format."""
