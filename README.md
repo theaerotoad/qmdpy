@@ -93,6 +93,16 @@ export GENERATE_MODEL="llama-3.2-3b"        # Optional
 
 ### 4. Usage Commands
 
+**Agent Decision Guide:**
+
+```bash
+# Display quick LLM agent decision matrix & workflow
+qmd guide
+qmd guide --xml
+
+
+```
+
 **Indexing:**
 
 ```bash
@@ -105,73 +115,71 @@ qmd update --pull
 # Force Re-index (Ignore content hashes, re-process everything)
 qmd update --force
 
+
 ```
 
-**Searching & Web UI:**
+**Searching & Intent Presets:**
 
 ```bash
 # Fast Local Search (Hybrid, FTS + Semantic Vector, No LLM)
 qmd search "self improvement"
 
-# Deep Search (Uses LLM to Rerank Results)
-qmd search "architecture patterns" -r
+# Deep Search: Document Grouping + Cross-Encoder Reranking (Recommended)
+qmd search "architecture patterns" --deep
 
-# LLM-Agent Context Search (Clean XML output with isolated boundaries)
-qmd search "helios 1 mission" --xml
+# Broad Search: Hierarchical Wide-to-Narrow Search
+qmd search "space exploration" --broad
 
-# Document View with Output Piping
-qmd search "python async" --doc --json | jq '.'
+# LLM-Agent Context Search (Plain XML with copy-pasteable read attributes)
+qmd search "helios 1 mission" --llm
 
-# Document View in Sequential XML (Preserves reading order with <gap> tags)
-qmd search "space exploration" --doc --xml
+# Multi-Turn Session Search (Automatically deduplicates previously seen chunks)
+qmd search "distributed systems" --session 8f3a1b9c
 
-# Session Search with Exclude Seen Chunks
-qmd search "distributed systems" --session 8f3a1b9c --exclude-seen
+# Re-include previously seen chunks in session
+qmd search "distributed systems" --session 8f3a1b9c --include-seen
 
 # Filtered Search (By Collection, Title, or Path)
 qmd search "docker" -c work -t "networking" -p "src/"
 
-# Lexical Override (Ignore vector nuance, force BM25 match)
+# Lexical Override (Force BM25 match)
 qmd search "error codes" --lex "ERR_CONNECTION_REFUSED"
 
 # Start Web UI (Features interactive File Tree drawer, Grep Mode, & XML prompt export)
 qmd serve --port 5000
 
-```
-
-**Document Outlines & Chunk Inspection:**
-
-```bash
-# Show Document Heading Outline & Chunk Sequence Mapping
-qmd outline "research/deep_space.md" -c work
-qmd outline "research/deep_space.md" --xml
-
-# Fetch Chunk(s) by RowID, Lists, or Ranges (with optional window)
-qmd chunk 234-299
-qmd chunk 22,40,25-37 -w 1
-
-# Fetch Chunk(s) by Document Path & Sequence Range
-qmd chunk "research/deep_space.md" --seq 1-5,10 -c work
-qmd chunk "research/deep_space.md" --seq 147-150 --xml
 
 ```
 
-**Collection Directory Trees & Knowledge Base Inspection:**
+**Targeted Reading & Document Outlines:**
 
 ```bash
-# Render ASCII folder tree of all indexed collections
-qmd collection tree
+# Read chunks via shorthand target (coll:path:seq)
+qmd read "work:research/deep_space.md:1-5"
+qmd read "qmd://work/research/deep_space.md:147"
 
-# Render tree for a specific collection with maximum depth limit
-qmd collection tree work --depth 2
+# Read by chunk row IDs or ranges
+qmd read 234-299
+qmd read 22,40,25-37 -w 1
 
-# Filter tree files by substring or regex pattern
-qmd collection tree work -p "guide"
-qmd collection tree work -p "\.py$" --regex
+# Document Outline & Chunk Sequence Map
+qmd outline "work:research/deep_space.md"
+qmd outline "research/deep_space.md" -c work --xml
 
-# Export collection tree structure in JSON or LLM-friendly XML
-qmd collection tree work --xml
-qmd collection tree --json
+
+```
+
+**Collection Directory Trees & Listings:**
+
+```bash
+# List all configured collections
+qmd collections
+
+# Render hierarchical directory tree of indexed files
+qmd tree
+qmd tree work --depth 2
+qmd tree work -p "guide"
+qmd tree work --xml
 
 ```
 

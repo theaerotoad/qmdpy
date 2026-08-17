@@ -287,6 +287,24 @@ def test_actionable_xml_attributes(capsys):
     assert 'read="qmd read \'Books:space/apollo.epub:4\'"' in doc_out
     assert 'outline="qmd outline \'Books:space/apollo.epub\'"' in doc_out
 
+def test_search_truncation_safety_cap(monkeypatch, capsys):
+    """Test that search results exceeding max_chunks are truncated and emit truncation XML."""
+    from qmd.store import Result
+
+    mock_results = [
+        Result(collection="Books", path="apollo.epub", title="Apollo", text=f"Match {i}", score=1.0 - (i * 0.01), source="vec", rank=i+1, seq_id=i)
+        for i in range(40)
+    ]
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "apollo", "--limit", "40", "--max-chunks", "15", "--xml"])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.hybrid_search.return_value = mock_results
+        mock_store.last_exclusion_stats = {}
+        main()
+        out = capsys.readouterr().out
+        assert 'total_matches="15"' in out
+        assert '<truncation omitted_chunks="25" reason="max_chunks_per_response limit (15) reached" />' in out
+
 def test_read_truncation_safety_cap(monkeypatch, capsys):
     """Test that reading a huge range of chunks truncates and emits a resumption hint."""
     from unittest.mock import MagicMock, patch
