@@ -40,7 +40,7 @@ def execute_qmd_command(command_str: str, config_path: Optional[str] = None, sto
 
     # Strip tool_call tags and tool prefixes e.g. <|tool_call>call:...<tool_call|>
     raw_cmd = re.sub(r'^<\|?(?:tool_call|tool_calls)[^>]*>(?:call:)?', '', raw_cmd, flags=re.IGNORECASE).strip()
-    raw_cmd = re.sub(r'<\|?/(?:tool_call|tool_calls)?[^>]*>$', '', raw_cmd, flags=re.IGNORECASE).strip()
+    raw_cmd = re.sub(r'<\|?/?(?:tool_call|tool_calls)[^>]*>$', '', raw_cmd, flags=re.IGNORECASE).strip()
     raw_cmd = re.sub(r'^call:\s*', '', raw_cmd, flags=re.IGNORECASE).strip()
 
     # Strip surrounding backticks e.g. `qmd search "..."`

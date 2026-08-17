@@ -46,12 +46,14 @@ def extract_batch_commands(input_data: Union[str, List[str]], max_commands: int 
     # 1. Try extracting commands from common LLM tool calling syntax and XML containers
     extracted_candidates = []
 
-    # Matches <|tool_call|>call:command<|tool_call|> or <|tool_call>call:command<tool_call|>
-    for m in re.finditer(r'<\|?(?:tool_call|tool_calls)[^>]*>(?:call:)?\s*(.*?)\s*<\|?/(?:tool_call|tool_calls)?[^>]*>', text, re.DOTALL | re.IGNORECASE):
-        for candidate in m.group(1).splitlines():
-            c = candidate.strip()
-            if c:
-                extracted_candidates.append(c)
+    # Matches tool call tags with various closing tag formats (e.g. <tool_call|>, </tool_call>, <|tool_call|>, etc.)
+    for m in re.finditer(r'<\|?(?:tool_call|tool_calls)[^>]*>(?:call:)?\s*(.*?)\s*(?:<\|?/?(?:tool_call|tool_calls)[^>]*>|$)', text, re.DOTALL | re.IGNORECASE):
+        content = m.group(1).strip()
+        if content:
+            for candidate in content.splitlines():
+                c = candidate.strip()
+                if c:
+                    extracted_candidates.append(c)
 
     # Matches <qmd_commands>...</qmd_commands> or <commands>...</commands>
     for m in re.finditer(r'<(?:qmd_commands|commands|batch_commands)>\s*(.*?)\s*</(?:qmd_commands|commands|batch_commands)>', text, re.DOTALL | re.IGNORECASE):
