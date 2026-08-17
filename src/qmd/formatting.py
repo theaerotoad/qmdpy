@@ -5,6 +5,7 @@ import json
 from typing import List, Dict, Optional, Tuple, Any, Union
 
 PLAIN_MODE = False
+MAX_GAP_EXPAND_CHUNKS = 3
 
 # ANSI Escape Codes
 RESET = "\033[0m"
@@ -108,7 +109,7 @@ def highlight_keywords(text: str, query: str) -> str:
     pattern = re.compile(f"({'|'.join(re.escape(k) for k in keywords)})", re.IGNORECASE)
     return pattern.sub(f"{YELLOW}{BOLD}\\1{RESET}", text)
 
-def format_results_cli(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
+def format_results_cli(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, truncation_info: Optional[Dict] = None):
     """Prints standard search results (snippets)."""
     if session_id:
         stats_str = ""
@@ -151,7 +152,11 @@ def format_results_cli(results: List, query: str = "", verbose: bool = False, se
             print(f"   {CYAN}↳ Ranking Details -> FTS: {fts_str} | Vector: {vec_str} | RRF: {rrf_str}{RESET}")
         print()
 
-def format_doc_results_cli(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
+    if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
+        omitted = truncation_info["omitted_remaining"]
+        print(f"{YELLOW}[... Truncated {omitted} remaining result chunk(s) to protect context ...]{RESET}\n")
+
+def format_doc_results_cli(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, truncation_info: Optional[Dict] = None):
     """Prints results grouped by document with combined snippets."""
     if session_id:
         stats_str = ""
@@ -202,7 +207,11 @@ def format_doc_results_cli(grouped_results: List[Dict], query: str = "", verbose
         
         print("\n\n".join(rendered_blocks) + "\n")
 
-def format_results_json(results: List, verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
+    if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
+        omitted = truncation_info["omitted_remaining"]
+        print(f"{YELLOW}[... Truncated {omitted} remaining result chunk(s) to protect context ...]{RESET}\n")
+
+def format_results_json(results: List, verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, truncation_info: Optional[Dict] = None):
     """Outputs results as JSON for piping."""
     data = []
     for res in results:
@@ -230,7 +239,7 @@ def format_results_json(results: List, verbose: bool = False, session_id: Option
         data.append(item)
     print(json.dumps(data, indent=2))
 
-def format_doc_results_json(grouped_results: List[Dict], session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None):
+def format_doc_results_json(grouped_results: List[Dict], session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, truncation_info: Optional[Dict] = None):
     """Outputs document-grouped results as JSON for piping."""
     if session_id or isinstance(exclusion_stats, dict):
         for doc in grouped_results:
@@ -257,7 +266,7 @@ def format_outline_cli(outline: Dict):
         print(f"{indent}{CYAN}{level_hashes}{RESET} {BOLD}{h['text']}{RESET} {YELLOW}{seq_str}{RESET} {DIM}({h['char_count']} chars){RESET}")
     print()
 
-def format_results_xml(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None):
+def format_results_xml(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None, truncation_info: Optional[Dict] = None):
     """Outputs flat search results as XML for LLM context."""
     query_attr = escape_xml_attr(query)
     total_matches = len(results)
@@ -316,12 +325,15 @@ def format_results_xml(results: List, query: str = "", verbose: bool = False, se
         lines.append(clean_text)
         lines.append('  </result>')
 
+    if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
+        omitted = truncation_info["omitted_remaining"]
+        limit_val = truncation_info.get("limit", len(results))
+        lines.append(f'  <truncation omitted_chunks="{omitted}" reason="max_chunks_per_response limit ({limit_val}) reached" />')
+
     lines.append('</search_results>')
     print("\n".join(lines))
 
-MAX_GAP_EXPAND_CHUNKS = 3
-
-def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None):
+def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None, truncation_info: Optional[Dict] = None):
     """Outputs document-grouped results as structured XML in document-sequential order."""
     if not grouped_results:
         print('<search_results query="" total_matches="0" total_documents="0">\n</search_results>')
@@ -402,6 +414,11 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
             prev_end_seq = seq
 
         lines.append('  </document>')
+
+    if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
+        omitted = truncation_info["omitted_remaining"]
+        limit_val = truncation_info.get("limit", sum(len(d.get("chunks", [])) for d in grouped_results))
+        lines.append(f'  <truncation omitted_chunks="{omitted}" reason="max_chunks_per_response limit ({limit_val}) reached" />')
 
     lines.append('</search_results>')
     print("\n".join(lines))
