@@ -451,10 +451,11 @@ def handle_chunk(args, store: Store):
     # Apply max_chunks_per_response cap to prevent context explosion
     max_chunks = getattr(args, "max_chunks", None)
     if max_chunks is None:
-        max_chunks = getattr(store.config, "max_chunks_per_response", 30)
+        cfg_val = getattr(getattr(store, "config", None), "max_chunks_per_response", 30)
+        max_chunks = cfg_val if isinstance(cfg_val, int) else 30
 
     truncation_info = None
-    if max_chunks and len(results) > max_chunks:
+    if isinstance(max_chunks, int) and max_chunks > 0 and len(results) > max_chunks:
         omitted_remaining = len(results) - max_chunks
         last_rendered = results[max_chunks - 1]
         next_chunk = results[max_chunks]
