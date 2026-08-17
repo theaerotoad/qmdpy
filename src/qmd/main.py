@@ -15,7 +15,7 @@ from qmd.formatting import (
     format_outline_cli, format_chunks_cli, format_results_xml, format_doc_results_xml,
     format_chunks_xml, format_outline_xml, format_collection_tree_cli, format_collection_tree_xml,
     format_grep_cli, format_grep_json, format_grep_xml,
-    set_plain_mode, RED, GREEN, RESET
+    set_plain_mode, strip_ansi, BOLD, CYAN, GREEN, RED, RESET
 )
 from qmd.utils import redact_pii, parse_target_spec, parse_int_ranges
 
@@ -630,6 +630,8 @@ def handle_guide(args, store: Store):
 - Pass `--session <id>` to avoid ingesting duplicate context on follow-up searches.
 - Follow actionable XML attributes (`read="..."`, `outline="..."`, `expand="..."`, `resume="..."`).
 - Large reads truncate at 30 chunks with a resume hint to protect context windows."""
+        if getattr(args, "plain", False):
+            guide_md = strip_ansi(guide_md)
         print(guide_md.strip())
 
 def handle_collections_list(args, store: Store):
