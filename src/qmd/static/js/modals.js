@@ -194,7 +194,7 @@ async function loadCollections(populateSettings = false) {
                             <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono">${escapeHtml(c.path || '')}</div>
                         </div>
                         <button type="button" class="btn-reindex bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 transition shadow-sm flex items-center gap-1.5">
-                            <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                             Re-index
                         </button>
                     `;
@@ -317,6 +317,129 @@ function closeSessionModal() {
     setTimeout(() => document.getElementById('session-modal').classList.add('hidden'), 150);
 }
 
+// Batch Command Modal Logic & Evaluation Engine
+let lastBatchBundleXml = '';
+
+function openBatchModal() {
+    const modal = document.getElementById('batch-modal');
+    modal.classList.remove('hidden');
+    void modal.offsetWidth;
+    document.getElementById('batch-backdrop').classList.remove('opacity-0');
+    document.getElementById('batch-panel').classList.remove('scale-95', 'opacity-0');
+    const input = document.getElementById('batch-input');
+    if (input && !input.value.trim()) input.focus();
+}
+
+function closeBatchModal() {
+    document.getElementById('batch-backdrop').classList.add('opacity-0');
+    document.getElementById('batch-panel').classList.add('scale-95', 'opacity-0');
+    setTimeout(() => document.getElementById('batch-modal').classList.add('hidden'), 150);
+}
+
+function clearBatchInput() {
+    const input = document.getElementById('batch-input');
+    if (input) input.value = '';
+    document.getElementById('batch-progress-wrapper').classList.add('hidden');
+    document.getElementById('batch-output-wrapper').classList.add('hidden');
+}
+
+async function copyBatchGuide() {
+    const btn = document.getElementById('btn-copy-batch-guide');
+    try {
+        const res = await fetch('/api/guide?format=xml');
+        const data = await res.json();
+        const guideText = data.guide || '';
+        await navigator.clipboard.writeText(guideText);
+        if (btn) {
+            const orig = btn.innerHTML;
+            btn.innerHTML = `<span class="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Guide Copied!</span>`;
+            setTimeout(() => { btn.innerHTML = orig; }, 2000);
+        }
+    } catch(e) {
+        if (btn) {
+            btn.innerHTML = `<span class="text-red-500 font-semibold">Error fetching guide</span>`;
+            setTimeout(() => { btn.innerHTML = 'Copy XML Guide for LLM'; }, 2000);
+        }
+    }
+}
+
+async function runBatchCommands() {
+    const rawText = document.getElementById('batch-input').value;
+    if (!rawText || !rawText.trim()) return;
+
+    const runBtn = document.getElementById('btn-run-batch');
+    const origBtnHtml = runBtn.innerHTML;
+    runBtn.disabled = true;
+    runBtn.innerHTML = `<span class="animate-spin mr-1">⟳</span> Running...`;
+
+    const progressWrapper = document.getElementById('batch-progress-wrapper');
+    const stepList = document.getElementById('batch-step-list');
+    const outputWrapper = document.getElementById('batch-output-wrapper');
+    const outputEl = document.getElementById('batch-output-xml');
+
+    progressWrapper.classList.remove('hidden');
+    outputWrapper.classList.add('hidden');
+    stepList.innerHTML = `<div class="text-slate-500 py-3 text-center">Parsing and executing commands...</div>`;
+
+    try {
+        const res = await fetch('/api/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: rawText, max_commands: 5 })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to execute batch');
+
+        stepList.innerHTML = '';
+        (data.results || []).forEach(r => {
+            const card = document.createElement('div');
+            const isSuccess = r.status === 'success';
+            card.className = `p-3 rounded-xl border flex items-start justify-between gap-3 text-xs font-mono ${
+                isSuccess
+                    ? 'bg-slate-50 dark:bg-slate-950/70 border-slate-200 dark:border-slate-800'
+                    : 'bg-red-50/50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300'
+            }`;
+            card.innerHTML = `
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="px-1.5 py-0.5 rounded font-semibold text-[10px] ${isSuccess ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300' : 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'}">#${r.index}</span>
+                        <span class="font-bold text-slate-800 dark:text-slate-200 truncate">${escapeHtml(r.command)}</span>
+                    </div>
+                    <div class="text-[11px] text-slate-500 dark:text-slate-400 truncate">${escapeHtml(r.output.split('\n')[0] || '')}</div>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0 pt-0.5">
+                    <span class="text-[11px] text-slate-400">${r.time_taken}s</span>
+                    <span class="font-semibold ${isSuccess ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}">${isSuccess ? '✓ Done' : '✕ Error'}</span>
+                </div>
+            `;
+            stepList.appendChild(card);
+        });
+
+        lastBatchBundleXml = data.xml || '';
+        outputEl.textContent = lastBatchBundleXml;
+        outputWrapper.classList.remove('hidden');
+        document.getElementById('batch-progress-title').textContent = `Completed ${data.total_commands} command(s)`;
+        document.getElementById('batch-progress-stats').textContent = `Total time: ${data.time_taken}s`;
+    } catch(e) {
+        stepList.innerHTML = `<div class="p-3 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 rounded-xl border border-red-200 dark:border-red-900/60 font-semibold">${escapeHtml(e.message)}</div>`;
+    } finally {
+        runBtn.disabled = false;
+        runBtn.innerHTML = origBtnHtml;
+    }
+}
+
+function copyBatchOutputXml() {
+    if (!lastBatchBundleXml) return;
+    const btn = document.getElementById('btn-copy-batch-output');
+    navigator.clipboard.writeText(lastBatchBundleXml).then(() => {
+        if (btn) {
+            const orig = btn.innerHTML;
+            btn.innerHTML = `<span class="text-white font-semibold">✓ Copied All XML!</span>`;
+            setTimeout(() => { btn.innerHTML = orig; }, 1800);
+        }
+    });
+}
+
 // Document Slide-Over Viewer
 async function openDocument(collection, path, targetText) {
     const drawer = document.getElementById('slide-over');
@@ -390,3 +513,15 @@ async function loadCollectionTree(pattern = '') {
         });
     } catch(e) { container.innerHTML = `<div class="text-red-500 p-2">Error loading tree</div>`; }
 }
+
+// Global Escape Listener
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeScopePicker();
+        closeSessionModal();
+        closeBatchModal();
+        closeSettings();
+        closeDocument();
+        closeTreeDrawer();
+    }
+});
