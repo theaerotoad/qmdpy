@@ -6,6 +6,7 @@ Converts non-markdown formats (.docx, .pptx, .xlsx, .csv, .html) into Markdown t
 import csv
 import io
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Union, List
 
@@ -296,7 +297,7 @@ def convert_to_markdown(file_path: Union[str, Path], config=None) -> str:
     if ext in {".md", ".markdown", ".txt"}:
         raw_md = _convert_text(path)
     elif ext == ".pdf":
-        raw_md = _convert_pdf(path)
+        raw_md = _convert_pdf(path, config)
     elif ext == ".docx":
         raw_md = _convert_docx(path, config)
     elif ext == ".pptx":
@@ -334,32 +335,211 @@ def _convert_text(path: Path) -> str:
         raise ValueError(f"Could not decode text file '{path.name}': {e}")
 
 
-def _convert_pdf(path: Path) -> str:
+def _convert_pdf(path: Path, config=None) -> str:
     try:
-        import pypdf
+        import pymupdf
+        import pymupdf4llm
     except ImportError:
-        try:
-            import PyPDF2 as pypdf
-        except ImportError:
-            raise ImportError("pypdf is required for converting .pdf files. Install with `pip install pypdf`.")
+        raise ImportError("pymupdf and pymupdf4llm are required for converting .pdf files. Install with `pip install pymupdf pymupdf4llm`.")
 
+    doc = pymupdf.open(str(path))
+    
+    # 1. Build header detector
+    def build_header_detector(doc, max_levels=5):
+        toc = doc.get_toc()
+        if toc:
+            toc_by_page = {}
+            for lvl, title, page_num in toc:
+                p_idx = page_num - 1
+                cleaned_title = title.strip().lower()
+                if cleaned_title:
+                    toc_by_page.setdefault(p_idx, []).append((min(lvl, max_levels), cleaned_title))
+
+            def toc_header_fn(span, page=None):
+                if page is None: return ""
+                page_num = page.number
+                if page_num not in toc_by_page: return ""
+                text = span.get("text", "").strip().lower()
+                if len(text) <= 2: return ""
+                for lvl, title in toc_by_page[page_num]:
+                    if text == title or text.startswith(title) or title.startswith(text):
+                        return "#" * lvl + " "
+                return ""
+            return toc_header_fn
+
+        font_sizes = Counter()
+        for page in doc:
+            page_dict = page.get_text("dict")
+            for block in page_dict.get("blocks", []):
+                if block.get("type") == 0:
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            text = span.get("text", "").strip()
+                            if len(text) > 2:
+                                size = round(span.get("size", 0))
+                                font_sizes[size] += len(text)
+        if not font_sizes:
+            return None
+
+        body_size = font_sizes.most_common(1)[0][0]
+        larger_sizes = sorted([s for s in font_sizes.keys() if s > body_size], reverse=True)
+        header_mapping = {size: min(idx + 1, max_levels) for idx, size in enumerate(larger_sizes[:max_levels])}
+
+        def font_size_header_fn(span, page=None):
+            text = span.get("text", "").strip()
+            if len(text) <= 2: return ""
+            size = round(span.get("size", 0))
+            if size in header_mapping:
+                return "#" * header_mapping[size] + " "
+            return ""
+
+        return font_size_header_fn
+
+    hdr_fn = build_header_detector(doc, max_levels=5)
+
+    # 2. Extract markdown using pymupdf4llm
     try:
-        reader = pypdf.PdfReader(str(path))
+        page_chunks = pymupdf4llm.to_markdown(
+            doc,
+            hdr_info=hdr_fn,
+            header=False,
+            footer=False,
+            write_images=False,
+            page_chunks=True
+        )
     except Exception as e:
-        raise ValueError(f"Failed to parse PDF file '{path.name}': {e}")
+        doc.close()
+        raise ValueError(f"Failed to parse PDF with pymupdf4llm: {e}")
+    
+    seen_xrefs = set()
+    
+    if isinstance(page_chunks, str):
+        raw_md = page_chunks
+    else:
+        md_pages = []
+        for i, chunk in enumerate(page_chunks):
+            page_text = chunk.get("text", "")
+            
+            # Send embedded PDF images to the Vision API if configured
+            if config and getattr(config, "vision_url", None):
+                try:
+                    page = doc[i]
+                    for img in page.get_images():
+                        xref = img[0]
+                        if xref in seen_xrefs:
+                            continue
+                        seen_xrefs.add(xref)
+                        
+                        base_image = doc.extract_image(xref)
+                        if not base_image:
+                            continue
+                            
+                        image_bytes = base_image["image"]
+                        ext = base_image.get("ext", "png")
+                        filename = f"page_{i+1}_img_{xref}.{ext}"
+                        
+                        vision_md = _process_image_vision_api(image_bytes, filename, config)
+                        if vision_md:
+                            page_text += f"\n\n{vision_md}\n"
+                except Exception:
+                    pass
+                    
+            md_pages.append(page_text)
+        raw_md = "\n\n".join(md_pages)
 
-    md_lines: List[str] = []
+    doc.close()
 
-    for i, page in enumerate(reader.pages, 1):
-        try:
-            text = page.extract_text()
-        except Exception:
-            text = ""
-        if text and text.strip():
-            md_lines.append(f"## Page {i}\n")
-            md_lines.append(text.strip() + "\n")
+    # 3. Clean and normalize headings
+    def clean_heading_text(raw_heading: str) -> str | None:
+        text = re.sub(r'<[^>]+>', '', raw_heading)
+        text = re.sub(r'[*_~`]', '', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        text = text.strip("•·-–— \t")
+        if not re.search(r'[a-zA-Z0-9]', text):
+            return None
+        return text
 
-    return "\n".join(md_lines).strip()
+    def normalize_markdown_headings(markdown_text: str, book_title: str | None = None) -> str:
+        text = re.sub(r'^(?:#{1,6})\s+(\*\*(?:FIGURE|TABLE|EXHIBIT|CHART|STEP\s+\d+).*?\*\*)\s*$', r'\1', markdown_text, flags=re.MULTILINE | re.IGNORECASE)
+        text = re.sub(r'^#{1,6}\s+([A-Z])\s*$', r'\1', text, flags=re.MULTILINE)
+        text = re.sub(r'^(?:#{1,6}\s+)?Chapter\s+(?:<u>)?([0-9]+|[IVXLCDM]+)(?:</u>)?\s*\n+(?:#{1,6}\s+)?([^\n]+)', r'## Chapter \1: \2', text, flags=re.MULTILINE | re.IGNORECASE)
+        text = re.sub(r'^#{1,6}\s+([0-9Xx-]{10,17}|TERMS OF USE)\s*$', r'\1', text, flags=re.MULTILINE)
+
+        cleaned_lines = []
+        for line in text.splitlines():
+            match = re.match(r'^(#{1,6})\s+(.*)$', line)
+            if match:
+                hashes, raw_heading = match.groups()
+                clean_text = clean_heading_text(raw_heading)
+                if clean_text is not None:
+                    cleaned_lines.append(f"{hashes} {clean_text}")
+            else:
+                cleaned_lines.append(line)
+
+        lines = cleaned_lines
+        first_heading_idx, first_heading_level, first_heading_text = None, None, None
+        for idx, line in enumerate(lines):
+            match = re.match(r'^(#{1,6})\s+(.*)$', line)
+            if match:
+                first_heading_idx = idx
+                first_heading_level = len(match.group(1))
+                first_heading_text = match.group(2).strip()
+                break
+
+        has_top_l1 = False
+        if first_heading_idx is not None and first_heading_level == 1:
+            if book_title:
+                t_norm = book_title.lower().strip()
+                h_norm = first_heading_text.lower().strip()
+                if h_norm == t_norm or h_norm in t_norm or t_norm in h_norm:
+                    has_top_l1 = True
+            else:
+                if first_heading_idx == 0 or all(not l.strip() for l in lines[:first_heading_idx]):
+                    has_top_l1 = True
+
+        stack = [(1, 1)] if (has_top_l1 or book_title) else [(0, 0)]
+        final_lines = []
+        if not has_top_l1 and book_title:
+            final_lines.append(f"# {book_title}\n")
+
+        for idx, line in enumerate(lines):
+            if has_top_l1 and idx == first_heading_idx:
+                final_lines.append(f"# {first_heading_text}")
+                continue
+
+            match = re.match(r'^(#{1,6})\s+(.*)$', line)
+            if not match:
+                final_lines.append(line)
+                continue
+
+            hashes, heading_content = match.groups()
+            raw_lvl = len(hashes)
+            if re.match(r'^Chapter\s+([0-9]+|[IVXLCDM]+):', heading_content, re.IGNORECASE):
+                raw_lvl = 2
+
+            if raw_lvl > stack[-1][0]:
+                new_assigned = min(6, stack[-1][1] + 1)
+                stack.append((raw_lvl, new_assigned))
+            elif raw_lvl == stack[-1][0]:
+                new_assigned = stack[-1][1]
+            else:
+                while len(stack) > 1 and stack[-1][0] > raw_lvl:
+                    stack.pop()
+                if stack[-1][0] == raw_lvl:
+                    new_assigned = stack[-1][1]
+                else:
+                    new_assigned = min(6, stack[-1][1] + 1)
+                    stack.append((raw_lvl, new_assigned))
+
+            final_lines.append(f"{'#' * new_assigned} {heading_content.strip()}")
+
+        result = "\n".join(final_lines).strip()
+        return re.sub(r'\n{3,}', '\n\n', result)
+
+    stem = re.sub(r'^[a-z0-9.]+[_-]', '', path.stem, flags=re.IGNORECASE)
+    book_title = stem.replace("-", " ").replace("_", " ").title()
+
+    return normalize_markdown_headings(raw_md, book_title=book_title)
 
 
 def _convert_docx(path: Path, config=None) -> str:
