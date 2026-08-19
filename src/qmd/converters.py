@@ -437,6 +437,9 @@ def _convert_pdf(path: Path, config=None) -> str:
         # Clean up any remaining HTML comments from pymupdf4llm
         page_text = re.sub(r'<!--.*?-->\n*', '', page_text, flags=re.DOTALL)
         
+        # Condense extra padding spaces in markdown tables to save tokens
+        page_text = re.sub(r'^\|.+?\|$', lambda m: re.sub(r' {2,}', ' ', m.group(0)), page_text, flags=re.MULTILINE)
+        
         # Send embedded PDF images to the Vision API if configured
         if config and getattr(config, "vision_url", None):
             try:
@@ -822,7 +825,8 @@ def _format_matrix_to_md_table(matrix: List[List[str]]) -> str:
     norm_matrix = []
     for row in matrix:
         norm_row = row + [""] * (max_cols - len(row))
-        norm_row = [cell.replace("|", "\\|") for cell in norm_row]
+        # Condense multiple spaces/newlines into a single space, and escape pipes
+        norm_row = [re.sub(r'\s+', ' ', cell).strip().replace("|", "\\|") for cell in norm_row]
         norm_matrix.append(norm_row)
 
     header = norm_matrix[0]
