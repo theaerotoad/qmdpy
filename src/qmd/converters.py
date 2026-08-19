@@ -313,7 +313,19 @@ def convert_to_markdown(file_path: Union[str, Path], config=None) -> str:
     else:
         raw_md = _convert_text(path)
 
-    return _sanitize_text(raw_md)
+    sanitized = _sanitize_text(raw_md)
+    
+    # Global pass: Condense extra padding spaces in any markdown tables to save tokens
+    # Safely target only contiguous blocks containing a markdown table separator (|---|)
+    def _condense_table_block(match):
+        block = match.group(0)
+        # Check if block contains a valid markdown separator line, allowing leading/trailing spaces
+        if re.search(r'^[ \t]*\|[-\s:|]+\|[ \t]*$', block, flags=re.MULTILINE):
+            # Replace 2 or more spaces with a single space
+            return re.sub(r' {2,}', ' ', block)
+        return block
+        
+    return re.sub(r'(?:^[ \t]*\|[^\n]*\|[ \t]*(?:\r?\n|$))+', _condense_table_block, sanitized, flags=re.MULTILINE)
 
 
 def _convert_text(path: Path) -> str:
@@ -436,16 +448,6 @@ def _convert_pdf(path: Path, config=None) -> str:
         
         # Clean up any remaining HTML comments from pymupdf4llm
         page_text = re.sub(r'<!--.*?-->\n*', '', page_text, flags=re.DOTALL)
-        
-        # Condense extra padding spaces in markdown tables to save tokens
-        # Safely target only contiguous blocks containing a markdown table separator (|---|)
-        def _condense_table_block(match):
-            block = match.group(0)
-            if re.search(r'^\|[-\s:|]+\|$', block, flags=re.MULTILINE):
-                return re.sub(r' {2,}', ' ', block)
-            return block
-            
-        page_text = re.sub(r'(?:^\|[^\r\n]*\|(?:\r?\n|$))+', _condense_table_block, page_text, flags=re.MULTILINE)
         
         # Send embedded PDF images to the Vision API if configured
         if config and getattr(config, "vision_url", None):
