@@ -397,16 +397,21 @@ def _convert_pdf(path: Path, config=None) -> str:
 
     hdr_fn = build_header_detector(doc, max_levels=5)
 
-    # 2. Extract markdown using pymupdf4llm
+    # 2. Extract markdown using pymupdf4llm (suppressing noisy OCR stdout)
+    import contextlib
+    import io
+    
+    f = io.StringIO()
     try:
-        page_chunks = pymupdf4llm.to_markdown(
-            doc,
-            hdr_info=hdr_fn,
-            header=False,
-            footer=False,
-            write_images=False,
-            page_chunks=True
-        )
+        with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
+            page_chunks = pymupdf4llm.to_markdown(
+                doc,
+                hdr_info=hdr_fn,
+                header=False,
+                footer=False,
+                write_images=False,
+                page_chunks=True
+            )
     except Exception as e:
         doc.close()
         raise ValueError(f"Failed to parse PDF with pymupdf4llm: {e}")
@@ -414,38 +419,43 @@ def _convert_pdf(path: Path, config=None) -> str:
     seen_xrefs = set()
     
     if isinstance(page_chunks, str):
-        raw_md = page_chunks
-    else:
-        md_pages = []
-        for i, chunk in enumerate(page_chunks):
-            page_text = chunk.get("text", "")
-            
-            # Send embedded PDF images to the Vision API if configured
-            if config and getattr(config, "vision_url", None):
-                try:
-                    page = doc[i]
-                    for img in page.get_images():
-                        xref = img[0]
-                        if xref in seen_xrefs:
-                            continue
-                        seen_xrefs.add(xref)
-                        
-                        base_image = doc.extract_image(xref)
-                        if not base_image:
-                            continue
-                            
-                        image_bytes = base_image["image"]
-                        ext = base_image.get("ext", "png")
-                        filename = f"page_{i+1}_img_{xref}.{ext}"
-                        
-                        vision_md = _process_image_vision_api(image_bytes, filename, config)
-                        if vision_md:
-                            page_text += f"\n\n{vision_md}\n"
-                except Exception:
-                    pass
+        page_chunks = [{"text": page_chunks}]
+
+    md_pages = []
+    for i, chunk in enumerate(page_chunks):
+        page_text = chunk.get("text", "")
+        
+        # Clean up pymupdf4llm's native picture text blocks and HTML comments to maintain parity
+        page_text = re.sub(r'<!--\s*Start of picture text\s*-->.*?<!--\s*End of picture text\s*-->\n*', '', page_text, flags=re.DOTALL | re.IGNORECASE)
+        page_text = re.sub(r'<!--.*?-->\n*', '', page_text, flags=re.DOTALL)
+        
+        # Send embedded PDF images to the Vision API if configured
+        if config and getattr(config, "vision_url", None):
+            try:
+                page = doc[i]
+                for img in page.get_images():
+                    xref = img[0]
+                    if xref in seen_xrefs:
+                        continue
+                    seen_xrefs.add(xref)
                     
-            md_pages.append(page_text)
-        raw_md = "\n\n".join(md_pages)
+                    base_image = doc.extract_image(xref)
+                    if not base_image:
+                        continue
+                        
+                    image_bytes = base_image["image"]
+                    ext = base_image.get("ext", "png")
+                    filename = f"page_{i+1}_img_{xref}.{ext}"
+                    
+                    vision_md = _process_image_vision_api(image_bytes, filename, config)
+                    if vision_md:
+                        page_text += f"\n\n{vision_md}\n"
+            except Exception:
+                pass
+                
+        md_pages.append(page_text)
+        
+    raw_md = "\n\n".join(md_pages)
 
     doc.close()
 
