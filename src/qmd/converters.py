@@ -438,7 +438,14 @@ def _convert_pdf(path: Path, config=None) -> str:
         page_text = re.sub(r'<!--.*?-->\n*', '', page_text, flags=re.DOTALL)
         
         # Condense extra padding spaces in markdown tables to save tokens
-        page_text = re.sub(r'^\|.+?\|$', lambda m: re.sub(r' {2,}', ' ', m.group(0)), page_text, flags=re.MULTILINE)
+        # Safely target only contiguous blocks containing a markdown table separator (|---|)
+        def _condense_table_block(match):
+            block = match.group(0)
+            if re.search(r'^\|[-\s:|]+\|$', block, flags=re.MULTILINE):
+                return re.sub(r' {2,}', ' ', block)
+            return block
+            
+        page_text = re.sub(r'(?:^\|[^\r\n]*\|(?:\r?\n|$))+', _condense_table_block, page_text, flags=re.MULTILINE)
         
         # Send embedded PDF images to the Vision API if configured
         if config and getattr(config, "vision_url", None):
