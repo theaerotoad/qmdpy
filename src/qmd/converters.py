@@ -425,8 +425,16 @@ def _convert_pdf(path: Path, config=None) -> str:
     for i, chunk in enumerate(page_chunks):
         page_text = chunk.get("text", "")
         
-        # Clean up pymupdf4llm's native picture text blocks and HTML comments to maintain parity
-        page_text = re.sub(r'<!--\s*Start of picture text\s*-->.*?<!--\s*End of picture text\s*-->\n*', '', page_text, flags=re.DOTALL | re.IGNORECASE)
+        # Convert pymupdf4llm's native picture text blocks to standard markdown image tags
+        def _format_pic_text(match):
+            text = match.group(1).strip()
+            text = re.sub(r'\s+', ' ', text)
+            alt = f"Image with text: {text}" if text else "Image"
+            return f"\n![{alt}](pdf_image.png)\n"
+            
+        page_text = re.sub(r'<!--\s*Start of picture text\s*-->(.*?)<!--\s*End of picture text\s*-->\n*', _format_pic_text, page_text, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Clean up any remaining HTML comments from pymupdf4llm
         page_text = re.sub(r'<!--.*?-->\n*', '', page_text, flags=re.DOTALL)
         
         # Send embedded PDF images to the Vision API if configured
