@@ -375,7 +375,7 @@ class Store:
                 markdown_body = decompress_text(content_row[0])
             else:
                 content_exists = False
-                markdown_body = convert_to_markdown(file_path)
+                markdown_body = convert_to_markdown(file_path, config=self.config)
                 cursor.execute(
                     "INSERT INTO content (hash, body, created_at) VALUES (?, ?, ?)",
                     (file_hash, compress_text(markdown_body), now)

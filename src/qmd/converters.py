@@ -224,7 +224,69 @@ def _sanitize_text(text: str) -> str:
         return text
 
 
-def convert_to_markdown(file_path: Union[str, Path]) -> str:
+def _process_image_vision_api(image_bytes: bytes, filename: str, config) -> str:
+    if not config or not getattr(config, "vision_url", None):
+        return ""
+    
+    try:
+        import httpx
+        import base64
+    except ImportError:
+        return ""
+    
+    vision_url = config.vision_url
+    headers = {}
+    if getattr(config, "vision_api_key", None):
+        headers["Authorization"] = f"Bearer {config.vision_api_key}"
+        
+    b64_image = base64.b64encode(image_bytes).decode('utf-8')
+    mime_type = "image/jpeg"
+    if filename.lower().endswith(".png"): mime_type = "image/png"
+    
+    payload = {
+        "image": f"data:{mime_type};base64,{b64_image}",
+        "extract_tables": True,
+        "extract_text": True
+    }
+    
+    try:
+        resp = httpx.post(vision_url, json=payload, headers=headers, timeout=getattr(config, "request_timeout", 120.0))
+        resp.raise_for_status()
+        data = resp.json()
+        
+        detections = data.get("detections", [])
+        if not detections and "results" in data and len(data["results"]) > 0:
+            detections = data["results"][0].get("detections", [])
+            
+        md_lines = []
+        text_labels = {
+            "caption", "footnote", "formula", "list-item", 
+            "page-footer", "page-header", "section-header", 
+            "text", "title"
+        }
+        
+        for d in detections:
+            lbl = d.get("label", "").lower()
+            if lbl == "picture":
+                text = d.get("text", "").strip()
+                alt = f"Image with text: {text}" if text else "Image"
+                md_lines.append(f"![{alt}]({filename})")
+            elif lbl == "table":
+                if d.get("markdown"):
+                    md_lines.append(d["markdown"])
+                elif d.get("html"):
+                    md_lines.append(d["html"])
+            elif lbl in text_labels:
+                if d.get("text"):
+                    md_lines.append(d["text"].strip())
+                    
+        return "\n\n".join(md_lines)
+    except Exception as e:
+        print(f"Warning: Vision API error for {filename}: {e}")
+        return ""
+
+
+def convert_to_markdown(file_path: Union[str, Path], config=None) -> str:
     """
     Converts a supported document or text file to Markdown.
     """
@@ -236,11 +298,11 @@ def convert_to_markdown(file_path: Union[str, Path]) -> str:
     elif ext == ".pdf":
         raw_md = _convert_pdf(path)
     elif ext == ".docx":
-        raw_md = _convert_docx(path)
+        raw_md = _convert_docx(path, config)
     elif ext == ".pptx":
-        raw_md = _convert_pptx(path)
+        raw_md = _convert_pptx(path, config)
     elif ext == ".xlsx":
-        raw_md = _convert_xlsx(path)
+        raw_md = _convert_xlsx(path, config)
     elif ext == ".csv":
         raw_md = _convert_csv(path)
     elif ext in {".html", ".htm"}:
@@ -300,7 +362,7 @@ def _convert_pdf(path: Path) -> str:
     return "\n".join(md_lines).strip()
 
 
-def _convert_docx(path: Path) -> str:
+def _convert_docx(path: Path, config=None) -> str:
     try:
         import docx
     except ImportError:
@@ -313,6 +375,19 @@ def _convert_docx(path: Path) -> str:
         tag = elem.tag.split('}')[-1]
         if tag == 'p':
             p = docx.text.paragraph.Paragraph(elem, doc)
+            
+            # Extract images embedded within the paragraph using Vision API if configured
+            if config and getattr(config, "vision_url", None):
+                for blip in elem.iter('{http://schemas.openxmlformats.org/drawingml/2006/main}blip'):
+                    embed_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                    if embed_id and embed_id in doc.part.related_parts:
+                        image_part = doc.part.related_parts[embed_id]
+                        image_bytes = image_part.blob
+                        filename = getattr(image_part, "filename", "image.png")
+                        vision_md = _process_image_vision_api(image_bytes, filename, config)
+                        if vision_md:
+                            md_lines.append(vision_md + "\n")
+            
             text = _extract_text_and_math(elem).strip()
             if not text:
                 continue
@@ -344,7 +419,7 @@ def _convert_docx(path: Path) -> str:
     return "\n".join(md_lines).strip()
 
 
-def _convert_pptx(path: Path) -> str:
+def _convert_pptx(path: Path, config=None) -> str:
     try:
         from pptx import Presentation
     except ImportError:
@@ -358,7 +433,16 @@ def _convert_pptx(path: Path) -> str:
         slide_texts = []
 
         for shape in slide.shapes:
-            if shape.has_text_frame:
+            if hasattr(shape, "image") and config and getattr(config, "vision_url", None):
+                try:
+                    image_bytes = shape.image.blob
+                    filename = getattr(shape.image, "filename", "slide_image.png")
+                    vision_md = _process_image_vision_api(image_bytes, filename, config)
+                    if vision_md:
+                        slide_texts.append(vision_md)
+                except Exception:
+                    pass
+            elif shape.has_text_frame:
                 text = shape.text_frame.text.strip()
                 if not text:
                     continue
@@ -398,7 +482,7 @@ def _convert_pptx(path: Path) -> str:
     return "\n".join(md_lines).strip()
 
 
-def _convert_xlsx(path: Path) -> str:
+def _convert_xlsx(path: Path, config=None) -> str:
     try:
         import openpyxl
     except ImportError:
@@ -410,6 +494,22 @@ def _convert_xlsx(path: Path) -> str:
     for sheet_name in wb.sheetnames:
         sheet = wb[sheet_name]
         md_lines.append(f"## Sheet: {sheet_name}\n")
+
+        if config and getattr(config, "vision_url", None):
+            for img in getattr(sheet, "_images", []):
+                try:
+                    if hasattr(img, 'ref') and hasattr(img.ref, 'getvalue'):
+                        image_bytes = img.ref.getvalue()
+                    elif hasattr(img, '_data') and callable(img._data):
+                        image_bytes = img._data()
+                    else:
+                        continue
+                    filename = "excel_image.png"
+                    vision_md = _process_image_vision_api(image_bytes, filename, config)
+                    if vision_md:
+                        md_lines.append(vision_md + "\n")
+                except Exception:
+                    pass
 
         matrix = []
         for row in sheet.iter_rows(values_only=True):

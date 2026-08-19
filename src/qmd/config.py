@@ -31,6 +31,10 @@ class Config:
     request_timeout: float = 120.0
     embed_batch_size: int = 16
     
+    # Vision Settings
+    vision_url: Optional[str] = None
+    vision_api_key: Optional[str] = None
+    
     # Model Configurations
     embed_model: str = "EmbeddingGemma 300m"
     rerank_model: str = "Qwen Rerank 0.6B"
@@ -104,6 +108,9 @@ class Config:
         embed_api_key = os.environ.get("QMD_EMBED_API_KEY") or data.get("embed_api_key")
         rerank_api_key = os.environ.get("QMD_RERANK_API_KEY") or data.get("rerank_api_key")
         
+        vision_url = os.environ.get("QMD_VISION_URL") or data.get("vision_url")
+        vision_api_key = os.environ.get("QMD_VISION_API_KEY") or data.get("vision_api_key")
+        
         req_timeout_env = os.environ.get("QMD_REQUEST_TIMEOUT")
         request_timeout = float(req_timeout_env) if req_timeout_env else float(data.get("request_timeout", 120.0))
         
@@ -127,6 +134,8 @@ class Config:
             rerank_url=rerank_url,
             embed_api_key=embed_api_key,
             rerank_api_key=rerank_api_key,
+            vision_url=vision_url,
+            vision_api_key=vision_api_key,
             request_timeout=request_timeout,
             embed_batch_size=embed_batch_size,
             embed_model=embed_model,
