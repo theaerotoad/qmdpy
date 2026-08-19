@@ -21,6 +21,115 @@ SUPPORTED_EXTENSIONS = {
 }
 
 
+def _mathml_to_latex(node) -> str:
+    try:
+        import mathml_to_latex
+        from lxml import etree
+        math_xml = etree.tostring(node, encoding='unicode')
+        if hasattr(mathml_to_latex, 'convert'):
+            return mathml_to_latex.convert(math_xml)
+        elif hasattr(mathml_to_latex, 'mathml_to_latex'):
+            return mathml_to_latex.mathml_to_latex(math_xml)
+        else:
+            return "".join(node.itertext())
+    except ImportError:
+        return "".join(node.itertext())
+    except Exception:
+        return "".join(node.itertext())
+
+def _omml_to_latex(node) -> str:
+    MATH_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+    res = ""
+    for child in node:
+        if not isinstance(child.tag, str):
+            continue
+        tag = child.tag.split('}')[-1]
+        if tag == 'f':
+            num = child.find(f"{{{MATH_NS}}}num")
+            den = child.find(f"{{{MATH_NS}}}den")
+            num_tex = _omml_to_latex(num) if num is not None else ""
+            den_tex = _omml_to_latex(den) if den is not None else ""
+            res += f"\\frac{{{num_tex}}}{{{den_tex}}}"
+        elif tag == 'rad':
+            deg = child.find(f"{{{MATH_NS}}}deg")
+            e = child.find(f"{{{MATH_NS}}}e")
+            deg_tex = _omml_to_latex(deg) if deg is not None and len(deg) else ""
+            e_tex = _omml_to_latex(e) if e is not None else ""
+            if deg_tex:
+                res += f"\\sqrt[{deg_tex}]{{{e_tex}}}"
+            else:
+                res += f"\\sqrt{{{e_tex}}}"
+        elif tag == 'sSup':
+            e = child.find(f"{{{MATH_NS}}}e")
+            sup = child.find(f"{{{MATH_NS}}}sup")
+            e_tex = _omml_to_latex(e) if e is not None else ""
+            sup_tex = _omml_to_latex(sup) if sup is not None else ""
+            res += f"{e_tex}^{{{sup_tex}}}"
+        elif tag == 'sSub':
+            e = child.find(f"{{{MATH_NS}}}e")
+            sub = child.find(f"{{{MATH_NS}}}sub")
+            e_tex = _omml_to_latex(e) if e is not None else ""
+            sub_tex = _omml_to_latex(sub) if sub is not None else ""
+            res += f"{e_tex}_{{{sub_tex}}}"
+        elif tag == 'sSubSup':
+            e = child.find(f"{{{MATH_NS}}}e")
+            sub = child.find(f"{{{MATH_NS}}}sub")
+            sup = child.find(f"{{{MATH_NS}}}sup")
+            e_tex = _omml_to_latex(e) if e is not None else ""
+            sub_tex = _omml_to_latex(sub) if sub is not None else ""
+            sup_tex = _omml_to_latex(sup) if sup is not None else ""
+            res += f"{e_tex}_{{{sub_tex}}}^{{{sup_tex}}}"
+        elif tag == 'd':
+            e_nodes = child.findall(f"{{{MATH_NS}}}e")
+            e_tex = "".join(_omml_to_latex(e) for e in e_nodes)
+            res += f"\\left( {e_tex} \\right)"
+        elif tag == 'nary':
+            sub = child.find(f"{{{MATH_NS}}}sub")
+            sup = child.find(f"{{{MATH_NS}}}sup")
+            e = child.find(f"{{{MATH_NS}}}e")
+            sub_tex = _omml_to_latex(sub) if sub is not None else ""
+            sup_tex = _omml_to_latex(sup) if sup is not None else ""
+            e_tex = _omml_to_latex(e) if e is not None else ""
+            res += f"\\int_{{{sub_tex}}}^{{{sup_tex}}} {e_tex}"
+        elif tag == 't':
+            res += child.text or ""
+        else:
+            res += _omml_to_latex(child)
+    return res
+
+def _extract_text_and_math(node) -> str:
+    """Recursively extracts text and math formulas from an lxml node (e.g. DOCX CT_P)."""
+    MATH_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+    MML_NS = "http://www.w3.org/1998/Math/MathML"
+    
+    if not hasattr(node, "tag"):
+        return ""
+
+    res = []
+    tag = node.tag
+    if isinstance(tag, str):
+        if tag == f"{{{MATH_NS}}}oMathPara":
+            tex = _omml_to_latex(node)
+            res.append(f"$$ {tex} $$")
+        elif tag == f"{{{MATH_NS}}}oMath":
+            tex = _omml_to_latex(node)
+            res.append(f"${tex}$")
+        elif tag == f"{{{MML_NS}}}math":
+            tex = _mathml_to_latex(node)
+            res.append(f"${tex}$")
+    
+    if not res:
+        if hasattr(node, "text") and node.text:
+            res.append(node.text)
+        for child in node:
+            res.append(_extract_text_and_math(child))
+            
+    if hasattr(node, "tail") and node.tail:
+        res.append(node.tail)
+        
+    return "".join(res)
+
+
 def is_supported_file(file_path: Union[str, Path]) -> bool:
     ext = Path(file_path).suffix.lower()
     return ext in SUPPORTED_EXTENSIONS
@@ -128,7 +237,7 @@ def _convert_docx(path: Path) -> str:
         tag = elem.tag.split('}')[-1]
         if tag == 'p':
             p = docx.text.paragraph.Paragraph(elem, doc)
-            text = p.text.strip()
+            text = _extract_text_and_math(elem).strip()
             if not text:
                 continue
             style_name = p.style.name.lower() if p.style else ""
@@ -178,10 +287,17 @@ def _convert_pptx(path: Path) -> str:
                 if not text:
                     continue
                 if shape == slide.shapes.title:
-                    slide_title = text.replace('\n', ' ')
+                    if hasattr(shape, "element"):
+                        parsed_title = _extract_text_and_math(shape.element).strip()
+                        slide_title = parsed_title.replace('\n', ' ')
+                    else:
+                        slide_title = text.replace('\n', ' ')
                 else:
                     for paragraph in shape.text_frame.paragraphs:
-                        p_text = paragraph.text.strip()
+                        if hasattr(paragraph, "_p"):
+                            p_text = _extract_text_and_math(paragraph._p).strip()
+                        else:
+                            p_text = paragraph.text.strip()
                         if p_text:
                             level = paragraph.level
                             indent = "  " * level

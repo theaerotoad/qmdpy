@@ -102,3 +102,38 @@ def test_sanitize_surrogates():
     assert "World" in sanitized
     # Verify it encodes to UTF-8 without raising UnicodeEncodeError
     sanitized.encode("utf-8")
+
+def test_math_formula_extraction():
+    from lxml import etree
+    from qmd.converters import _extract_text_and_math
+
+    omml_xml = """
+    <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+         xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">
+      <w:r><w:t>Equation: </w:t></w:r>
+      <m:oMath>
+        <m:f>
+          <m:num><m:r><m:t>1</m:t></m:r></m:num>
+          <m:den><m:r><m:t>2</m:t></m:r></m:den>
+        </m:f>
+      </m:oMath>
+      <w:r><w:t> is a half.</w:t></w:r>
+    </w:p>
+    """
+    node = etree.fromstring(omml_xml)
+    result = _extract_text_and_math(node)
+    assert "Equation: " in result
+    assert "$\\frac{1}{2}$" in result
+    assert " is a half." in result
+
+    mml_xml = """
+    <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+         xmlns:m="http://www.w3.org/1998/Math/MathML">
+      <m:math>
+        <m:mi>x</m:mi>
+      </m:math>
+    </w:p>
+    """
+    node_mml = etree.fromstring(mml_xml)
+    result_mml = _extract_text_and_math(node_mml)
+    assert "x" in result_mml or "$" in result_mml
