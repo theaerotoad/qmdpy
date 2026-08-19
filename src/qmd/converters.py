@@ -655,6 +655,8 @@ def main():
     parser.add_argument("-o", "--output", type=str, help="Optional output path to save the Markdown content")
     parser.add_argument("--show-blocks", action="store_true", help="Display parsed semantic blocks from docparse")
     parser.add_argument("--show-chunks", action="store_true", help="Display chunked content ready for embedding")
+    parser.add_argument("--vision-url", type=str, help="URL for the Vision API to test image extraction")
+    parser.add_argument("--vision-api-key", type=str, help="Optional API key for the Vision API")
 
     args = parser.parse_args()
 
@@ -666,8 +668,17 @@ def main():
     if not is_supported_file(file_path):
         print(f"Warning: Extension '{file_path.suffix}' is not explicitly supported. Attempting plain text conversion...", file=sys.stderr)
 
+    # Create a mock config object if vision API arguments are provided
+    mock_config = None
+    if args.vision_url:
+        class MockConfig:
+            vision_url = args.vision_url
+            vision_api_key = args.vision_api_key
+            request_timeout = 120.0
+        mock_config = MockConfig()
+
     try:
-        md_content = convert_to_markdown(file_path)
+        md_content = convert_to_markdown(file_path, config=mock_config)
     except Exception as e:
         print(f"Error converting {file_path}: {e}", file=sys.stderr)
         sys.exit(1)
