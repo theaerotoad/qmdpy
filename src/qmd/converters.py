@@ -413,17 +413,33 @@ def _convert_pdf(path: Path, config=None) -> str:
     import contextlib
     import io
     
+    # Silence PyMuPDF C-level warnings
+    if hasattr(pymupdf, "TOOLS"):
+        pymupdf.TOOLS.mupdf_display_errors(False)
+
     f = io.StringIO()
     try:
         with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
-            page_chunks = pymupdf4llm.to_markdown(
-                doc,
-                hdr_info=hdr_fn,
-                header=False,
-                footer=False,
-                write_images=False,
-                page_chunks=True
-            )
+            try:
+                page_chunks = pymupdf4llm.to_markdown(
+                    doc,
+                    hdr_info=hdr_fn,
+                    header=False,
+                    footer=False,
+                    write_images=False,
+                    page_chunks=True,
+                    show_progress=False
+                )
+            except TypeError:
+                # Fallback for older versions of pymupdf4llm that lack show_progress
+                page_chunks = pymupdf4llm.to_markdown(
+                    doc,
+                    hdr_info=hdr_fn,
+                    header=False,
+                    footer=False,
+                    write_images=False,
+                    page_chunks=True
+                )
     except Exception as e:
         doc.close()
         raise ValueError(f"Failed to parse PDF with pymupdf4llm: {e}")
