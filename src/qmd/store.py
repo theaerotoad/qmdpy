@@ -245,17 +245,16 @@ class Store:
         files = self._get_collection_files(base_path, collection_cfg)
         count_processed = 0
         count_skipped = 0
-        found_rel_paths = set()
+        found_rel_paths = {str(f.relative_to(base_path)) for f in files}
 
         # Wrap the file iterator with tqdm for a progress bar
         file_pbar = tqdm(files, desc=f"Processing {name}", unit="file")
         for file_path in file_pbar:
             rel_path = str(file_path.relative_to(base_path))
-            found_rel_paths.add(rel_path)
             disp_path = rel_path if len(rel_path) <= 30 else "..." + rel_path[-27:]
             file_pbar.set_postfix_str(disp_path)
             try:
-                if self._process_file(name, base_path, file_path, force=force):
+                if self._process_file(name, base_path, file_path, found_rel_paths, force=force):
                     count_processed += 1
                 else:
                     count_skipped += 1
@@ -340,7 +339,7 @@ class Store:
         """)
         self.conn.commit()
 
-    def _process_file(self, collection_name: str, base_path: Path, file_path: Path, force: bool = False) -> bool:
+    def _process_file(self, collection_name: str, base_path: Path, file_path: Path, current_paths: set, force: bool = False) -> bool:
         rel_path = str(file_path.relative_to(base_path))
         try:
             raw_bytes = file_path.read_bytes()
@@ -367,6 +366,43 @@ class Store:
         cursor = self.conn.cursor()
         try:
             now = datetime.now().isoformat()
+            
+            # Check for move/rename: same hash, but existing path is no longer in current_paths
+            if not force:
+                cursor.execute(
+                    "SELECT id, path FROM documents WHERE collection = ? AND hash = ?",
+                    (collection_name, file_hash)
+                )
+                existing_docs = cursor.fetchall()
+                for doc_id, old_path in existing_docs:
+                    if old_path not in current_paths:
+                        # This is a move/rename. Update metadata to reflect new path.
+                        cursor.execute("""
+                            UPDATE documents SET path = ?, title = ?, modified_at = ?
+                            WHERE id = ?
+                        """, (rel_path, title, now, doc_id))
+                        
+                        cursor.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
+                        
+                        cursor.execute("SELECT body FROM content WHERE hash = ?", (file_hash,))
+                        c_row = cursor.fetchone()
+                        markdown_body = decompress_text(c_row[0]) if c_row else ""
+                        
+                        cursor.execute(
+                            "INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, ?, ?, ?, ?)",
+                            (doc_id, collection_name, rel_path, title, markdown_body)
+                        )
+                        
+                        # Update chunks_fts to point to the new path/title
+                        cursor.execute("""
+                            UPDATE chunks_fts SET filepath = ?, title = ?
+                            WHERE rowid IN (SELECT rowid FROM chunk_metadata WHERE doc_hash = ?)
+                              AND collection = ?
+                        """, (rel_path, title, file_hash, collection_name))
+                        
+                        self.conn.commit()
+                        return True
+
             cursor.execute("SELECT body FROM content WHERE hash = ?", (file_hash,))
             content_row = cursor.fetchone()
 

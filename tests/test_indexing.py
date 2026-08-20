@@ -173,6 +173,99 @@ def test_file_update(db_conn, temp_db_path, tmp_path, mock_llm_client):
     assert cursor.fetchone()[0] == "Version 2 changed"
 
 
+def test_file_move_rename(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that moving/renaming a file updates paths without re-embedding."""
+    notes_dir = tmp_path / "notes"
+    notes_dir.mkdir()
+    
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+    
+    # 1. Create and index file
+    file1 = notes_dir / "old_name.md"
+    file1.write_text("This is content that will be moved.")
+    store.index_collection("test", config.collections["test"])
+    
+    # Verify initial state
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT path, title FROM documents")
+    row = cursor.fetchone()
+    assert row[0] == "old_name.md"
+    
+    # 2. Rename file
+    file2 = notes_dir / "new_name.md"
+    file1.rename(file2)
+    
+    # Reset mock to ensure no LLM calls are made
+    mock_llm_client.embed_batch.reset_mock()
+    
+    # 3. Re-index
+    store.index_collection("test", config.collections["test"])
+    
+    # 4. Verify DB updated seamlessly
+    cursor.execute("SELECT path, title FROM documents")
+    rows = cursor.fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "new_name.md"
+    assert rows[0][1] == "New Name"
+    
+    cursor.execute("SELECT filepath, title FROM documents_fts")
+    fts_row = cursor.fetchone()
+    assert fts_row[0] == "new_name.md"
+    assert fts_row[1] == "New Name"
+    
+    cursor.execute("SELECT filepath, title FROM chunks_fts")
+    chunk_row = cursor.fetchone()
+    assert chunk_row[0] == "new_name.md"
+    assert chunk_row[1] == "New Name"
+    
+    # No new embeddings should have been generated
+    mock_llm_client.embed_batch.assert_not_called()
+
+def test_file_copy(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that copying an existing file to a new path creates a new doc but doesn't re-embed."""
+    notes_dir = tmp_path / "notes"
+    notes_dir.mkdir()
+    
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+    
+    # 1. Create and index file
+    file1 = notes_dir / "original.md"
+    file1.write_text("This content will be duplicated.")
+    store.index_collection("test", config.collections["test"])
+    
+    # Reset mock
+    mock_llm_client.embed_batch.reset_mock()
+    
+    # 2. Copy file
+    file2 = notes_dir / "copy.md"
+    file2.write_text("This content will be duplicated.")
+    
+    # 3. Re-index
+    store.index_collection("test", config.collections["test"])
+    
+    # 4. Verify
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT path FROM documents ORDER BY path")
+    rows = cursor.fetchall()
+    assert len(rows) == 2
+    assert rows[0][0] == "copy.md"
+    assert rows[1][0] == "original.md"
+    
+    # Content should be deduplicated
+    cursor.execute("SELECT count(*) FROM content")
+    assert cursor.fetchone()[0] == 1
+    
+    # No new embeddings should have been generated
+    mock_llm_client.embed_batch.assert_not_called()
+
 def test_indexing_with_quantization(db_conn, temp_db_path, tmp_path, mock_llm_client):
     """Test indexing with int8 vector quantization configured."""
     notes_dir = tmp_path / "quant_notes"
