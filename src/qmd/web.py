@@ -197,14 +197,16 @@ def search():
                 verbose=False,
                 session_id=session_id,
                 exclusion_stats=store.last_exclusion_stats,
-                seen_chunks=seen_chunks_count
+                seen_chunks=seen_chunks_count,
+                print_output=False
             )
             for doc in grouped:
                 doc["xml"] = format_doc_results_xml(
                     grouped_results=[doc],
                     query=query,
                     verbose=False,
-                    session_id=session_id
+                    session_id=session_id,
+                    print_output=False
                 )
             time_taken = round(time.time() - t0, 3)
             return jsonify({
@@ -223,7 +225,8 @@ def search():
                 verbose=False,
                 session_id=session_id,
                 exclusion_stats=store.last_exclusion_stats,
-                seen_chunks=seen_chunks_count
+                seen_chunks=seen_chunks_count,
+                print_output=False
             )
             out = []
             for i, r in enumerate(results):
@@ -231,7 +234,8 @@ def search():
                     results=[r],
                     query=query,
                     verbose=False,
-                    session_id=session_id
+                    session_id=session_id,
+                    print_output=False
                 )
                 out.append({
                     "path": r.path,
@@ -409,7 +413,8 @@ def grep():
             results=results,
             pattern=pattern,
             is_regex=is_regex,
-            case_sensitive=case_sensitive
+            case_sensitive=case_sensitive,
+            print_output=False
         )
         return jsonify({
             "results": results,

@@ -266,7 +266,7 @@ def format_outline_cli(outline: Dict):
         print(f"{indent}{CYAN}{level_hashes}{RESET} {BOLD}{h['text']}{RESET} {YELLOW}{seq_str}{RESET} {DIM}({h['char_count']} chars){RESET}")
     print()
 
-def format_results_xml(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None, truncation_info: Optional[Dict] = None):
+def format_results_xml(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None, truncation_info: Optional[Dict] = None, print_output: bool = True):
     """Outputs flat search results as XML for LLM context."""
     query_attr = escape_xml_attr(query)
     total_matches = len(results)
@@ -332,14 +332,16 @@ def format_results_xml(results: List, query: str = "", verbose: bool = False, se
 
     lines.append('</search_results>')
     output = "\n".join(lines)
-    print(output)
+    if print_output:
+        print(output)
     return output
 
-def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None, truncation_info: Optional[Dict] = None):
+def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None, truncation_info: Optional[Dict] = None, print_output: bool = True):
     """Outputs document-grouped results as structured XML in document-sequential order."""
     if not grouped_results:
         output = '<search_results query="" total_matches="0" total_documents="0">\n</search_results>'
-        print(output)
+        if print_output:
+            print(output)
         return output
 
     query_attr = escape_xml_attr(query)
@@ -425,14 +427,16 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
 
     lines.append('</search_results>')
     output = "\n".join(lines)
-    print(output)
+    if print_output:
+        print(output)
     return output
 
-def format_chunks_xml(results: List, window: int = 0, truncation_info: Optional[Dict] = None):
+def format_chunks_xml(results: List, window: int = 0, truncation_info: Optional[Dict] = None, print_output: bool = True):
     """Outputs retrieved chunks in XML format."""
     if not results:
         output = '<document>\n</document>'
-        print(output)
+        if print_output:
+            print(output)
         return output
 
     docs: Dict[Tuple[str, str], List] = {}
@@ -485,14 +489,16 @@ def format_chunks_xml(results: List, window: int = 0, truncation_info: Optional[
         lines.append('</document>')
 
     output = "\n".join(lines)
-    print(output)
+    if print_output:
+        print(output)
     return output
 
-def format_outline_xml(outline: Dict):
+def format_outline_xml(outline: Dict, print_output: bool = True):
     """Outputs document heading outline as XML."""
     if not outline:
         output = '<outline>\n</outline>'
-        print(output)
+        if print_output:
+            print(output)
         return output
 
     coll = outline.get('collection', '') or ""
@@ -521,7 +527,8 @@ def format_outline_xml(outline: Dict):
         )
     lines.append('</outline>')
     output = "\n".join(lines)
-    print(output)
+    if print_output:
+        print(output)
     return output
 
 def format_chunks_cli(results: List, window: int = 0, truncation_info: Optional[Dict] = None):
@@ -608,11 +615,12 @@ def format_collection_tree_json(tree_data: Union[Dict, List[Dict]]):
     """Outputs collection folder directory tree as JSON."""
     print(json.dumps(tree_data, indent=2))
 
-def format_collection_tree_xml(tree_data: Union[Dict, List[Dict]]):
+def format_collection_tree_xml(tree_data: Union[Dict, List[Dict]], print_output: bool = True):
     """Outputs collection folder tree as XML for LLM context."""
     if not tree_data:
         output = '<collections>\n</collections>'
-        print(output)
+        if print_output:
+            print(output)
         return output
 
     items = tree_data if isinstance(tree_data, list) else [tree_data]
@@ -656,7 +664,8 @@ def format_collection_tree_xml(tree_data: Union[Dict, List[Dict]]):
         lines.append('</collections>')
 
     output = "\n".join(lines)
-    print(output)
+    if print_output:
+        print(output)
     return output
 
 def format_grep_cli(results: List[Dict], pattern: str = ""):
@@ -694,7 +703,7 @@ def format_grep_json(results: List[Dict]):
     """Outputs grep pattern search results as JSON."""
     print(json.dumps(results, indent=2))
 
-def format_grep_xml(results: List[Dict], pattern: str = "", is_regex: bool = False, case_sensitive: bool = False):
+def format_grep_xml(results: List[Dict], pattern: str = "", is_regex: bool = False, case_sensitive: bool = False, print_output: bool = True):
     """Outputs grep pattern search results as structured XML for LLM context."""
     pattern_attr = escape_xml_attr(pattern)
     regex_attr = 'true' if is_regex else 'false'
@@ -703,7 +712,8 @@ def format_grep_xml(results: List[Dict], pattern: str = "", is_regex: bool = Fal
 
     if not results:
         output = f'<grep_results pattern="{pattern_attr}" is_regex="{regex_attr}" case_sensitive="{case_attr}" total_matches="0">\n</grep_results>'
-        print(output)
+        if print_output:
+            print(output)
         return output
 
     docs: Dict[Tuple[str, str], List[Dict]] = {}
@@ -734,5 +744,6 @@ def format_grep_xml(results: List[Dict], pattern: str = "", is_regex: bool = Fal
 
     lines.append('</grep_results>')
     output = "\n".join(lines)
-    print(output)
+    if print_output:
+        print(output)
     return output
