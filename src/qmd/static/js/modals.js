@@ -164,18 +164,6 @@ async function loadCollections(populateSettings = false) {
     try {
         const res = await fetch('/api/collections');
         const data = await res.json();
-        const selects = document.querySelectorAll('.collection-select');
-        selects.forEach(sel => {
-            const cur = sel.value;
-            sel.innerHTML = '<option value="">All Collections</option>';
-            data.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.name;
-                opt.textContent = c.name;
-                sel.appendChild(opt);
-            });
-            sel.value = cur;
-        });
 
         if (populateSettings) {
             const listEl = document.getElementById('settings-collections-list');

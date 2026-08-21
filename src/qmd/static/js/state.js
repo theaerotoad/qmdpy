@@ -169,21 +169,13 @@ function parseQueryDirectives(rawText) {
 // View Mode Switching
 function setMode(mode) {
     activeMode = mode;
-    document.querySelectorAll('.mode-btn').forEach(btn => {
-        const isAct = btn.dataset.mode === mode;
-        btn.className = `mode-btn px-2.5 py-1 rounded-md transition font-medium ${isAct ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`;
-    });
-
     const hQ = document.getElementById('hero-query');
     const sQ = document.getElementById('serp-query');
     if (mode === 'discover') {
-        if (hQ) hQ.placeholder = "Discover top documents (title:\"space\", pii:off, limit:10)...";
+        if (hQ) hQ.placeholder = "Discover top documents (e.g. title:\"space\", pii:off)...";
         if (sQ) sQ.placeholder = "Discover top documents...";
-    } else if (mode === 'flat') {
-        if (hQ) hQ.placeholder = "Search individual chunks (title:\"space\", pii:off)...";
-        if (sQ) sQ.placeholder = "Search individual chunks...";
     } else {
-        if (hQ) hQ.placeholder = "Search notes with full document grouping (title:\"space\", pii:off)...";
+        if (hQ) hQ.placeholder = "Search notes in full document reading order...";
         if (sQ) sQ.placeholder = "Search documents...";
     }
 }

@@ -12,9 +12,17 @@ function copySingleXml(index, btnEl = null) {
     });
 }
 
+function triggerSearchWithMode(mode, source) {
+    activeMode = mode;
+    const form = document.getElementById(`${source}-search-form`);
+    if (form) {
+        handleFormSubmit(new Event('submit'), source);
+    }
+}
+
 // Form Submit & Search Execution
 async function handleFormSubmit(e, source) {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     const rawVal = document.getElementById(`${source}-query`).value;
     const parsed = parseQueryDirectives(rawVal);
     if (!parsed.cleanQuery && !rawVal.trim()) return;
@@ -34,7 +42,7 @@ async function handleFormSubmit(e, source) {
     const scopedPaths = selectedScopes.filter(s => s.path).map(s => s.path);
     if (parsed.path && !scopedPaths.includes(parsed.path)) scopedPaths.push(parsed.path);
 
-    const collFilter = parsed.collection || document.getElementById(`${source}-collection-filter`).value;
+    const collFilter = parsed.collection || null;
     const limitVal = parsed.limit || parseInt(document.getElementById(`${source}-limit`).value) || 10;
 
     try {
@@ -45,7 +53,7 @@ async function handleFormSubmit(e, source) {
                 exclude_seen: featureStates.exclude_seen,
                 redact_pii: featureStates.redact_pii,
                 limit: limitVal,
-                collection: collFilter || null,
+                collection: collFilter,
                 lex: parsed.lex || null,
                 title: parsed.title || null,
                 path: scopedPaths.length === 1 ? scopedPaths[0] : (scopedPaths.length > 1 ? scopedPaths : null),
@@ -61,20 +69,18 @@ async function handleFormSubmit(e, source) {
             if (data.session_id) setSessionId(data.session_id, false);
             currentExcludedCount = data.excluded_count || 0;
             updateSessionBadges();
-            statsEl.innerHTML = `Discovered <span class="font-semibold text-slate-800 dark:text-slate-200">${data.results.length}</span> document(s) (${data.time_taken || 0}s)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
+            statsEl.innerHTML = `Discovered <span class="font-semibold text-purple-600 dark:text-purple-400">${data.results.length}</span> document(s) (${data.time_taken || 0}s)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
             toolbarEl.classList.remove('hidden');
             renderResults(data.results, 'discover', parsed.cleanQuery || rawVal);
         } else {
-            const isDoc = activeMode !== 'flat';
             const payload = {
                 query: parsed.cleanQuery || rawVal,
-                doc: isDoc,
-                flat: !isDoc,
+                doc: true,
                 rerank: featureStates.rerank,
                 exclude_seen: featureStates.exclude_seen,
                 redact_pii: featureStates.redact_pii,
                 limit: limitVal,
-                collection: collFilter || null,
+                collection: collFilter,
                 lex: parsed.lex || null,
                 title: parsed.title || null,
                 path: scopedPaths.length === 1 ? scopedPaths[0] : (scopedPaths.length > 1 ? scopedPaths : null),
@@ -90,7 +96,7 @@ async function handleFormSubmit(e, source) {
             if (data.session_id) setSessionId(data.session_id, false);
             currentExcludedCount = data.excluded_count || 0;
             updateSessionBadges();
-            statsEl.innerHTML = `Found <span class="font-semibold text-slate-800 dark:text-slate-200">${data.results.length}</span> ${data.type === 'doc' ? 'documents' : 'chunks'} (${data.time_taken || 0}s)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
+            statsEl.innerHTML = `Found <span class="font-semibold text-blue-600 dark:text-blue-400">${data.results.length}</span> documents (${data.time_taken || 0}s)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
             toolbarEl.classList.remove('hidden');
             renderResults(data.results, data.type, parsed.cleanQuery || rawVal);
         }
@@ -111,26 +117,27 @@ function renderResults(results, type, query) {
     if (type === 'discover') {
         results.forEach((item, index) => {
             const card = document.createElement('div');
-            card.className = "bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/90 rounded-2xl p-5 shadow-sm space-y-3";
+            // Distinct violet/purple-tinted card style for Discover results
+            card.className = "bg-white dark:bg-slate-900/90 border border-purple-200/80 dark:border-purple-900/60 rounded-2xl p-5 shadow-sm space-y-3 relative overflow-hidden transition hover:border-purple-300 dark:hover:border-purple-800";
             const uri = item.collection ? `qmd://${item.collection}/${item.path}` : item.path;
             const matchCount = item.match_count || 1;
             const matchesBadge = matchCount > 1 
-                ? `<span class="flex-shrink-0 whitespace-nowrap bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 px-2.5 py-0.5 rounded-full font-mono text-[11px] border border-purple-200 dark:border-purple-900">${matchCount} matches in doc</span>` 
+                ? `<span class="flex-shrink-0 whitespace-nowrap bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 px-2.5 py-0.5 rounded-full font-mono text-[11px] border border-purple-200 dark:border-purple-900 font-medium">${matchCount} matches in doc</span>` 
                 : '';
 
             card.innerHTML = `
                 <div class="flex items-center justify-between text-xs font-mono text-slate-500 gap-3 min-w-0">
-                    <span class="text-blue-600 dark:text-blue-400 truncate min-w-0 flex-1">${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}</span>
+                    <span class="text-purple-600 dark:text-purple-400 truncate min-w-0 flex-1 font-medium">${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}</span>
                     ${matchesBadge}
                 </div>
-                <h3 class="doc-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer break-words">${escapeHtml(item.title || item.path)}</h3>
-                <div class="chunk-box cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 prose dark:prose-invert max-w-none text-xs leading-relaxed">${marked.parse(item.text || '')}</div>
-                <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500 flex-wrap gap-2">
+                <h3 class="doc-link text-xl font-semibold text-slate-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 hover:underline cursor-pointer break-words">${escapeHtml(item.title || item.path)}</h3>
+                <div class="chunk-box cursor-pointer bg-purple-50/30 dark:bg-purple-950/20 hover:bg-purple-50/60 dark:hover:bg-purple-950/40 p-4 rounded-xl border border-purple-100 dark:border-purple-900/40 prose dark:prose-invert max-w-none text-xs leading-relaxed transition">${marked.parse(item.text || '')}</div>
+                <div class="flex items-center justify-between pt-2 border-t border-purple-100 dark:border-purple-900/40 text-xs font-mono text-slate-500 flex-wrap gap-2">
                     <span>Score: ${Number(item.score || 0).toFixed(4)} • Top Chunk seq: ${item.seq_id}</span>
                     <div class="flex items-center gap-1.5 font-sans flex-shrink-0">
-                        <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition">XML</button>
-                        <button type="button" class="btn-deep-search hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-purple-600 dark:text-purple-400 transition" title="Search all chunks inside this document">Deep Search</button>
-                        <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 transition">Open Doc</button>
+                        <button type="button" class="btn-copy-xml hover:bg-purple-50 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 hover:text-purple-700 dark:hover:text-purple-300 transition">XML</button>
+                        <button type="button" class="btn-deep-search bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/80 px-2.5 py-1 rounded-lg text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition font-medium" title="Search all chunks inside this document">Deep Search</button>
+                        <button type="button" class="btn-open-doc hover:bg-purple-50 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-purple-600 dark:text-purple-400 transition">Open Doc</button>
                     </div>
                 </div>
             `;
@@ -139,7 +146,7 @@ function renderResults(results, type, query) {
             card.querySelector('.btn-copy-xml').onclick = (e) => copySingleXml(index, e.currentTarget);
             card.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, item.text || '');
             card.querySelector('.btn-deep-search').onclick = () => {
-                setMode('search');
+                activeMode = 'search';
                 clearAllScopes();
                 toggleScope(item.collection, item.path, 'file', item.title || item.path);
                 const inputEl = document.getElementById('serp-query');
@@ -151,51 +158,33 @@ function renderResults(results, type, query) {
         return;
     }
 
+    // Standard Document-Grouped Search Results (Blue/Slate styling)
     results.forEach((item, index) => {
         const card = document.createElement('div');
         card.className = "bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/90 rounded-2xl p-5 shadow-sm space-y-3";
         const uri = item.collection ? `qmd://${item.collection}/${item.path}` : item.path;
+        const snippets = item.snippets || [];
 
-        if (type === 'doc') {
-            const snippets = item.snippets || [];
-            card.innerHTML = `
-                <div class="text-xs text-slate-500 font-mono text-blue-600 dark:text-blue-400 truncate min-w-0">${escapeHtml(uri)}</div>
-                <h3 class="doc-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer break-words">${escapeHtml(item.title || item.path)}</h3>
-                <div class="space-y-2.5 my-2">
-                    ${snippets.map(snip => `<div class="snip-box cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 prose dark:prose-invert max-w-none text-xs leading-relaxed">${marked.parse(snip)}</div>`).join('')}
+        card.innerHTML = `
+            <div class="text-xs text-slate-500 font-mono text-blue-600 dark:text-blue-400 truncate min-w-0">${escapeHtml(uri)}</div>
+            <h3 class="doc-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer break-words">${escapeHtml(item.title || item.path)}</h3>
+            <div class="space-y-2.5 my-2">
+                ${snippets.map(snip => `<div class="snip-box cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 prose dark:prose-invert max-w-none text-xs leading-relaxed">${marked.parse(snip)}</div>`).join('')}
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500 flex-wrap gap-2">
+                <span>Score: ${Number(item.score || 0).toFixed(4)} • ${snippets.length} snippet(s)</span>
+                <div class="flex items-center gap-1.5 font-sans flex-shrink-0">
+                    <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition">XML</button>
+                    <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 transition">Open Doc</button>
                 </div>
-                <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500 flex-wrap gap-2">
-                    <span>Score: ${Number(item.score || 0).toFixed(4)} • ${snippets.length} snippet(s)</span>
-                    <div class="flex items-center gap-1.5 font-sans flex-shrink-0">
-                        <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition">XML</button>
-                        <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 transition">Open Doc</button>
-                    </div>
-                </div>
-            `;
-            card.querySelector('.doc-link').onclick = () => openDocument(item.collection, item.path, '');
-            card.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, '');
-            card.querySelector('.btn-copy-xml').onclick = (e) => copySingleXml(index, e.currentTarget);
-            card.querySelectorAll('.snip-box').forEach((el, sIdx) => {
-                el.onclick = () => openDocument(item.collection, item.path, snippets[sIdx]);
-            });
-        } else {
-            card.innerHTML = `
-                <div class="text-xs text-slate-500 font-mono text-blue-600 dark:text-blue-400 truncate min-w-0">${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}</div>
-                <h3 class="doc-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer break-words">${escapeHtml(item.title || item.path)}</h3>
-                <div class="chunk-box cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 prose dark:prose-invert max-w-none text-xs leading-relaxed">${marked.parse(item.text || '')}</div>
-                <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500 flex-wrap gap-2">
-                    <span>Score: ${Number(item.score || 0).toFixed(4)} ${item.rank ? `• #${item.rank}` : ''}</span>
-                    <div class="flex items-center gap-1.5 font-sans flex-shrink-0">
-                        <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition">XML</button>
-                        <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 transition">Open Doc</button>
-                    </div>
-                </div>
-            `;
-            card.querySelector('.doc-link').onclick = () => openDocument(item.collection, item.path, item.text || '');
-            card.querySelector('.chunk-box').onclick = () => openDocument(item.collection, item.path, item.text || '');
-            card.querySelector('.btn-copy-xml').onclick = (e) => copySingleXml(index, e.currentTarget);
-            card.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, item.text || '');
-        }
+            </div>
+        `;
+        card.querySelector('.doc-link').onclick = () => openDocument(item.collection, item.path, '');
+        card.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, '');
+        card.querySelector('.btn-copy-xml').onclick = (e) => copySingleXml(index, e.currentTarget);
+        card.querySelectorAll('.snip-box').forEach((el, sIdx) => {
+            el.onclick = () => openDocument(item.collection, item.path, snippets[sIdx]);
+        });
         container.appendChild(card);
     });
 }
@@ -245,11 +234,6 @@ if (treeFilterInput) {
     });
 }
 
-// Mode Buttons Event Wiring
-document.querySelectorAll('.mode-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => setMode(e.target.dataset.mode));
-});
-
 // Tree Slide-over Trigger
 document.querySelectorAll('.btn-open-tree').forEach(btn => {
     btn.onclick = openTreeDrawer;
@@ -271,13 +255,6 @@ document.querySelectorAll('.limit-select').forEach(sel => {
     sel.addEventListener('change', (e) => {
         const val = e.target.value;
         document.querySelectorAll('.limit-select').forEach(s => s.value = val);
-    });
-});
-
-document.querySelectorAll('.collection-select').forEach(sel => {
-    sel.addEventListener('change', (e) => {
-        const val = e.target.value;
-        document.querySelectorAll('.collection-select').forEach(s => s.value = val);
     });
 });
 
