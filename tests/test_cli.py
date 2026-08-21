@@ -204,7 +204,7 @@ def test_discover_xml_and_json_formatting(capsys):
     assert 'title="Helios Mission"' in xml_out
     assert 'top_chunk_seq="10"' in xml_out
     assert 'match_count="4"' in xml_out
-    assert 'search="qmd search &quot;helios&quot; -c &apos;space&apos; -p &apos;helios.md&apos;"' in xml_out
+    assert 'search="qmd search &quot;helios&quot; -c \'space\' -p \'helios.md\'"' in xml_out
 
     # JSON format
     format_discover_json([r])
