@@ -115,19 +115,19 @@ function renderResults(results, type, query) {
             const uri = item.collection ? `qmd://${item.collection}/${item.path}` : item.path;
             const matchCount = item.match_count || 1;
             const matchesBadge = matchCount > 1 
-                ? `<span class="bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full font-mono text-[11px] border border-purple-200 dark:border-purple-900">${matchCount} matches in doc</span>` 
+                ? `<span class="flex-shrink-0 whitespace-nowrap bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 px-2.5 py-0.5 rounded-full font-mono text-[11px] border border-purple-200 dark:border-purple-900">${matchCount} matches in doc</span>` 
                 : '';
 
             card.innerHTML = `
-                <div class="flex items-center justify-between text-xs font-mono text-slate-500">
-                    <span class="text-blue-600 dark:text-blue-400 truncate">${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}</span>
+                <div class="flex items-center justify-between text-xs font-mono text-slate-500 gap-3 min-w-0">
+                    <span class="text-blue-600 dark:text-blue-400 truncate min-w-0 flex-1">${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}</span>
                     ${matchesBadge}
                 </div>
-                <h3 class="doc-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">${escapeHtml(item.title || item.path)}</h3>
+                <h3 class="doc-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer break-words">${escapeHtml(item.title || item.path)}</h3>
                 <div class="chunk-box cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 prose dark:prose-invert max-w-none text-xs leading-relaxed">${marked.parse(item.text || '')}</div>
-                <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500">
+                <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500 flex-wrap gap-2">
                     <span>Score: ${Number(item.score || 0).toFixed(4)} • Top Chunk seq: ${item.seq_id}</span>
-                    <div class="flex items-center gap-1.5 font-sans">
+                    <div class="flex items-center gap-1.5 font-sans flex-shrink-0">
                         <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition">XML</button>
                         <button type="button" class="btn-deep-search hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-purple-600 dark:text-purple-400 transition" title="Search all chunks inside this document">Deep Search</button>
                         <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 transition">Open Doc</button>
@@ -159,14 +159,14 @@ function renderResults(results, type, query) {
         if (type === 'doc') {
             const snippets = item.snippets || [];
             card.innerHTML = `
-                <div class="text-xs text-slate-500 font-mono text-blue-600 dark:text-blue-400 truncate">${escapeHtml(uri)}</div>
-                <h3 class="doc-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">${escapeHtml(item.title || item.path)}</h3>
+                <div class="text-xs text-slate-500 font-mono text-blue-600 dark:text-blue-400 truncate min-w-0">${escapeHtml(uri)}</div>
+                <h3 class="doc-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer break-words">${escapeHtml(item.title || item.path)}</h3>
                 <div class="space-y-2.5 my-2">
                     ${snippets.map(snip => `<div class="snip-box cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 prose dark:prose-invert max-w-none text-xs leading-relaxed">${marked.parse(snip)}</div>`).join('')}
                 </div>
-                <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500">
+                <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500 flex-wrap gap-2">
                     <span>Score: ${Number(item.score || 0).toFixed(4)} • ${snippets.length} snippet(s)</span>
-                    <div class="flex items-center gap-1.5 font-sans">
+                    <div class="flex items-center gap-1.5 font-sans flex-shrink-0">
                         <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition">XML</button>
                         <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 transition">Open Doc</button>
                     </div>
@@ -180,12 +180,12 @@ function renderResults(results, type, query) {
             });
         } else {
             card.innerHTML = `
-                <div class="text-xs text-slate-500 font-mono text-blue-600 dark:text-blue-400 truncate">${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}</div>
-                <h3 class="doc-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">${escapeHtml(item.title || item.path)}</h3>
+                <div class="text-xs text-slate-500 font-mono text-blue-600 dark:text-blue-400 truncate min-w-0">${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}</div>
+                <h3 class="doc-link text-xl font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer break-words">${escapeHtml(item.title || item.path)}</h3>
                 <div class="chunk-box cursor-pointer bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 prose dark:prose-invert max-w-none text-xs leading-relaxed">${marked.parse(item.text || '')}</div>
-                <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500">
+                <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs font-mono text-slate-500 flex-wrap gap-2">
                     <span>Score: ${Number(item.score || 0).toFixed(4)} ${item.rank ? `• #${item.rank}` : ''}</span>
-                    <div class="flex items-center gap-1.5 font-sans">
+                    <div class="flex items-center gap-1.5 font-sans flex-shrink-0">
                         <button type="button" class="btn-copy-xml hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition">XML</button>
                         <button type="button" class="btn-open-doc hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded text-blue-600 dark:text-blue-400 transition">Open Doc</button>
                     </div>
