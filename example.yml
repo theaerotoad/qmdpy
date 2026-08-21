@@ -9,7 +9,21 @@ llm_url: "http://127.0.0.1:9888" # Default: http://127.0.0.1:8888
 # embed_url: "http://127.0.0.1:8889"     # Separate URL for embeddings
 # embed_api_key: "sk-..."               # API key for embedding endpoint
 # rerank_url: "http://127.0.0.1:8890"    # Separate URL for reranking
-# rerank_api_key: "sk-..."              # API key for reranker endpoint
+# rerank_api_key: "sk-..."               # API key for reranker endpoint
+
+# --- Vision & Multimodal Image Processing ---
+# Option A: OpenAI-compatible Multimodal LLM endpoint for OCR & markdown extraction
+# multimodal_url: "http://127.0.0.1:9888" # Or "https://api.openai.com"
+# multimodal_api_key: "sk-..."
+# multimodal_model: "gpt-4o-mini"         # e.g. "gpt-4o-mini", "qwen-vl-max"
+# multimodal_prompt: ""                   # Optional custom OCR/markdown prompt
+
+# Option B: Dedicated Vision API endpoint
+# vision_url: "http://127.0.0.1:8891/detect"
+# vision_api_key: "sk-..."
+
+# Maximum number of images processed simultaneously across documents
+max_image_concurrency: 4                 # Default: 4
 
 strip_links: true                # Simplify [text](url) to just "text"
 target_chunk_size: 1024          # Optimal character count per chunk
