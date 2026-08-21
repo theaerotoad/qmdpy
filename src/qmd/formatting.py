@@ -249,6 +249,159 @@ def format_doc_results_json(grouped_results: List[Dict], session_id: Optional[st
                 doc["excluded_count"] = exclusion_stats.get("excluded_chunks", 0)
     print(json.dumps(grouped_results, indent=2))
 
+def format_discover_cli(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, truncation_info: Optional[Dict] = None):
+    """Prints discovered top-hit document results (1 per document, SERP style)."""
+    if session_id:
+        stats_str = ""
+        if isinstance(exclusion_stats, dict) and exclusion_stats.get("excluded_chunks", 0) > 0:
+            c_count = exclusion_stats["excluded_chunks"]
+            d_count = exclusion_stats.get("excluded_docs", 0)
+            stats_str = f" | Excluded {c_count} previously seen chunk(s) across {d_count} document(s)"
+        print(f"{DIM}[Session: {session_id}{stats_str}]{RESET}")
+
+    if not results:
+        print(f"\n{RED}No documents discovered.{RESET}")
+        return
+
+    print(f"\n{DIM}Discovered {len(results)} document{'s' if len(results) != 1 else ''}:{RESET}\n")
+
+    for i, res in enumerate(results):
+        rank_str = f"{i+1}."
+        path_str = f"qmd://{res.collection}/{res.path}" if res.collection else res.path
+        header_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
+        match_count = getattr(res, "match_count", 1)
+        matches_badge = f" {MAGENTA}({match_count} match{'es' if match_count != 1 else ''} in doc){RESET}" if match_count > 1 else ""
+
+        print(f"{GREEN}{rank_str}{RESET} {BOLD}{res.title}{RESET}{header_str}{matches_badge} {DIM}({path_str}){RESET}")
+
+        snippet = res.text[:2000].replace("\n", " ").strip()
+        if len(res.text) > 2000:
+            snippet += "..."
+        highlighted = highlight_keywords(snippet, query)
+        print(f"   {highlighted}")
+
+        print(f"   {DIM}Score: {res.score:.4f} | Source: {res.source} | Top Chunk Seq: {res.seq_id} | Matches: {match_count}{RESET}")
+        if verbose:
+            fts_rank = getattr(res, 'fts_rank', None)
+            fts_score = getattr(res, 'fts_score', None)
+            vec_rank = getattr(res, 'vec_rank', None)
+            vec_score = getattr(res, 'vec_score', None)
+            rrf_rank = getattr(res, 'rrf_rank', None)
+            rrf_score = getattr(res, 'rrf_score', None)
+
+            fts_str = f"rank {fts_rank} (score {fts_score:.4f})" if fts_rank is not None and fts_score is not None else "N/A"
+            vec_str = f"rank {vec_rank} (score {vec_score:.4f})" if vec_rank is not None and vec_score is not None else "N/A"
+            rrf_str = f"rank {rrf_rank} (score {rrf_score:.4f})" if rrf_rank is not None and rrf_score is not None else "N/A"
+
+            print(f"   {CYAN}↳ Ranking Details -> FTS: {fts_str} | Vector: {vec_str} | RRF: {rrf_str}{RESET}")
+        print()
+
+    if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
+        omitted = truncation_info["omitted_remaining"]
+        print(f"{YELLOW}[... Truncated {omitted} remaining document(s) to protect context ...]{RESET}\n")
+
+def format_discover_json(results: List, verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, truncation_info: Optional[Dict] = None):
+    """Outputs discovered document results as JSON for piping."""
+    data = []
+    for res in results:
+        item = {
+            "path": res.path,
+            "title": res.title,
+            "text": res.text,
+            "score": res.score,
+            "source": res.source,
+            "collection": res.collection,
+            "seq_id": res.seq_id,
+            "headers": getattr(res, "headers", ""),
+            "match_count": getattr(res, "match_count", 1)
+        }
+        if session_id:
+            item["session_id"] = session_id
+        if isinstance(exclusion_stats, dict):
+            item["excluded_count"] = exclusion_stats.get("excluded_chunks", 0)
+        if verbose or getattr(res, "fts_rank", None) is not None or getattr(res, "vec_rank", None) is not None:
+            item["fts_score"] = getattr(res, "fts_score", None)
+            item["fts_rank"] = getattr(res, "fts_rank", None)
+            item["vec_score"] = getattr(res, "vec_score", None)
+            item["vec_rank"] = getattr(res, "vec_rank", None)
+            item["rrf_score"] = getattr(res, "rrf_score", None)
+            item["rrf_rank"] = getattr(res, "rrf_rank", None)
+        data.append(item)
+    print(json.dumps(data, indent=2))
+
+def format_discover_xml(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None, truncation_info: Optional[Dict] = None, print_output: bool = True) -> str:
+    """Outputs discovered top-hit document results as XML for LLM context."""
+    query_attr = escape_xml_attr(query)
+    total_docs = len(results)
+    session_attr = f' session_id="{escape_xml_attr(session_id)}"' if session_id else ""
+    seen_attr = f' seen_chunks="{seen_chunks}"' if seen_chunks is not None and session_id else ""
+    hint_attr = f' next_query_hint="--session {escape_xml_attr(session_id)}"' if session_id else ""
+    excl_attr = ""
+    if isinstance(exclusion_stats, dict) and exclusion_stats.get("excluded_chunks", 0) > 0:
+        excl_attr = f' excluded_chunks="{exclusion_stats["excluded_chunks"]}" excluded_docs="{exclusion_stats.get("excluded_docs", 0)}"'
+
+    lines = [f'<discover_results query="{query_attr}" total_documents="{total_docs}"{session_attr}{seen_attr}{hint_attr}{excl_attr}>']
+
+    for i, res in enumerate(results):
+        rank = res.rank if res.rank is not None else (i + 1)
+        score_str = f"{res.score:.4f}"
+        seq = res.seq_id
+        doc_uri = f"qmd://{res.collection}/{res.path}" if res.collection else res.path
+        section = getattr(res, 'headers', '') or ""
+        coll_attr = f' collection="{escape_xml_attr(res.collection)}"' if res.collection else ""
+        path_attr = f' path="{escape_xml_attr(res.path)}"' if res.path else ""
+        match_count = getattr(res, "match_count", 1)
+
+        target_ref = f"{res.collection}:{res.path}:{seq}" if res.collection else f"{res.path}:{seq}"
+        outline_ref = f"{res.collection}:{res.path}" if res.collection else f"{res.path}"
+        read_cmd = f"qmd read '{target_ref}'"
+        outline_cmd = f"qmd outline '{outline_ref}'"
+        
+        search_filter_path = f" -c '{escape_xml_attr(res.collection)}'" if res.collection else ""
+        search_filter_path += f" -p '{escape_xml_attr(res.path)}'"
+        search_cmd = f"qmd search \"{escape_xml_attr(query)}\"{search_filter_path}"
+
+        clean_text = strip_ansi(res.text).strip()
+        chars = len(clean_text)
+
+        res_tag = (
+            f'  <document\n'
+            f'    rank="{rank}"\n'
+            f'    score="{score_str}"\n'
+            f'    uri="{escape_xml_attr(doc_uri)}"{coll_attr}{path_attr}\n'
+            f'    title="{escape_xml_attr(res.title)}"\n'
+            f'    top_chunk_seq="{seq}"\n'
+            f'    match_count="{match_count}"\n'
+            f'    chars="{chars}"\n'
+            f'    section="{escape_xml_attr(section)}"\n'
+            f'    read="{escape_xml_attr(read_cmd)}"\n'
+            f'    outline="{escape_xml_attr(outline_cmd)}"\n'
+            f'    search="{escape_xml_attr(search_cmd)}"'
+        )
+        if verbose:
+            if getattr(res, 'fts_score', None) is not None:
+                res_tag += f'\n    fts_score="{res.fts_score:.4f}" fts_rank="{res.fts_rank}"'
+            if getattr(res, 'vec_score', None) is not None:
+                res_tag += f'\n    vec_score="{res.vec_score:.4f}" vec_rank="{res.vec_rank}"'
+            if getattr(res, 'rrf_score', None) is not None:
+                res_tag += f'\n    rrf_score="{res.rrf_score:.4f}" rrf_rank="{res.rrf_rank}"'
+        res_tag += '>'
+
+        lines.append(res_tag)
+        lines.append(clean_text)
+        lines.append('  </document>')
+
+    if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
+        omitted = truncation_info["omitted_remaining"]
+        limit_val = truncation_info.get("limit", len(results))
+        lines.append(f'  <truncation omitted_documents="{omitted}" reason="max_chunks_per_response limit ({limit_val}) reached" />')
+
+    lines.append('</discover_results>')
+    output = "\n".join(lines)
+    if print_output:
+        print(output)
+    return output
+
 def format_outline_cli(outline: Dict):
     """Prints document heading outline and chunk mapping."""
     if not outline:

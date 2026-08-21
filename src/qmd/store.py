@@ -64,6 +64,7 @@ def _results_to_json(results: List['Result']) -> str:
             "vec_rank": getattr(r, "vec_rank", None),
             "rrf_score": getattr(r, "rrf_score", None),
             "rrf_rank": getattr(r, "rrf_rank", None),
+            "match_count": getattr(r, "match_count", 1),
         })
     return json.dumps(data)
 
@@ -88,6 +89,7 @@ def _json_to_results(json_str: str) -> List['Result']:
             vec_rank=item.get("vec_rank"),
             rrf_score=item.get("rrf_score"),
             rrf_rank=item.get("rrf_rank"),
+            match_count=item.get("match_count", 1),
         ))
     return results
 
@@ -124,6 +126,7 @@ class Result:
     vec_rank: Optional[int] = None
     rrf_score: Optional[float] = None
     rrf_rank: Optional[int] = None
+    match_count: int = 1
 
 class Store:
     def __init__(self, config: Config, connection: Optional[sqlite3.Connection] = None):
@@ -1131,6 +1134,116 @@ class Store:
         if not exclude_seen_set:
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(ret_results))
         return ret_results
+
+    def discover(
+        self,
+        query: str,
+        limit: int = 10,
+        verbose: bool = False,
+        rerank: bool = False,
+        reranker_only: bool = False,
+        collection: Optional[str] = None,
+        lexical_query: Optional[str] = None,
+        title: Optional[str] = None,
+        path: Optional[Union[str, List[str]]] = None,
+        fts_limit: Optional[int] = None,
+        vec_limit: Optional[int] = None,
+        rerank_candidates: Optional[int] = None,
+        exclude_seen_set: Optional[set] = None,
+        w2n: bool = False
+    ) -> List[Result]:
+        """
+        Discover Search: Retrieves top matching documents, returning ONLY the single
+        highest-scoring chunk for each document, along with total match count per document.
+        """
+        if not exclude_seen_set:
+            cache_key = self._build_search_cache_key(
+                "discover", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
+            )
+            cached_json = get_cached_search_results(self.history_conn, cache_key)
+            if cached_json:
+                self.last_exclusion_stats = {"excluded_chunks": 0, "excluded_docs": 0}
+                return _json_to_results(cached_json)
+
+        fetch_limit = max(limit * 6, getattr(self.config, 'fts_limit', 50), getattr(self.config, 'vec_limit', 50))
+
+        if w2n:
+            candidates = self.wide_to_narrow_search(
+                query=query,
+                limit=fetch_limit,
+                verbose=verbose,
+                rerank=rerank,
+                reranker_only=reranker_only,
+                collection=collection,
+                lexical_query=lexical_query,
+                title=title,
+                path=path,
+                fts_limit=fts_limit,
+                vec_limit=vec_limit,
+                rerank_candidates=rerank_candidates,
+                exclude_seen_set=exclude_seen_set
+            )
+        else:
+            candidates = self.hybrid_search(
+                query=query,
+                limit=fetch_limit,
+                verbose=verbose,
+                rerank=rerank,
+                reranker_only=reranker_only,
+                collection=collection,
+                lexical_query=lexical_query,
+                title=title,
+                path=path,
+                fts_limit=fts_limit,
+                vec_limit=vec_limit,
+                rerank_candidates=rerank_candidates,
+                exclude_seen_set=exclude_seen_set
+            )
+
+        if not candidates:
+            return []
+
+        doc_map: Dict[Tuple[str, str], List[Result]] = {}
+        for c in candidates:
+            key = (c.collection, c.path)
+            if key not in doc_map:
+                doc_map[key] = []
+            doc_map[key].append(c)
+
+        discover_results: List[Result] = []
+        for (coll_name, doc_path), doc_chunks in doc_map.items():
+            best_chunk = max(doc_chunks, key=lambda x: x.score)
+
+            doc_res = Result(
+                path=best_chunk.path,
+                title=best_chunk.title,
+                text=best_chunk.text,
+                score=best_chunk.score,
+                source=best_chunk.source,
+                collection=best_chunk.collection,
+                seq_id=best_chunk.seq_id,
+                headers=getattr(best_chunk, "headers", ""),
+                fts_score=getattr(best_chunk, "fts_score", None),
+                fts_rank=getattr(best_chunk, "fts_rank", None),
+                vec_score=getattr(best_chunk, "vec_score", None),
+                vec_rank=getattr(best_chunk, "vec_rank", None),
+                rrf_score=getattr(best_chunk, "rrf_score", None),
+                rrf_rank=getattr(best_chunk, "rrf_rank", None),
+                match_count=len(doc_chunks)
+            )
+            discover_results.append(doc_res)
+
+        discover_results.sort(key=lambda x: x.score, reverse=True)
+
+        for i, res in enumerate(discover_results):
+            res.rank = i + 1
+
+        final_results = discover_results[:limit]
+
+        if not exclude_seen_set:
+            save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(final_results))
+
+        return final_results
 
     def get_document_outline(self, collection: Optional[str], path: str) -> Optional[Dict[str, Any]]:
         """Extracts document structure heading hierarchy correlated with chunk sequence ranges."""

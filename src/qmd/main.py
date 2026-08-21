@@ -12,6 +12,7 @@ from qmd.store import Store, Result
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
 from qmd.formatting import (
     format_results_cli, format_doc_results_cli, format_results_json, format_doc_results_json,
+    format_discover_cli, format_discover_json, format_discover_xml,
     format_outline_cli, format_chunks_cli, format_results_xml, format_doc_results_xml,
     format_chunks_xml, format_outline_xml, format_collection_tree_cli, format_collection_tree_xml,
     format_grep_cli, format_grep_json, format_grep_xml,
@@ -223,6 +224,99 @@ def group_results_by_doc(results: List[Result]) -> List[Dict]:
         
     return sorted(output_list, key=lambda x: x['score'], reverse=True)
 
+def handle_discover(args, store: Store):
+    is_xml = _is_xml_output(args)
+    if getattr(args, "plain", False) or is_xml:
+        set_plain_mode(True)
+
+    env_deep = os.environ.get("QMD_DEEP", "").strip().lower() in ("1", "true", "yes", "on")
+    is_deep = getattr(args, "deep", False) or env_deep
+    rerank = getattr(args, "rerank", False) or is_deep
+    is_w2n = getattr(args, "w2n", False) or getattr(args, "broad", False)
+
+    query = " ".join(args.query)
+    limit = args.limit if getattr(args, "limit", None) is not None else getattr(store.config, "default_limit", 10)
+    fts_limit = getattr(args, "fts_limit", None)
+    vec_limit = getattr(args, "vec_limit", None)
+    rerank_candidates = getattr(args, "rerank_candidates", None)
+
+    session_id = getattr(args, "session", None)
+    has_explicit_session = session_id is not None
+    if not session_id:
+        session_id = secrets.token_hex(4)
+
+    include_seen = getattr(args, "include_seen", False)
+    if has_explicit_session:
+        exclude_seen = not include_seen
+    else:
+        exclude_seen = getattr(args, "exclude_seen", False) and not include_seen
+
+    exclude_seen_set = set()
+    seen_chunks_count = 0
+    if store.history_conn:
+        all_seen = get_seen_chunks_for_session(store.history_conn, session_id)
+        seen_chunks_count = len(all_seen)
+        if exclude_seen:
+            exclude_seen_set = all_seen
+
+    results = store.discover(
+        query=query,
+        limit=limit,
+        verbose=args.verbose,
+        rerank=rerank,
+        reranker_only=getattr(args, "rerank_only", False),
+        collection=args.collection,
+        lexical_query=args.lex,
+        title=args.title,
+        path=args.path,
+        fts_limit=fts_limit,
+        vec_limit=vec_limit,
+        rerank_candidates=rerank_candidates,
+        exclude_seen_set=exclude_seen_set,
+        w2n=is_w2n
+    )
+
+    if getattr(args, "redact_pii", False):
+        for r in results:
+            r.text = redact_pii(r.text)
+            if hasattr(r, "title") and r.title:
+                r.title = redact_pii(r.title)
+
+    event_type = "discover"
+    db_last_updated = get_db_meta(store.conn, "last_updated")
+    event_id = record_session_event(
+        store.history_conn,
+        session_id,
+        event_type,
+        query,
+        getattr(args, "lex", None),
+        str(store.config.db_path),
+        db_last_updated
+    )
+
+    max_chunks = getattr(args, "max_chunks", None)
+    if max_chunks is None:
+        cfg_val = getattr(getattr(store, "config", None), "max_chunks_per_response", 30)
+        max_chunks = cfg_val if isinstance(cfg_val, int) else 30
+
+    truncation_info = None
+    if isinstance(max_chunks, int) and max_chunks > 0 and len(results) > max_chunks:
+        omitted = len(results) - max_chunks
+        truncation_info = {
+            "omitted_remaining": omitted,
+            "limit": max_chunks
+        }
+        results = results[:max_chunks]
+
+    record_session_results(store.history_conn, session_id, event_id, results)
+
+    if args.json:
+        format_discover_json(results, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)
+    elif is_xml:
+        format_discover_xml(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, seen_chunks=seen_chunks_count, truncation_info=truncation_info)
+    else:
+        format_discover_cli(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)
+
 def handle_search(args, store: Store):
     is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
@@ -231,7 +325,8 @@ def handle_search(args, store: Store):
     env_deep = os.environ.get("QMD_DEEP", "").strip().lower() in ("1", "true", "yes", "on")
     is_deep = getattr(args, "deep", False) or env_deep
     rerank = getattr(args, "rerank", False) or is_deep
-    is_doc = getattr(args, "doc", False) or is_deep
+    is_flat = getattr(args, "flat", False) or getattr(args, "chunks", False)
+    is_doc = not is_flat
     is_w2n = getattr(args, "w2n", False) or getattr(args, "broad", False)
 
     query = " ".join(args.query)
@@ -585,17 +680,17 @@ def handle_guide(args, store: Optional[Store] = None):
 When requested to perform research or retrieve data using QMD, emit 1 to 5 commands wrapped in a <qmd_commands> XML container:
 
 <qmd_commands>
+  qmd discover "query"
   qmd search "query" --deep
   qmd outline "coll:path.md"
   qmd read "coll:path.md:10-15"
 </qmd_commands>
   </batch_execution_format>
   <workflow>
-    <step num="1" name="Discovery">Use `qmd collections` or `qmd tree [collection]` to explore indexed files and paths.</step>
-    <step num="2" name="Search">Use `qmd search "query" --deep` for reranked, document-grouped results, or `qmd search "query" --session <id>` for multi-turn deduplication.</step>
+    <step num="1" name="Discovery">Use `qmd discover "query"` for top-level SERP results (1 hit per document), or `qmd collections` / `qmd tree` to explore paths.</step>
+    <step num="2" name="Search">Use `qmd search "query" --deep` for comprehensive document-grouped results with LLM reranking.</step>
     <step num="3" name="Orient">Use `qmd outline "<target>"` to inspect heading hierarchies and chunk sequence spans.</step>
     <step num="4" name="Read">Use `qmd read "<target>"` to fetch chunks/ranges, or execute exact `read="..."` / `expand="..."` attributes from search results.</step>
-    <step num="5" name="Pattern">Use `qmd grep "pattern"` for exact substring or regex matches across document text.</step>
   </workflow>
   <shorthand_targets>
     <target syntax="coll:path:seq_range">e.g. `Books:history.epub:10-15` or `qmd://Books/history.epub:10-15`</target>
@@ -604,10 +699,11 @@ When requested to perform research or retrieve data using QMD, emit 1 to 5 comma
     <target syntax="row_ids">e.g. `10-15` or `22,40,25-27`</target>
   </shorthand_targets>
   <agent_tips>
+    <tip>Triage first: `qmd discover "query"` gives a fast 1-hit-per-document overview before deep reading.</tip>
     <tip>Batch execution: emit 1 to 5 sequential commands in a <qmd_commands> block for unified batch processing.</tip>
     <tip>Multi-turn sessions: pass `--session <id>` to automatically exclude previously seen chunks across query turns.</tip>
     <tip>Presets: `--deep` combines LLM reranking and document grouping; `--broad` runs wide-to-narrow hierarchical search.</tip>
-    <tip>Agent hypermedia: copy-paste the `read="..."`, `outline="..."`, and `expand="..."` attributes directly into CLI calls.</tip>
+    <tip>Agent hypermedia: copy-paste the `read="..."`, `outline="..."`, and `search="..."` attributes directly into CLI calls.</tip>
     <tip>Safety cap: large reads truncate at max_chunks (default 30) and provide a `resume="..."` command for the next slice.</tip>
   </agent_tips>
 </qmd_guide>"""
@@ -617,12 +713,14 @@ When requested to perform research or retrieve data using QMD, emit 1 to 5 comma
         guide_md = f"""{BOLD}QMD LLM Agent Research & Inspection Guide{RESET}
 
 {CYAN}## Workflow & Decision Matrix{RESET}
-1. {BOLD}Discovery & Hierarchy:{RESET}
+1. {BOLD}Triage & Discovery:{RESET}
+   - `qmd discover "query"` - Single top hit per document SERP view (fast discovery)
    - `qmd collections` - List indexed collections and paths
    - `qmd tree [collection] [-p pattern]` - Explore document directory trees
 
-2. {BOLD}Retrieval & Search:{RESET}
-   - `qmd search "query" --deep` - Deep search: doc-grouped + LLM reranked (recommended default)
+2. {BOLD}Retrieval & Deep Search:{RESET}
+   - `qmd search "query"` - Document-ordered search results (default)
+   - `qmd search "query" --deep` - Deep search: doc-grouped + LLM reranked
    - `qmd search "query" --session <id>` - Session search (auto-deduplicates seen chunks)
    - `qmd search "query" --broad` - Broad hierarchical search (wide-to-narrow)
 
@@ -633,9 +731,6 @@ When requested to perform research or retrieve data using QMD, emit 1 to 5 comma
    - `qmd read "<target>"` - Read specific chunks, ranges, or surrounding context
    - Examples: `qmd read 'Books:doc.epub:10-15'`, `qmd read 'qmd://Books/doc.epub:3'`
 
-5. {BOLD}Exact Pattern Matching:{RESET}
-   - `qmd grep "pattern" [-c coll] [-p path]` - Fast literal or regex search
-
 {CYAN}## Target Shorthand Syntax{RESET}
 - Full URI: `qmd://<collection>/<path>[:<seq>]`
 - Shorthand: `<collection>:<path>[:<seq>]`
@@ -643,8 +738,9 @@ When requested to perform research or retrieve data using QMD, emit 1 to 5 comma
 - Chunk Row IDs: `10-15` or `22,40,25-27`
 
 {CYAN}## Multi-Turn Agent Best Practices{RESET}
+- Use `qmd discover` to scan across multiple documents without flooding context.
 - Pass `--session <id>` to avoid ingesting duplicate context on follow-up searches.
-- Follow actionable XML attributes (`read="..."`, `outline="..."`, `expand="..."`, `resume="..."`).
+- Follow actionable XML attributes (`read="..."`, `outline="..."`, `search="..."`, `resume="..."`).
 - Large reads truncate at 30 chunks with a resume hint to protect context windows."""
         if getattr(args, "plain", False):
             guide_md = strip_ansi(guide_md)
@@ -742,7 +838,41 @@ def build_parser():
     HelpAllAction.root_parser = parser
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    search_parser = subparsers.add_parser("search", aliases=["query", "q"], help="Hybrid vector + lexical search", parents=[parent_parser])
+    discover_parser = subparsers.add_parser("discover", aliases=["find", "disc"], help="Discover top document matches (1 top hit per document)", parents=[parent_parser])
+    discover_parser.add_argument("query", nargs="+", help="The search terms")
+
+    d_filter_group = discover_parser.add_argument_group("Target & Filters")
+    d_filter_group.add_argument("-c", "--collection", type=str, help="Filter results by a specific collection")
+    d_filter_group.add_argument("-p", "--path", type=str, help="Filter results by a specific path (substring match)")
+    d_filter_group.add_argument("-t", "--title", type=str, help="Filter results by a specific title (substring match)")
+    d_filter_group.add_argument("--lex", type=str, help="Override the lexical (FTS) search terms")
+
+    d_mode_group = discover_parser.add_argument_group("Search Mode & Quality")
+    d_mode_group.add_argument("--deep", action="store_true", help="Deep discovery: enable LLM reranking")
+    d_mode_group.add_argument("-r", "--rerank", action="store_true", help="Use LLM to rerank results")
+    d_mode_group.add_argument("--rerank-only", action="store_true", help="Sort results purely by reranker score (implies --rerank)")
+    d_mode_group.add_argument("-w", "--w2n", action="store_true", help="Use Wide-to-Narrow hierarchical search")
+    d_mode_group.add_argument("--broad", action="store_true", help="Broad search: alias for Wide-to-Narrow hierarchical search (--w2n)")
+    d_mode_group.add_argument("--limit", type=int, default=None, help="Number of final documents to show")
+    d_mode_group.add_argument("--max-chunks", type=int, default=None, help="Max documents to return (defaults to config max_chunks_per_response or 30)")
+    d_mode_group.add_argument("--fts-limit", type=int, default=None, help="Max number of FTS (lexical) matches to retrieve")
+    d_mode_group.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
+    d_mode_group.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")
+
+    d_session_group = discover_parser.add_argument_group("Session & History")
+    d_session_group.add_argument("--session", type=str, help="Session ID for tracking history and deduplication")
+    d_session_group.add_argument("--exclude-seen", action="store_true", help="Exclude previously seen chunks from the active session")
+    d_session_group.add_argument("--include-seen", action="store_true", help="Include previously seen chunks (overrides default session deduplication)")
+
+    d_output_group = discover_parser.add_argument_group("Output & Formatting")
+    d_output_group.add_argument("--xml", action="store_true", help="Output results in XML format for LLM context")
+    d_output_group.add_argument("--llm", action="store_true", help="Alias for --xml (optimizes output for LLM agent context)")
+    d_output_group.add_argument("--json", action="store_true", help="Output results in JSON format")
+    d_output_group.add_argument("--redact-pii", "--redact", action="store_true", help="Redact email addresses and phone numbers from search results")
+    d_output_group.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
+    d_output_group.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
+
+    search_parser = subparsers.add_parser("search", aliases=["query", "q"], help="Hybrid vector + lexical search (document-ordered by default)", parents=[parent_parser])
     search_parser.add_argument("query", nargs="+", help="The search terms")
 
     filter_group = search_parser.add_argument_group("Target & Filters")
@@ -752,7 +882,7 @@ def build_parser():
     filter_group.add_argument("--lex", type=str, help="Override the lexical (FTS) search terms")
 
     mode_group = search_parser.add_argument_group("Search Mode & Quality")
-    mode_group.add_argument("--deep", action="store_true", help="Deep search: document grouping with LLM reranking (implies -r -d)")
+    mode_group.add_argument("--deep", action="store_true", help="Deep search: document grouping with LLM reranking (implies -r)")
     mode_group.add_argument("-r", "--rerank", action="store_true", help="Use LLM to rerank results")
     mode_group.add_argument("--rerank-only", action="store_true", help="Sort results purely by reranker score (implies --rerank)")
     mode_group.add_argument("-w", "--w2n", action="store_true", help="Use Wide-to-Narrow hierarchical search")
@@ -772,7 +902,8 @@ def build_parser():
     output_group.add_argument("--xml", action="store_true", help="Output results in XML format for LLM context")
     output_group.add_argument("--llm", action="store_true", help="Alias for --xml (optimizes output for LLM agent context)")
     output_group.add_argument("--json", action="store_true", help="Output results in JSON format")
-    output_group.add_argument("-d", "--doc", action="store_true", help="Group results by document (Document View)")
+    output_group.add_argument("-d", "--doc", action="store_true", default=True, help="Group results by document (default)")
+    output_group.add_argument("--flat", "--chunks", action="store_true", help="Output flat individual chunks instead of document-grouped view")
     output_group.add_argument("--redact-pii", "--redact", action="store_true", help="Redact email addresses and phone numbers from search results")
     output_group.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
     output_group.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
@@ -785,7 +916,7 @@ def build_parser():
     outline_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
     outline_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
-    grep_parser = subparsers.add_parser("grep", help="Direct pattern search across raw document bodies", parents=[parent_parser])
+    grep_parser = subparsers.add_parser("grep", help="[Deprecated: use discover or search] Direct pattern search across raw document bodies", parents=[parent_parser])
     grep_parser.add_argument("pattern", help="Search pattern or regular expression")
     grep_parser.add_argument("-r", "--regex", action="store_true", help="Treat pattern as a regular expression")
     grep_parser.add_argument("-s", "--case-sensitive", action="store_true", help="Perform case-sensitive matching")
@@ -861,7 +992,9 @@ def build_parser():
     return parser
 
 def execute_command(args, store):
-    if args.command in ["search", "query", "q"]:
+    if args.command in ["discover", "find", "disc"]:
+        handle_discover(args, store)
+    elif args.command in ["search", "query", "q"]:
         handle_search(args, store)
     elif args.command == "outline":
         handle_outline(args, store)
