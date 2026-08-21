@@ -158,7 +158,7 @@ def test_xml_formatting_flat_and_doc(capsys):
     assert '<heading level="1" start_seq="0" end_seq="9" char_count="2500" read="qmd read \'main:doc.md:0-9\'">Intro &amp; Setup</heading>' in outline_out
 
 def test_cli_xml_flags(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "argv", ["qmd", "search", "helios", "--xml"])
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "helios", "--xml", "--flat"])
     with patch("qmd.main.Store") as MockStore, \
          patch("qmd.main.load_config"):
         mock_store = MockStore.return_value
@@ -171,6 +171,47 @@ def test_cli_xml_flags(monkeypatch, capsys):
         assert '<result' in out
         assert 'Helios 1 deep space mission' in out
 
+def test_cli_discover_command(monkeypatch, capsys):
+    """Test qmd discover CLI command routing and output."""
+    from qmd.store import Result
+    monkeypatch.setattr(sys, "argv", ["qmd", "discover", "helios", "--limit", "5"])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.discover.return_value = [
+            Result(collection="space", path="helios.md", title="Helios", score=0.92, source="hybrid", rank=1, seq_id=10, headers="Overview", text="Helios solar probe mission overview", match_count=3)
+        ]
+        mock_store.last_exclusion_stats = {}
+        main()
+        out = capsys.readouterr().out
+        assert "Discovered 1 document" in out
+        assert "Helios" in out
+        assert "3 matches in doc" in out
+        assert "qmd://space/helios.md" in out
+
+def test_discover_xml_and_json_formatting(capsys):
+    """Test format_discover_xml and format_discover_json."""
+    from qmd.formatting import format_discover_xml, format_discover_json
+    from qmd.store import Result
+
+    r = Result(collection="space", path="helios.md", title="Helios Mission", score=0.92, source="hybrid", rank=1, seq_id=10, headers="Overview", text="Helios solar probe mission", match_count=4)
+
+    # XML format
+    format_discover_xml([r], query="helios", session_id="sess_123")
+    xml_out = capsys.readouterr().out
+    assert '<discover_results query="helios" total_documents="1" session_id="sess_123"' in xml_out
+    assert '<document' in xml_out
+    assert 'uri="qmd://space/helios.md"' in xml_out
+    assert 'title="Helios Mission"' in xml_out
+    assert 'top_chunk_seq="10"' in xml_out
+    assert 'match_count="4"' in xml_out
+    assert 'search="qmd search &quot;helios&quot; -c &apos;space&apos; -p &apos;helios.md&apos;"' in xml_out
+
+    # JSON format
+    format_discover_json([r])
+    json_out = capsys.readouterr().out
+    assert '"match_count": 4' in json_out
+    assert '"title": "Helios Mission"' in json_out
+
 def test_helpall_flag(monkeypatch, capsys):
     """Test that --helpall outputs help for all subcommands and exits with 0."""
     monkeypatch.setattr(sys, "argv", ["qmd", "--helpall"])
@@ -179,6 +220,7 @@ def test_helpall_flag(monkeypatch, capsys):
     assert excinfo.value.code == 0
     out = capsys.readouterr().out
     assert "Query Multiple Documents" in out
+    assert "discover" in out
     assert "search" in out
     assert "outline" in out
     assert "grep" in out
@@ -206,6 +248,7 @@ def test_format_help_all_direct():
     parser = build_parser()
     help_text = format_help_all(parser)
     assert "Query Multiple Documents" in help_text
+    assert "usage: qmd discover" in help_text
     assert "usage: qmd search" in help_text
     assert "usage: qmd grep" in help_text
     assert "Target & Filters:" in help_text
@@ -295,7 +338,7 @@ def test_search_truncation_safety_cap(monkeypatch, capsys):
         Result(collection="Books", path="apollo.epub", title="Apollo", text=f"Match {i}", score=1.0 - (i * 0.01), source="vec", rank=i+1, seq_id=i)
         for i in range(40)
     ]
-    monkeypatch.setattr(sys, "argv", ["qmd", "search", "apollo", "--limit", "40", "--max-chunks", "15", "--xml"])
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "apollo", "--limit", "40", "--max-chunks", "15", "--xml", "--flat"])
     with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
         mock_store = MockStore.return_value
         mock_store.hybrid_search.return_value = mock_results
@@ -344,7 +387,7 @@ def test_env_var_qmd_config(monkeypatch, tmp_path):
 def test_env_var_qmd_xml(monkeypatch, capsys):
     """Test that QMD_XML='1' defaults command outputs to XML without --xml flag."""
     monkeypatch.setenv("QMD_XML", "1")
-    monkeypatch.setattr(sys, "argv", ["qmd", "search", "apollo"])
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "apollo", "--flat"])
     
     with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
         mock_store = MockStore.return_value
@@ -379,6 +422,7 @@ def test_guide_command(monkeypatch, capsys):
         main()
         out = capsys.readouterr().out
         assert "QMD LLM Agent Research & Inspection Guide" in out
+        assert "qmd discover" in out
         assert "qmd search" in out
         assert "qmd read" in out
         assert "qmd outline" in out

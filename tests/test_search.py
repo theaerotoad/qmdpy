@@ -51,6 +51,8 @@ def test_doc_view_candidate_limit_consistency():
         query=["python"],
         limit=10,
         doc=True,
+        flat=False,
+        chunks=False,
         verbose=False,
         rerank=False,
         rerank_only=False,
@@ -67,6 +69,55 @@ def test_doc_view_candidate_limit_consistency():
     # Verify hybrid_search was called with limit=10, not limit=30
     mock_store.hybrid_search.assert_called_once()
     assert mock_store.hybrid_search.call_args.kwargs["limit"] == 10
+
+def test_discover_single_hit_per_doc(db_conn, monkeypatch):
+    """Verify that discover returns at most 1 chunk per document with aggregated match counts."""
+    from qmd.utils import compress_text
+    from qmd.store import encode_vector
+
+    config = Config(db_path=":memory:")
+    store = Store(config, connection=db_conn)
+
+    cursor = db_conn.cursor()
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'doc 1 text with multiple python sections', 'now')")
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'doc 2 text with single python section', 'now')")
+
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('coll', 'doc1.md', 'Doc 1', 'h1', 'now')")
+    id1 = cursor.lastrowid
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('coll', 'doc2.md', 'Doc 2', 'h2', 'now')")
+    id2 = cursor.lastrowid
+
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'coll', 'doc1.md', 'Doc 1', 'doc 1 python')", (id1,))
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'coll', 'doc2.md', 'Doc 2', 'doc 2 python')", (id2,))
+
+    dummy_vec = encode_vector([0.0] * 768)
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (1, ?)", (dummy_vec,))
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (2, ?)", (dummy_vec,))
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (3, ?)", (dummy_vec,))
+
+    # Doc 1 has 2 matching chunks (seq 0 and seq 1)
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (1, 'h1', 0, ?, 'Intro')", (compress_text("doc 1 python chunk 0"),))
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (2, 'h1', 1, ?, 'Advanced')", (compress_text("doc 1 python chunk 1"),))
+    # Doc 2 has 1 matching chunk
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (3, 'h2', 0, ?, 'Guide')", (compress_text("doc 2 python chunk 0"),))
+
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (1, 'coll', 'doc1.md', 'Doc 1', 'doc 1 python chunk 0', 'Intro')")
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (2, 'coll', 'doc1.md', 'Doc 1', 'doc 1 python chunk 1', 'Advanced')")
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (3, 'coll', 'doc2.md', 'Doc 2', 'doc 2 python chunk 0', 'Guide')")
+
+    db_conn.commit()
+
+    results = store.discover("python", limit=10)
+    assert len(results) == 2
+    paths = [r.path for r in results]
+    assert len(set(paths)) == 2  # Exactly 1 result per document
+
+    doc1_res = next(r for r in results if r.path == "doc1.md")
+    assert doc1_res.match_count == 2
+    assert doc1_res.title == "Doc 1"
+
+    doc2_res = next(r for r in results if r.path == "doc2.md")
+    assert doc2_res.match_count == 1
 
 def test_group_results_by_doc_fts_normalization():
     from qmd.main import group_results_by_doc

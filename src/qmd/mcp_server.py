@@ -107,11 +107,12 @@ def run_mcp_server(config_path: Optional[str] = None):
             Search and inspect local document knowledge bases using QMD.
             
             Primary Commands:
-              - search "query" [--deep] [--session <id>] : Hybrid search. Use --deep for reranked doc grouping.
+              - discover "query" [--deep] : Top matching documents (1 best snippet per document, SERP style).
+              - search "query" [--deep] [--session <id>] : Hybrid search (document-ordered by default).
               - read "<target>" : Inspect chunk(s) or ranges (e.g. 'Books:doc.epub:10-15', 'qmd://Books/doc.epub:3', or '10-15').
               - outline "<target>" : Heading table of contents and chunk sequence map.
               - tree [collection] [-p pattern] : Directory tree of indexed documents.
-              - grep "pattern" [-p path] : Exact substring or regex search.
+              - grep "pattern" [-p path] : [Deprecated] Exact substring or regex search.
               - collections : List configured collections.
               - guide : Output research workflow and command decision matrix.
 
@@ -129,7 +130,7 @@ def run_mcp_server(config_path: Optional[str] = None):
             return [
                 types.Tool(
                     name="qmd",
-                    description="Search and inspect local document knowledge bases. Commands: search, read, outline, tree, grep, collections, guide. Automatically outputs XML.",
+                    description="Search and inspect local document knowledge bases. Commands: discover, search, read, outline, tree, grep, collections, guide. Automatically outputs XML.",
                     inputSchema={
                         "type": "object",
                         "properties": {
