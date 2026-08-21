@@ -31,9 +31,14 @@ class Config:
     request_timeout: float = 120.0
     embed_batch_size: int = 16
     
-    # Vision Settings
+    # Vision & Multimodal Settings
     vision_url: Optional[str] = None
     vision_api_key: Optional[str] = None
+    multimodal_url: Optional[str] = None
+    multimodal_api_key: Optional[str] = None
+    multimodal_model: Optional[str] = None
+    multimodal_prompt: Optional[str] = None
+    max_image_concurrency: int = 4
     
     # Model Configurations
     embed_model: str = "EmbeddingGemma 300m"
@@ -111,6 +116,25 @@ class Config:
         vision_url = os.environ.get("QMD_VISION_URL") or data.get("vision_url")
         vision_api_key = os.environ.get("QMD_VISION_API_KEY") or data.get("vision_api_key")
         
+        multimodal_url = os.environ.get("QMD_MULTIMODAL_URL") or data.get("multimodal_url")
+        multimodal_api_key = os.environ.get("QMD_MULTIMODAL_API_KEY") or data.get("multimodal_api_key")
+        multimodal_model = os.environ.get("QMD_MULTIMODAL_MODEL") or os.environ.get("MULTIMODAL_MODEL") or data.get("multimodal_model")
+        multimodal_prompt = os.environ.get("QMD_MULTIMODAL_PROMPT") or data.get("multimodal_prompt")
+        
+        max_img_concurrency_raw = (
+            os.environ.get("QMD_MAX_IMAGE_CONCURRENCY")
+            or os.environ.get("QMD_MAX_SIMULTANEOUS_IMAGES")
+            or data.get("max_image_concurrency")
+            or data.get("max_simultaneous_images")
+            or data.get("vision_max_concurrency")
+        )
+        max_image_concurrency = int(max_img_concurrency_raw) if max_img_concurrency_raw else 4
+
+        if (multimodal_model or data.get("multimodal_url")) and not multimodal_url:
+            multimodal_url = llm_url
+        if multimodal_url and not multimodal_api_key:
+            multimodal_api_key = api_key
+        
         req_timeout_env = os.environ.get("QMD_REQUEST_TIMEOUT")
         request_timeout = float(req_timeout_env) if req_timeout_env else float(data.get("request_timeout", 120.0))
         
@@ -136,6 +160,11 @@ class Config:
             rerank_api_key=rerank_api_key,
             vision_url=vision_url,
             vision_api_key=vision_api_key,
+            multimodal_url=multimodal_url,
+            multimodal_api_key=multimodal_api_key,
+            multimodal_model=multimodal_model,
+            multimodal_prompt=multimodal_prompt,
+            max_image_concurrency=max_image_concurrency,
             request_timeout=request_timeout,
             embed_batch_size=embed_batch_size,
             embed_model=embed_model,

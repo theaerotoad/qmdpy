@@ -225,6 +225,78 @@ def _sanitize_text(text: str) -> str:
         return text
 
 
+def _is_image_processing_enabled(config) -> bool:
+    if not config:
+        return False
+    return bool(
+        getattr(config, "vision_url", None)
+        or getattr(config, "multimodal_url", None)
+        or getattr(config, "multimodal_model", None)
+    )
+
+
+def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config) -> str:
+    if not config or not image_bytes:
+        return ""
+    try:
+        from qmd.llm import LLMClient
+        client = LLMClient(
+            base_url=getattr(config, "llm_url", None),
+            api_key=getattr(config, "api_key", None),
+            multimodal_url=getattr(config, "multimodal_url", None),
+            multimodal_api_key=getattr(config, "multimodal_api_key", None),
+            multimodal_model=getattr(config, "multimodal_model", None),
+            multimodal_prompt=getattr(config, "multimodal_prompt", None),
+            timeout=getattr(config, "request_timeout", 120.0),
+        )
+        return client.process_image(image_bytes, filename=filename)
+    except Exception as e:
+        print(f"Warning: Multimodal LLM error for {filename}: {e}")
+        return ""
+
+
+def _process_image(image_bytes: bytes, filename: str, config) -> str:
+    if not config or not image_bytes:
+        return ""
+    if getattr(config, "multimodal_url", None) or getattr(config, "multimodal_model", None):
+        return _process_image_multimodal_llm(image_bytes, filename, config)
+    elif getattr(config, "vision_url", None):
+        return _process_image_vision_api(image_bytes, filename, config)
+    return ""
+
+
+def _process_images_concurrently(
+    items: List[tuple],
+    config,
+    max_workers: Union[int, None] = None
+) -> List[str]:
+    if not items:
+        return []
+    if max_workers is None:
+        max_workers = (
+            getattr(config, "max_image_concurrency", None)
+            or getattr(config, "max_simultaneous_images", None)
+            or 4
+        )
+    max_workers = max(1, int(max_workers))
+
+    if len(items) == 1 or max_workers == 1:
+        return [_process_image(b, fn, config) for b, fn in items]
+
+    import concurrent.futures
+    workers = min(len(items), max_workers)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(_process_image, b, fn, config) for b, fn in items]
+        results = []
+        for f in futures:
+            try:
+                results.append(f.result())
+            except Exception as e:
+                print(f"Warning: Concurrent image processing error: {e}")
+                results.append("")
+        return results
+
+
 def _process_image_vision_api(image_bytes: bytes, filename: str, config) -> str:
     if not config or not getattr(config, "vision_url", None):
         return ""
@@ -465,31 +537,35 @@ def _convert_pdf(path: Path, config=None) -> str:
         # Clean up any remaining HTML comments from pymupdf4llm
         page_text = re.sub(r'<!--.*?-->\n*', '', page_text, flags=re.DOTALL)
         
-        # Send embedded PDF images to the Vision API if configured
-        if config and getattr(config, "vision_url", None):
-            try:
+        md_pages.append(page_text)
+
+    # Process all embedded PDF images concurrently across pages if configured
+    if config and _is_image_processing_enabled(config):
+        try:
+            pdf_images = []
+            for i in range(len(doc)):
                 page = doc[i]
                 for img in page.get_images():
                     xref = img[0]
                     if xref in seen_xrefs:
                         continue
                     seen_xrefs.add(xref)
-                    
                     base_image = doc.extract_image(xref)
                     if not base_image:
                         continue
-                        
                     image_bytes = base_image["image"]
                     ext = base_image.get("ext", "png")
                     filename = f"page_{i+1}_img_{xref}.{ext}"
-                    
-                    vision_md = _process_image_vision_api(image_bytes, filename, config)
-                    if vision_md:
-                        page_text += f"\n\n{vision_md}\n"
-            except Exception:
-                pass
-                
-        md_pages.append(page_text)
+                    pdf_images.append((i, image_bytes, filename))
+
+            if pdf_images:
+                image_inputs = [(img_bytes, fn) for _, img_bytes, fn in pdf_images]
+                results = _process_images_concurrently(image_inputs, config)
+                for (page_idx, _, _), img_md in zip(pdf_images, results):
+                    if img_md and page_idx < len(md_pages):
+                        md_pages[page_idx] += f"\n\n{img_md}\n"
+        except Exception:
+            pass
         
     raw_md = "\n\n".join(md_pages)
 
@@ -602,15 +678,19 @@ def _convert_docx(path: Path, config=None) -> str:
         if tag == 'p':
             p = docx.text.paragraph.Paragraph(elem, doc)
             
-            # Extract images embedded within the paragraph using Vision API if configured
-            if config and getattr(config, "vision_url", None):
+            # Extract images embedded within the paragraph using Vision API or Multimodal LLM if configured
+            if config and _is_image_processing_enabled(config):
+                p_images = []
                 for blip in elem.iter('{http://schemas.openxmlformats.org/drawingml/2006/main}blip'):
                     embed_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
                     if embed_id and embed_id in doc.part.related_parts:
                         image_part = doc.part.related_parts[embed_id]
                         image_bytes = image_part.blob
                         filename = getattr(image_part, "filename", "image.png")
-                        vision_md = _process_image_vision_api(image_bytes, filename, config)
+                        p_images.append((image_bytes, filename))
+                if p_images:
+                    results = _process_images_concurrently(p_images, config)
+                    for vision_md in results:
                         if vision_md:
                             md_lines.append(vision_md + "\n")
             
@@ -657,15 +737,14 @@ def _convert_pptx(path: Path, config=None) -> str:
     for i, slide in enumerate(prs.slides, 1):
         slide_title = ""
         slide_texts = []
+        slide_images = []
 
         for shape in slide.shapes:
-            if hasattr(shape, "image") and config and getattr(config, "vision_url", None):
+            if hasattr(shape, "image") and config and _is_image_processing_enabled(config):
                 try:
                     image_bytes = shape.image.blob
                     filename = getattr(shape.image, "filename", "slide_image.png")
-                    vision_md = _process_image_vision_api(image_bytes, filename, config)
-                    if vision_md:
-                        slide_texts.append(vision_md)
+                    slide_images.append((image_bytes, filename))
                 except Exception:
                     pass
             elif shape.has_text_frame:
@@ -696,6 +775,12 @@ def _convert_pptx(path: Path, config=None) -> str:
                 if table_md:
                     slide_texts.append(table_md)
 
+        if slide_images:
+            results = _process_images_concurrently(slide_images, config)
+            for vision_md in results:
+                if vision_md:
+                    slide_texts.append(vision_md)
+
         header = f"## Slide {i}"
         if slide_title:
             header += f": {slide_title}"
@@ -721,7 +806,8 @@ def _convert_xlsx(path: Path, config=None) -> str:
         sheet = wb[sheet_name]
         md_lines.append(f"## Sheet: {sheet_name}\n")
 
-        if config and getattr(config, "vision_url", None):
+        if config and _is_image_processing_enabled(config):
+            sheet_images = []
             for img in getattr(sheet, "_images", []):
                 try:
                     if hasattr(img, 'ref') and hasattr(img.ref, 'getvalue'):
@@ -731,11 +817,14 @@ def _convert_xlsx(path: Path, config=None) -> str:
                     else:
                         continue
                     filename = "excel_image.png"
-                    vision_md = _process_image_vision_api(image_bytes, filename, config)
-                    if vision_md:
-                        md_lines.append(vision_md + "\n")
+                    sheet_images.append((image_bytes, filename))
                 except Exception:
                     pass
+            if sheet_images:
+                results = _process_images_concurrently(sheet_images, config)
+                for vision_md in results:
+                    if vision_md:
+                        md_lines.append(vision_md + "\n")
 
         matrix = []
         for row in sheet.iter_rows(values_only=True):
@@ -884,6 +973,10 @@ def main():
     parser.add_argument("--show-chunks", action="store_true", help="Display chunked content ready for embedding")
     parser.add_argument("--vision-url", type=str, help="URL for the Vision API to test image extraction")
     parser.add_argument("--vision-api-key", type=str, help="Optional API key for the Vision API")
+    parser.add_argument("--multimodal-url", type=str, help="URL for OpenAI-compatible multimodal endpoint")
+    parser.add_argument("--multimodal-api-key", type=str, help="Optional API key for multimodal endpoint")
+    parser.add_argument("--multimodal-model", type=str, help="Model name for multimodal endpoint")
+    parser.add_argument("--max-image-concurrency", type=int, default=4, help="Max simultaneous images to process")
 
     args = parser.parse_args()
 
@@ -895,12 +988,15 @@ def main():
     if not is_supported_file(file_path):
         print(f"Warning: Extension '{file_path.suffix}' is not explicitly supported. Attempting plain text conversion...", file=sys.stderr)
 
-    # Create a mock config object if vision API arguments are provided
     mock_config = None
-    if args.vision_url:
+    if args.vision_url or args.multimodal_url or args.multimodal_model:
         class MockConfig:
             vision_url = args.vision_url
             vision_api_key = args.vision_api_key
+            multimodal_url = args.multimodal_url
+            multimodal_api_key = args.multimodal_api_key
+            multimodal_model = args.multimodal_model
+            max_image_concurrency = args.max_image_concurrency
             request_timeout = 120.0
         mock_config = MockConfig()
 

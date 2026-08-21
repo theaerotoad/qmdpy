@@ -137,3 +137,43 @@ def test_math_formula_extraction():
     node_mml = etree.fromstring(mml_xml)
     result_mml = _extract_text_and_math(node_mml)
     assert "x" in result_mml or "$" in result_mml
+
+def test_process_image_routing_and_concurrency(monkeypatch):
+    from qmd.converters import _process_image, _process_images_concurrently
+    from qmd.config import Config
+
+    calls = []
+
+    def mock_multimodal(image_bytes, filename, config):
+        calls.append(("multimodal", filename))
+        return f"# MD for {filename}"
+
+    def mock_vision(image_bytes, filename, config):
+        calls.append(("vision", filename))
+        return f"# Vision for {filename}"
+
+    monkeypatch.setattr("qmd.converters._process_image_multimodal_llm", mock_multimodal)
+    monkeypatch.setattr("qmd.converters._process_image_vision_api", mock_vision)
+
+    cfg_multi = Config.from_dict({
+        "multimodal_model": "gpt-4o-mini",
+        "multimodal_url": "http://127.0.0.1:8888",
+        "max_image_concurrency": 2
+    })
+    res_multi = _process_image(b"pngbytes", "img1.png", cfg_multi)
+    assert res_multi == "# MD for img1.png"
+    assert calls[-1] == ("multimodal", "img1.png")
+
+    cfg_vision = Config.from_dict({
+        "vision_url": "http://127.0.0.1:8891/detect"
+    })
+    res_vision = _process_image(b"pngbytes", "img2.png", cfg_vision)
+    assert res_vision == "# Vision for img2.png"
+    assert calls[-1] == ("vision", "img2.png")
+
+    items = [(b"b1", "a.png"), (b"b2", "b.png"), (b"b3", "c.png")]
+    concurrent_results = _process_images_concurrently(items, cfg_multi, max_workers=2)
+    assert len(concurrent_results) == 3
+    assert concurrent_results[0] == "# MD for a.png"
+    assert concurrent_results[1] == "# MD for b.png"
+    assert concurrent_results[2] == "# MD for c.png"
