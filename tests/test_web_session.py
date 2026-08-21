@@ -65,3 +65,17 @@ def test_web_search_session_and_exclude_seen(web_client):
     assert res3.status_code == 200
     data3 = res3.get_json()
     assert len(data3['results']) > 0
+
+def test_web_discover_endpoint(web_client):
+    res = web_client.post('/api/discover', json={
+        'query': 'document',
+        'limit': 5,
+        'session_id': 'web_disc_1'
+    })
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data['type'] == 'discover'
+    assert data['session_id'] == 'web_disc_1'
+    assert len(data['results']) == 1
+    assert data['results'][0]['match_count'] >= 1
+    assert '<discover_results' in data['xml']

@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify, render_template, g
 from qmd.config import load_config
 from qmd.store import Store
 from qmd.main import group_results_by_doc, handle_guide
-from qmd.formatting import format_results_xml, format_doc_results_xml, format_grep_xml, escape_xml_attr
+from qmd.formatting import format_results_xml, format_doc_results_xml, format_discover_xml, format_grep_xml, escape_xml_attr
 from qmd.mcp_server import execute_qmd_command
 from qmd.utils import decompress_text, redact_pii, parse_query_directives
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
@@ -110,6 +110,122 @@ def extract_batch_commands(input_data: Union[str, List[str]], max_commands: int 
 def index():
     return render_template('index.html')
 
+@app.route('/api/discover', methods=['POST'])
+def discover():
+    try:
+        t0 = time.time()
+        data = request.json or {}
+        raw_query = data.get('query', '')
+        clean_query, directives = parse_query_directives(raw_query)
+        query = clean_query if clean_query else raw_query
+
+        limit = directives.get('limit') if directives.get('limit') is not None else int(data.get('limit', 10))
+        session_id = data.get('session_id') or secrets.token_hex(4)
+
+        exclude_seen = directives.get('exclude_seen') if directives.get('exclude_seen') is not None else data.get('exclude_seen', False)
+        rerank = directives.get('rerank') if directives.get('rerank') is not None else data.get('rerank', False)
+        w2n = directives.get('w2n') if directives.get('w2n') is not None else data.get('w2n', False)
+        should_redact = directives.get('redact_pii') if directives.get('redact_pii') is not None else (data.get('redact_pii', False) or data.get('redact', False))
+
+        collection = directives.get('collection') or data.get('collection') or None
+        lexical_query = directives.get('lex') or data.get('lex') or None
+        title = directives.get('title') or data.get('title') or None
+
+        paths_input = data.get('paths') if data.get('paths') is not None else data.get('path')
+        if directives.get('path'):
+            if paths_input:
+                if isinstance(paths_input, list):
+                    if directives['path'] not in paths_input:
+                        paths_input = paths_input + [directives['path']]
+                else:
+                    paths_input = [paths_input, directives['path']]
+            else:
+                paths_input = directives['path']
+
+        store = get_store()
+        exclude_seen_set = get_seen_chunks_for_session(store.history_conn, session_id) if exclude_seen else set()
+
+        results = store.discover(
+            query=query,
+            limit=limit,
+            rerank=rerank,
+            collection=collection,
+            lexical_query=lexical_query,
+            title=title,
+            path=paths_input if paths_input else None,
+            exclude_seen_set=exclude_seen_set,
+            w2n=w2n
+        )
+
+        if should_redact:
+            for r in results:
+                r.text = redact_pii(r.text)
+                if hasattr(r, 'title') and r.title:
+                    r.title = redact_pii(r.title)
+
+        event_type = "discover"
+        db_last_updated = get_db_meta(store.conn, "last_updated")
+        event_id = record_session_event(
+            store.history_conn,
+            session_id,
+            event_type,
+            query,
+            lexical_query,
+            str(store.config.db_path),
+            db_last_updated
+        )
+
+        record_session_results(store.history_conn, session_id, event_id, results)
+        excluded_count = store.last_exclusion_stats.get("excluded_chunks", 0)
+        seen_chunks_count = len(get_seen_chunks_for_session(store.history_conn, session_id))
+
+        full_xml = format_discover_xml(
+            results=results,
+            query=query,
+            verbose=False,
+            session_id=session_id,
+            exclusion_stats=store.last_exclusion_stats,
+            seen_chunks=seen_chunks_count,
+            print_output=False
+        )
+
+        out = []
+        for i, r in enumerate(results):
+            r_xml = format_discover_xml(
+                results=[r],
+                query=query,
+                verbose=False,
+                session_id=session_id,
+                exclusion_stats=store.last_exclusion_stats,
+                seen_chunks=seen_chunks_count,
+                print_output=False
+            )
+            out.append({
+                "path": r.path,
+                "title": r.title,
+                "text": r.text,
+                "score": r.score,
+                "source": r.source,
+                "collection": r.collection,
+                "seq_id": r.seq_id,
+                "headers": getattr(r, "headers", ""),
+                "match_count": getattr(r, "match_count", 1),
+                "rank": getattr(r, "rank", None) or (i + 1),
+                "xml": r_xml
+            })
+
+        time_taken = round(time.time() - t0, 3)
+        return jsonify({
+            "results": out,
+            "type": "discover",
+            "session_id": session_id,
+            "excluded_count": excluded_count,
+            "time_taken": time_taken,
+            "xml": full_xml
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/search', methods=['POST'])
 def search():
     try:
@@ -120,7 +236,9 @@ def search():
         query = clean_query if clean_query else raw_query
 
         limit = directives.get('limit') if directives.get('limit') is not None else int(data.get('limit', 10))
-        doc_view = data.get('doc', False)
+        # Default search to document-ordered view unless flat is explicitly requested
+        is_flat = data.get('flat', False) or data.get('chunks', False)
+        doc_view = not is_flat if ('flat' in data or 'chunks' in data) else data.get('doc', True)
         session_id = data.get('session_id') or secrets.token_hex(4)
 
         exclude_seen = directives.get('exclude_seen') if directives.get('exclude_seen') is not None else data.get('exclude_seen', False)

@@ -1,12 +1,12 @@
 // Application State & Configuration
-let activeMode = 'search';
+let activeMode = 'discover';
 let lastRawJson = null;
 let lastRawXml = '';
-let lastSearchType = 'chunk';
+let lastSearchType = 'discover';
 let currentSessionId = null;
 let currentExcludedCount = 0;
 let selectedScopes = [];
-let featureStates = { rerank: false, exclude_seen: false, redact_pii: false, grep_regex: false, grep_case: false };
+let featureStates = { rerank: false, exclude_seen: false, redact_pii: false };
 let treeFilterTimer = null, scopeFilterTimer = null;
 
 const DEFAULTS_KEY = 'qmd_search_defaults';
@@ -85,7 +85,7 @@ function loadSettingsModalValues() {
     const snEl = document.getElementById('setting-default-seen');
     const piEl = document.getElementById('setting-default-pii');
     if (limEl) limEl.value = defaults.limit || '10';
-    if (modEl) modEl.value = defaults.mode || 'search';
+    if (modEl) modEl.value = defaults.mode || 'discover';
     if (rkEl) rkEl.checked = !!defaults.rerank;
     if (snEl) snEl.checked = !!defaults.exclude_seen;
     if (piEl) piEl.checked = !!defaults.redact_pii;
@@ -112,9 +112,7 @@ function updateFeatureButtonsUI() {
     const mapping = {
         rerank: '.feature-btn-rerank',
         exclude_seen: '.feature-btn-seen',
-        redact_pii: '.feature-btn-pii',
-        grep_regex: '.feature-btn-regex',
-        grep_case: '.feature-btn-case'
+        redact_pii: '.feature-btn-pii'
     };
     for (const [key, selector] of Object.entries(mapping)) {
         const isActive = !!featureStates[key];
@@ -175,14 +173,19 @@ function setMode(mode) {
         const isAct = btn.dataset.mode === mode;
         btn.className = `mode-btn px-2.5 py-1 rounded-md transition font-medium ${isAct ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`;
     });
-    const isGrep = mode === 'grep';
-    document.querySelectorAll('.search-toggles').forEach(el => el.classList.toggle('hidden', isGrep));
-    document.querySelectorAll('.grep-toggles').forEach(el => el.classList.toggle('hidden', !isGrep));
 
     const hQ = document.getElementById('hero-query');
     const sQ = document.getElementById('serp-query');
-    if (hQ) hQ.placeholder = isGrep ? "Grep pattern (e.g. def _[a-z_]+ or exact text)..." : "Search notes, title:\"space\", pii:off...";
-    if (sQ) sQ.placeholder = isGrep ? "Grep pattern..." : "Search markdown...";
+    if (mode === 'discover') {
+        if (hQ) hQ.placeholder = "Discover top documents (title:\"space\", pii:off, limit:10)...";
+        if (sQ) sQ.placeholder = "Discover top documents...";
+    } else if (mode === 'flat') {
+        if (hQ) hQ.placeholder = "Search individual chunks (title:\"space\", pii:off)...";
+        if (sQ) sQ.placeholder = "Search individual chunks...";
+    } else {
+        if (hQ) hQ.placeholder = "Search notes with full document grouping (title:\"space\", pii:off)...";
+        if (sQ) sQ.placeholder = "Search documents...";
+    }
 }
 
 // App View State Handling
