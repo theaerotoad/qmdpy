@@ -428,7 +428,51 @@ function copyBatchOutputXml() {
     });
 }
 
-// Document Slide-Over Viewer
+// Document Slide-Over Viewer & Target Scroll Helper
+function findTargetElement(container, targetText) {
+    if (!container || !targetText || !targetText.trim()) return null;
+
+    // Filter out break markers like (... 2 chunks skipped ...)
+    const cleanLines = targetText
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('(...') && !l.startsWith('qmd://') && !l.startsWith('#'));
+
+    const candidateText = (cleanLines.length > 0 ? cleanLines.join(' ') : targetText)
+        .replace(/[#*_`~>\[\]\(\)]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (!candidateText) return null;
+
+    const elements = Array.from(container.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, pre, tr, blockquote'));
+
+    // Strategy 1: Match leading chunk sample
+    for (let len = Math.min(candidateText.length, 60); len >= 20; len -= 10) {
+        const sample = candidateText.slice(0, len).toLowerCase();
+        for (const el of elements) {
+            const elText = (el.textContent || '').replace(/\s+/g, ' ').toLowerCase();
+            if (elText.includes(sample)) {
+                return el;
+            }
+        }
+    }
+
+    // Strategy 2: Distinct word group match (3-5 words)
+    const words = candidateText.split(' ').filter(w => w.length > 2).slice(0, 5);
+    if (words.length >= 2) {
+        const phrase = words.join(' ').toLowerCase();
+        for (const el of elements) {
+            const elText = (el.textContent || '').replace(/\s+/g, ' ').toLowerCase();
+            if (elText.includes(phrase)) {
+                return el;
+            }
+        }
+    }
+
+    return null;
+}
+
 async function openDocument(collection, path, targetText) {
     const drawer = document.getElementById('slide-over');
     drawer.classList.remove('hidden');
@@ -444,6 +488,19 @@ async function openDocument(collection, path, targetText) {
         const data = await res.json();
         document.getElementById('slide-title').textContent = data.title || path;
         content.innerHTML = marked.parse(data.content || '');
+
+        if (targetText && targetText.trim()) {
+            setTimeout(() => {
+                const targetEl = findTargetElement(content, targetText);
+                if (targetEl) {
+                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    targetEl.classList.add('bg-blue-100/80', 'dark:bg-blue-950/80', 'ring-2', 'ring-blue-500/40', 'rounded-lg', 'transition-all', 'duration-300');
+                    setTimeout(() => {
+                        targetEl.classList.remove('bg-blue-100/80', 'dark:bg-blue-950/80', 'ring-2', 'ring-blue-500/40');
+                    }, 2500);
+                }
+            }, 120);
+        }
     } catch(e) {
         content.innerHTML = `<div class="text-red-500 p-4">Error loading document</div>`;
     }
