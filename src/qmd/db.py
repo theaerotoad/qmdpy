@@ -341,6 +341,69 @@ def get_seen_chunks_for_session(conn: sqlite3.Connection, session_id: str) -> se
     """, (session_id,))
     return {(row[0], row[1], row[2]) for row in cursor.fetchall()}
 
+def record_indexing_error(
+    conn: sqlite3.Connection,
+    collection: str,
+    path: str,
+    doc_hash: Optional[str],
+    error_type: str,
+    error_message: str
+):
+    try:
+        now = datetime.utcnow().isoformat() + "Z"
+        conn.execute("""
+            INSERT INTO indexing_errors (collection, path, doc_hash, error_type, error_message, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(collection, path, error_type) DO UPDATE SET
+                doc_hash = excluded.doc_hash,
+                error_message = excluded.error_message,
+                created_at = excluded.created_at
+        """, (collection, path, doc_hash, error_type, str(error_message), now))
+    except Exception as e:
+        print(f"Warning: Failed to record indexing error: {e}")
+
+def clear_indexing_errors(conn: sqlite3.Connection, collection: str, path: Optional[str] = None):
+    try:
+        if path is not None:
+            conn.execute("DELETE FROM indexing_errors WHERE collection = ? AND path = ?", (collection, path))
+        else:
+            conn.execute("DELETE FROM indexing_errors WHERE collection = ?", (collection,))
+    except Exception as e:
+        print(f"Warning: Failed to clear indexing errors: {e}")
+
+def get_indexing_errors(conn: sqlite3.Connection, collection: Optional[str] = None, path: Optional[str] = None) -> List[Dict[str, Any]]:
+    try:
+        cursor = conn.cursor()
+        query = "SELECT id, collection, path, doc_hash, error_type, error_message, created_at FROM indexing_errors"
+        params = []
+        where = []
+        if collection:
+            where.append("collection = ?")
+            params.append(collection)
+        if path:
+            where.append("path = ?")
+            params.append(path)
+        if where:
+            query += " WHERE " + " AND ".join(where)
+        query += " ORDER BY created_at DESC"
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "collection": r[1],
+                "path": r[2],
+                "doc_hash": r[3],
+                "error_type": r[4],
+                "error_message": r[5],
+                "created_at": r[6],
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        print(f"Warning: Failed to fetch indexing errors: {e}")
+        return []
+
 def init_schema(conn: sqlite3.Connection):
     """
     Idempotent creation of tables.
@@ -485,3 +548,22 @@ def init_schema(conn: sqlite3.Connection):
             """)
     except Exception:
         pass
+
+    # 7. Indexing Errors & Retry Tracking
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS indexing_errors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        collection TEXT NOT NULL,
+        path TEXT NOT NULL,
+        doc_hash TEXT,
+        error_type TEXT NOT NULL,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(collection, path, error_type)
+    );
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_indexing_errors_lookup 
+    ON indexing_errors(collection, path);
+    """)

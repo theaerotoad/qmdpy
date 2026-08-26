@@ -15,7 +15,8 @@ from qmd.db import (
     get_connection, init_schema, is_sqlite_vec_active, get_db_meta, ensure_vector_table,
     register_functions, get_history_connection, get_cached_query_embedding, save_query_embedding,
     update_db_last_updated, check_db_compatibility, CURRENT_SCHEMA_VERSION,
-    get_cached_search_results, save_cached_search_results
+    get_cached_search_results, save_cached_search_results,
+    record_indexing_error, clear_indexing_errors, get_indexing_errors
 )
 from qmd.config import Config, CollectionConfig
 from qmd.llm import LLMClient
@@ -315,6 +316,7 @@ class Store:
             for oid in orphan_ids:
                 cursor.execute("DELETE FROM documents_fts WHERE rowid = ?", (oid,))
                 cursor.execute("DELETE FROM documents WHERE id = ?", (oid,))
+            cursor.execute("DELETE FROM indexing_errors WHERE collection = ?", (orphan,))
             
         self.conn.commit()
         self._cleanup_orphaned_data()
@@ -322,7 +324,7 @@ class Store:
         print(f"Pruned {len(orphans)} collection(s).")
 
     def _cleanup_orphaned_data(self):
-        """Removes content, chunk metadata, and vectors no longer referenced by any active document."""
+        """Removes content, chunk metadata, vectors, and errors no longer referenced by any active document."""
         cursor = self.conn.cursor()
         cursor.execute("""
             DELETE FROM chunks_fts WHERE rowid IN (
@@ -340,19 +342,35 @@ class Store:
         cursor.execute("""
             DELETE FROM content WHERE hash NOT IN (SELECT DISTINCT hash FROM documents)
         """)
+        cursor.execute("""
+            DELETE FROM indexing_errors WHERE collection NOT IN (SELECT DISTINCT collection FROM documents)
+        """)
         self.conn.commit()
+
+    def get_indexing_errors(self, collection: Optional[str] = None, path: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Retrieves list of documents that encountered errors or partial failures during indexing."""
+        return get_indexing_errors(self.conn, collection=collection, path=path)
 
     def _process_file(self, collection_name: str, base_path: Path, file_path: Path, current_paths: set, force: bool = False) -> bool:
         rel_path = str(file_path.relative_to(base_path))
         try:
             raw_bytes = file_path.read_bytes()
-        except Exception:
+        except Exception as e:
+            record_indexing_error(
+                self.conn,
+                collection=collection_name,
+                path=rel_path,
+                doc_hash=None,
+                error_type="file_read_error",
+                error_message=str(e)
+            )
             return False
 
         file_hash = compute_hash(raw_bytes)
         # Fix: Only replace underscores, preserve dashes for dates (e.g., 2019-12-20)
         title = file_path.stem.replace('_', ' ').title()
         
+        has_prior_error = False
         if not force:
             check_cursor = self.conn.cursor()
             check_cursor.execute(
@@ -360,18 +378,26 @@ class Store:
                 (collection_name, rel_path)
             )
             row = check_cursor.fetchone()
+            if row:
+                check_cursor.execute(
+                    "SELECT count(*) FROM indexing_errors WHERE collection = ? AND path = ?",
+                    (collection_name, rel_path)
+                )
+                err_count = check_cursor.fetchone()[0]
+                has_prior_error = (err_count > 0)
             check_cursor.close()
 
-            if row and row[0] == file_hash:
+            if row and row[0] == file_hash and not has_prior_error:
                 return False
 
+        conversion_errors: List[dict] = []
         self.conn.execute("BEGIN")
         cursor = self.conn.cursor()
         try:
             now = datetime.now().isoformat()
             
             # Check for move/rename: same hash, but existing path is no longer in current_paths
-            if not force:
+            if not force and not has_prior_error:
                 cursor.execute(
                     "SELECT id, path FROM documents WHERE collection = ? AND hash = ?",
                     (collection_name, file_hash)
@@ -404,21 +430,22 @@ class Store:
                         """, (rel_path, title, file_hash, collection_name))
                         
                         self.conn.commit()
+                        clear_indexing_errors(self.conn, collection_name, rel_path)
                         return True
 
             cursor.execute("SELECT body FROM content WHERE hash = ?", (file_hash,))
             content_row = cursor.fetchone()
 
-            if content_row:
+            if content_row and not has_prior_error:
                 content_exists = True
                 markdown_body = decompress_text(content_row[0])
             else:
                 content_exists = False
-                markdown_body = convert_to_markdown(file_path, config=self.config)
-                cursor.execute(
-                    "INSERT INTO content (hash, body, created_at) VALUES (?, ?, ?)",
-                    (file_hash, compress_text(markdown_body), now)
-                )
+                markdown_body = convert_to_markdown(file_path, config=self.config, errors_out=conversion_errors)
+                cursor.execute("""
+                    INSERT INTO content (hash, body, created_at) VALUES (?, ?, ?)
+                    ON CONFLICT(hash) DO UPDATE SET body = excluded.body, created_at = excluded.created_at
+                """, (file_hash, compress_text(markdown_body), now))
 
             cursor.execute("SELECT id FROM documents WHERE collection = ? AND path = ?", (collection_name, rel_path))
             existing_doc = cursor.fetchone()
@@ -446,9 +473,30 @@ class Store:
                 self._generate_and_store_embeddings(cursor, file_hash, title, markdown_body, collection_name, rel_path)
 
             self.conn.commit()
+
+            # Record or clear indexing errors
+            clear_indexing_errors(self.conn, collection_name, rel_path)
+            if conversion_errors:
+                for err in conversion_errors:
+                    record_indexing_error(
+                        self.conn,
+                        collection=collection_name,
+                        path=rel_path,
+                        doc_hash=file_hash,
+                        error_type=err.get("error_type", "conversion_error"),
+                        error_message=err.get("message", "")
+                    )
             return True
         except Exception as e:
             self.conn.rollback()
+            record_indexing_error(
+                self.conn,
+                collection=collection_name,
+                path=rel_path,
+                doc_hash=file_hash,
+                error_type="indexing_error",
+                error_message=str(e)
+            )
             raise e
         finally:
             cursor.close()

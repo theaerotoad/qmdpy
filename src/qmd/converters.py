@@ -8,7 +8,7 @@ import io
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Union, List
+from typing import Union, List, Optional, Dict, Any
 
 SUPPORTED_EXTENSIONS = {
     ".md", ".markdown", ".txt",
@@ -235,7 +235,7 @@ def _is_image_processing_enabled(config) -> bool:
     )
 
 
-def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config) -> str:
+def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config, errors_out: Optional[List[dict]] = None) -> str:
     if not config or not image_bytes:
         return ""
     try:
@@ -252,23 +252,26 @@ def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config) -> 
         return client.process_image(image_bytes, filename=filename)
     except Exception as e:
         print(f"Warning: Multimodal LLM error for {filename}: {e}")
+        if errors_out is not None:
+            errors_out.append({"error_type": "multimodal_image_error", "message": f"{filename}: {e}"})
         return ""
 
 
-def _process_image(image_bytes: bytes, filename: str, config) -> str:
+def _process_image(image_bytes: bytes, filename: str, config, errors_out: Optional[List[dict]] = None) -> str:
     if not config or not image_bytes:
         return ""
     if getattr(config, "multimodal_url", None) or getattr(config, "multimodal_model", None):
-        return _process_image_multimodal_llm(image_bytes, filename, config)
+        return _process_image_multimodal_llm(image_bytes, filename, config, errors_out=errors_out)
     elif getattr(config, "vision_url", None):
-        return _process_image_vision_api(image_bytes, filename, config)
+        return _process_image_vision_api(image_bytes, filename, config, errors_out=errors_out)
     return ""
 
 
 def _process_images_concurrently(
     items: List[tuple],
     config,
-    max_workers: Union[int, None] = None
+    max_workers: Union[int, None] = None,
+    errors_out: Optional[List[dict]] = None
 ) -> List[str]:
     if not items:
         return []
@@ -281,23 +284,25 @@ def _process_images_concurrently(
     max_workers = max(1, int(max_workers))
 
     if len(items) == 1 or max_workers == 1:
-        return [_process_image(b, fn, config) for b, fn in items]
+        return [_process_image(b, fn, config, errors_out=errors_out) for b, fn in items]
 
     import concurrent.futures
     workers = min(len(items), max_workers)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(_process_image, b, fn, config) for b, fn in items]
+        futures = [executor.submit(_process_image, b, fn, config, errors_out) for b, fn in items]
         results = []
         for f in futures:
             try:
                 results.append(f.result())
             except Exception as e:
                 print(f"Warning: Concurrent image processing error: {e}")
+                if errors_out is not None:
+                    errors_out.append({"error_type": "image_processing_error", "message": str(e)})
                 results.append("")
         return results
 
 
-def _process_image_vision_api(image_bytes: bytes, filename: str, config) -> str:
+def _process_image_vision_api(image_bytes: bytes, filename: str, config, errors_out: Optional[List[dict]] = None) -> str:
     if not config or not getattr(config, "vision_url", None):
         return ""
     
@@ -356,10 +361,12 @@ def _process_image_vision_api(image_bytes: bytes, filename: str, config) -> str:
         return "\n\n".join(md_lines)
     except Exception as e:
         print(f"Warning: Vision API error for {filename}: {e}")
+        if errors_out is not None:
+            errors_out.append({"error_type": "vision_api_error", "message": f"{filename}: {e}"})
         return ""
 
 
-def convert_to_markdown(file_path: Union[str, Path], config=None) -> str:
+def convert_to_markdown(file_path: Union[str, Path], config=None, errors_out: Optional[List[dict]] = None) -> str:
     """
     Converts a supported document or text file to Markdown.
     """
@@ -369,13 +376,13 @@ def convert_to_markdown(file_path: Union[str, Path], config=None) -> str:
     if ext in {".md", ".markdown", ".txt"}:
         raw_md = _convert_text(path)
     elif ext == ".pdf":
-        raw_md = _convert_pdf(path, config)
+        raw_md = _convert_pdf(path, config, errors_out=errors_out)
     elif ext == ".docx":
-        raw_md = _convert_docx(path, config)
+        raw_md = _convert_docx(path, config, errors_out=errors_out)
     elif ext == ".pptx":
-        raw_md = _convert_pptx(path, config)
+        raw_md = _convert_pptx(path, config, errors_out=errors_out)
     elif ext == ".xlsx":
-        raw_md = _convert_xlsx(path, config)
+        raw_md = _convert_xlsx(path, config, errors_out=errors_out)
     elif ext == ".csv":
         raw_md = _convert_csv(path)
     elif ext in {".html", ".htm"}:
@@ -419,7 +426,7 @@ def _convert_text(path: Path) -> str:
         raise ValueError(f"Could not decode text file '{path.name}': {e}")
 
 
-def _convert_pdf(path: Path, config=None) -> str:
+def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = None) -> str:
     try:
         import pymupdf
         import pymupdf4llm
@@ -560,7 +567,7 @@ def _convert_pdf(path: Path, config=None) -> str:
 
             if pdf_images:
                 image_inputs = [(img_bytes, fn) for _, img_bytes, fn in pdf_images]
-                results = _process_images_concurrently(image_inputs, config)
+                results = _process_images_concurrently(image_inputs, config, errors_out=errors_out)
                 for (page_idx, _, _), img_md in zip(pdf_images, results):
                     if img_md and page_idx < len(md_pages):
                         md_pages[page_idx] += f"\n\n{img_md}\n"
@@ -664,7 +671,7 @@ def _convert_pdf(path: Path, config=None) -> str:
     return normalize_markdown_headings(raw_md, book_title=book_title)
 
 
-def _convert_docx(path: Path, config=None) -> str:
+def _convert_docx(path: Path, config=None, errors_out: Optional[List[dict]] = None) -> str:
     try:
         import docx
     except ImportError:
@@ -689,7 +696,7 @@ def _convert_docx(path: Path, config=None) -> str:
                         filename = getattr(image_part, "filename", "image.png")
                         p_images.append((image_bytes, filename))
                 if p_images:
-                    results = _process_images_concurrently(p_images, config)
+                    results = _process_images_concurrently(p_images, config, errors_out=errors_out)
                     for vision_md in results:
                         if vision_md:
                             md_lines.append(vision_md + "\n")
@@ -725,7 +732,7 @@ def _convert_docx(path: Path, config=None) -> str:
     return "\n".join(md_lines).strip()
 
 
-def _convert_pptx(path: Path, config=None) -> str:
+def _convert_pptx(path: Path, config=None, errors_out: Optional[List[dict]] = None) -> str:
     try:
         from pptx import Presentation
     except ImportError:
@@ -776,7 +783,7 @@ def _convert_pptx(path: Path, config=None) -> str:
                     slide_texts.append(table_md)
 
         if slide_images:
-            results = _process_images_concurrently(slide_images, config)
+            results = _process_images_concurrently(slide_images, config, errors_out=errors_out)
             for vision_md in results:
                 if vision_md:
                     slide_texts.append(vision_md)
@@ -793,7 +800,7 @@ def _convert_pptx(path: Path, config=None) -> str:
     return "\n".join(md_lines).strip()
 
 
-def _convert_xlsx(path: Path, config=None) -> str:
+def _convert_xlsx(path: Path, config=None, errors_out: Optional[List[dict]] = None) -> str:
     try:
         import openpyxl
     except ImportError:
@@ -821,7 +828,7 @@ def _convert_xlsx(path: Path, config=None) -> str:
                 except Exception:
                     pass
             if sheet_images:
-                results = _process_images_concurrently(sheet_images, config)
+                results = _process_images_concurrently(sheet_images, config, errors_out=errors_out)
                 for vision_md in results:
                     if vision_md:
                         md_lines.append(vision_md + "\n")
