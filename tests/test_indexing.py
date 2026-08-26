@@ -291,3 +291,111 @@ def test_indexing_with_quantization(db_conn, temp_db_path, tmp_path, mock_llm_cl
 
     cursor.execute("SELECT count(*) FROM vectors")
     assert cursor.fetchone()[0] == 1
+
+def test_indexing_error_tracking_and_retry(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that conversion/API degradation records an indexing error and retries on subsequent index."""
+    notes_dir = tmp_path / "err_notes"
+    notes_dir.mkdir()
+
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+
+    file1 = notes_dir / "doc_with_image.md"
+    file1.write_text("Document containing an image that fails multimodal API.")
+
+    # 1. First run: simulate auxiliary API error during conversion
+    with patch("qmd.store.convert_to_markdown") as mock_convert:
+        def convert_with_error(path, config=None, errors_out=None):
+            if errors_out is not None:
+                errors_out.append({"error_type": "multimodal_image_error", "message": "API timeout (504)"})
+            return "Degraded text fallback"
+        mock_convert.side_effect = convert_with_error
+
+        store.index_collection("test", config.collections["test"])
+
+    # Verify error was tracked
+    errors = store.get_indexing_errors(collection="test")
+    assert len(errors) == 1
+    assert errors[0]["path"] == "doc_with_image.md"
+    assert errors[0]["error_type"] == "multimodal_image_error"
+    assert "504" in errors[0]["error_message"]
+
+    # 2. Second run: file content hash on disk has NOT changed, but prior error triggers re-index
+    mock_llm_client.embed_batch.reset_mock()
+    with patch("qmd.store.convert_to_markdown") as mock_convert:
+        # Second run succeeds cleanly
+        mock_convert.side_effect = lambda path, config=None, errors_out=None: "Full rich markdown with image descriptions"
+
+        store.index_collection("test", config.collections["test"])
+
+    # Verify error entry was cleared on clean index
+    errors_after = store.get_indexing_errors(collection="test")
+    assert len(errors_after) == 0
+
+    # Verify updated content was embedded
+    mock_llm_client.embed_batch.assert_called()
+
+def test_hard_indexing_failure_and_retry(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that a hard exception during file processing records error and retries on next run."""
+    notes_dir = tmp_path / "hard_err_notes"
+    notes_dir.mkdir()
+
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+
+    file1 = notes_dir / "broken.md"
+    file1.write_text("Content that will fail on initial pass.")
+
+    # 1. Simulate hard exception during conversion
+    with patch("qmd.store.convert_to_markdown", side_effect=RuntimeError("Parsing crash")):
+        store.index_collection("test", config.collections["test"])
+
+    errors = store.get_indexing_errors(collection="test")
+    assert len(errors) == 1
+    assert errors[0]["path"] == "broken.md"
+    assert errors[0]["error_type"] == "indexing_error"
+    assert "Parsing crash" in errors[0]["error_message"]
+
+    # 2. Fix the crash on the next run
+    store.index_collection("test", config.collections["test"])
+
+    errors_fixed = store.get_indexing_errors(collection="test")
+    assert len(errors_fixed) == 0
+
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT path FROM documents WHERE collection='test'")
+    assert cursor.fetchone()[0] == "broken.md"
+
+def test_prune_orphaned_collections_cleans_errors(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that pruning removed collections also purges indexing error records."""
+    notes_dir = tmp_path / "prune_err_notes"
+    notes_dir.mkdir()
+
+    config = Config(
+        collections={"old_coll": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+
+    file1 = notes_dir / "doc.md"
+    file1.write_text("Test doc")
+
+    with patch("qmd.store.convert_to_markdown") as mock_convert:
+        def convert_with_error(path, config=None, errors_out=None):
+            if errors_out is not None:
+                errors_out.append({"error_type": "table_error", "message": "corrupted table"})
+            return "doc content"
+        mock_convert.side_effect = convert_with_error
+        store.index_collection("old_coll", config.collections["old_coll"])
+
+    assert len(store.get_indexing_errors(collection="old_coll")) == 1
+
+    # Prune old_coll
+    store.prune_orphaned_collections(active_collections=[])
+    assert len(store.get_indexing_errors(collection="old_coll")) == 0
