@@ -91,7 +91,8 @@ def test_multimodal_process_image_payload_and_strict_prompt(mock_httpx):
     assert kwargs["json"]["model"] == "gpt-4o-mini"
     messages = kwargs["json"]["messages"]
     assert messages[0]["role"] == "system"
-    assert "OCR engine" in messages[0]["content"]
+    assert "OCR" in messages[0]["content"]
+    assert "visual-analysis" in messages[0]["content"]
     assert "NO CONVERSATIONAL PREAMBLE" in messages[0]["content"]
 
     user_content = messages[1]["content"]

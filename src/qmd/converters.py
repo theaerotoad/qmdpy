@@ -261,9 +261,15 @@ def _process_image(image_bytes: bytes, filename: str, config, errors_out: Option
     if not config or not image_bytes:
         return ""
     if getattr(config, "multimodal_url", None) or getattr(config, "multimodal_model", None):
-        return _process_image_multimodal_llm(image_bytes, filename, config, errors_out=errors_out)
+        try:
+            return _process_image_multimodal_llm(image_bytes, filename, config, errors_out=errors_out)
+        except TypeError:
+            return _process_image_multimodal_llm(image_bytes, filename, config)
     elif getattr(config, "vision_url", None):
-        return _process_image_vision_api(image_bytes, filename, config, errors_out=errors_out)
+        try:
+            return _process_image_vision_api(image_bytes, filename, config, errors_out=errors_out)
+        except TypeError:
+            return _process_image_vision_api(image_bytes, filename, config)
     return ""
 
 

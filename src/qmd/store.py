@@ -433,6 +433,14 @@ class Store:
                         clear_indexing_errors(self.conn, collection_name, rel_path)
                         return True
 
+            cursor.execute("SELECT id FROM documents WHERE collection = ? AND path = ?", (collection_name, rel_path))
+            existing_doc = cursor.fetchone()
+
+            # Delete from documents_fts before updating content so FTS5 external view unindexes clean tokens
+            if existing_doc:
+                doc_id = existing_doc[0]
+                cursor.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
+
             cursor.execute("SELECT body FROM content WHERE hash = ?", (file_hash,))
             content_row = cursor.fetchone()
 
@@ -447,12 +455,7 @@ class Store:
                     ON CONFLICT(hash) DO UPDATE SET body = excluded.body, created_at = excluded.created_at
                 """, (file_hash, compress_text(markdown_body), now))
 
-            cursor.execute("SELECT id FROM documents WHERE collection = ? AND path = ?", (collection_name, rel_path))
-            existing_doc = cursor.fetchone()
-
             if existing_doc:
-                doc_id = existing_doc[0]
-                cursor.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
                 cursor.execute("""
                     UPDATE documents SET hash = ?, modified_at = ?, title = ?
                     WHERE id = ?
