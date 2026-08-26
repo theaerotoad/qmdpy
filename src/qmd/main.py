@@ -16,7 +16,7 @@ from qmd.formatting import (
     format_outline_cli, format_chunks_cli, format_results_xml, format_doc_results_xml,
     format_chunks_xml, format_outline_xml, format_collection_tree_cli, format_collection_tree_xml,
     format_grep_cli, format_grep_json, format_grep_xml,
-    set_plain_mode, strip_ansi, BOLD, CYAN, GREEN, RED, RESET
+    set_plain_mode, strip_ansi, BOLD, CYAN, GREEN, RED, RESET, YELLOW
 )
 from qmd.utils import redact_pii, parse_target_spec, parse_int_ranges
 
@@ -790,6 +790,17 @@ def handle_update(args, store: Store):
     # 2. Prune removed collections
     active_collections = list(config.collections.keys())
     store.prune_orphaned_collections(active_collections)
+
+    # 3. Report indexing errors if any remain
+    errors = store.get_indexing_errors(collection=args.collection)
+    if errors:
+        print(f"\n{YELLOW}Notice: {len(errors)} file(s) have unresolved indexing errors/degradations.{RESET}")
+        for err in errors[:5]:
+            print(f"  • [{err['collection']}] {err['path']} - {err['error_type']}: {err['error_message']}")
+        if len(errors) > 5:
+            print(f"  ... and {len(errors) - 5} more.")
+    else:
+        print(f"{GREEN}✓ All files indexed cleanly with zero errors.{RESET}")
 
 class HelpAllAction(argparse.Action):
     root_parser: Optional[argparse.ArgumentParser] = None
