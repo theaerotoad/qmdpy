@@ -93,7 +93,7 @@ def test_multimodal_process_image_payload_and_strict_prompt(mock_httpx):
     assert messages[0]["role"] == "system"
     assert "OCR" in messages[0]["content"]
     assert "visual-analysis" in messages[0]["content"]
-    assert "NO CONVERSATIONAL PREAMBLE" in messages[0]["content"]
+    assert "Return only the result:" in messages[0]["content"]
 
     user_content = messages[1]["content"]
     assert user_content[0]["type"] == "text"
