@@ -180,3 +180,33 @@ def test_extract_common_document_header_formats(extractor, snippet, expected_yea
     assert results[0].parsed_date.month == expected_month
     assert results[0].parsed_date.day == expected_day
     assert results[0].is_full_date is True
+
+
+def test_extract_adjacent_time_does_not_bleed_into_year(extractor):
+    text = (
+        "# Chicago Backup Car   Avis Rent A Car\n\n"
+        "## Pick-Up\n\n"
+        "## Return\n\n"
+        "Chicago Midway Intl Airport, MDW Detroit Metropolitan Airport, DTW **Sat, Jun 28, 11:00 AM Thu, Jul 03, 11:00 AM**\n\n"
+        "### Pick-Up\n\n"
+        "Chicago Midway Intl Airport, MDW Saturday, Jun 28, 2025, 11:00 AM\n"
+    )
+    results = extractor.extract(text, max_chars=2000)
+    assert len(results) >= 1
+    assert results[0].parsed_date.year == 2025
+    assert results[0].parsed_date.month == 6
+    assert results[0].parsed_date.day == 28
+
+
+def test_four_digit_year_preferred_over_two_digit_or_partial(extractor):
+    text = (
+        "Quick note on 7/2/92 in log.\n"
+        "Official announcement published on July 2, 2024 by Department.\n"
+    )
+    results = extractor.extract(text, max_chars=500)
+    assert len(results) >= 2
+    # The 4-digit full date July 2, 2024 should rank first over 7/2/92
+    assert results[0].parsed_date.year == 2024
+    assert results[0].parsed_date.month == 7
+    assert results[0].parsed_date.day == 2
+    assert results[0].has_4digit_year is True

@@ -18,7 +18,9 @@ MONTH_NAME_PATTERN = (
 )
 
 YEAR_4DIGIT_PATTERN = r"(?:1[0-9]|20)\d{2}"
-YEAR_2OR4DIGIT_PATTERN = r"(?:(?:1[0-9]|20)\d{2}|(?:\'?[0-9]{2}))"
+# A 2-digit year must NOT be immediately followed by a colon (preventing time tokens like 11:00 AM from being parsed as 2011)
+YEAR_2DIGIT_PATTERN = r"(?:\'?[0-9]{2}(?!\s*:\s*\d{2}))"
+YEAR_2OR4DIGIT_PATTERN = rf"(?:{YEAR_4DIGIT_PATTERN}|{YEAR_2DIGIT_PATTERN})"
 
 # Common header label prefixes in document bodies (including YAML/TOML/JSON metadata and prose headers)
 HEADER_PREFIX_PATTERN = re.compile(
@@ -90,13 +92,13 @@ TEXT_DATE_PATTERNS = [
     ),
     # Numeric date with 2-digit year across delimiters: M/D/YY, MM/DD/YY, DD/MM/YY, DD.MM.YY (e.g. 7/2/92, 07/02/92, 7-2-92, 7.2.92, 19/12/92)
     re.compile(
-        r"(?<!\d)(?:0?[1-9]|[12]\d|3[01])[-/.](?:0?[1-9]|1[0-2])[-/.](?:[0-9]{2})(?!\d)"
+        r"(?<!\d)(?:0?[1-9]|[12]\d|3[01])[-/.](?:0?[1-9]|1[0-2])[-/.](?:[0-9]{2})(?!\d)(?!\s*:\s*\d{2})"
     ),
-    # Month YYYY or Month YY (e.g. January 2024, Jan.2024, Dec. 1942, February 1841, Jan_2024, Jan-2024, Jan/2024)
+    # Month YYYY or Month YY (e.g. January 2024, Jan.2024, Dec. 1942, February 1841, Dec '92, Dec 92; avoids Month DD collision)
     re.compile(
         r"\b"
         + MONTH_NAME_PATTERN
-        + r"[-_/.\s]+(?:(?:1[0-9]|20)\d{2}|(?:\'?[0-9]{2}))\b",
+        + r"[-_/.\s]+(?:(?:1[0-9]|20)\d{2}|(?:\'[0-9]{2})|(?:[3-9][0-9]))\b",
         re.IGNORECASE,
     ),
 ]
@@ -169,15 +171,18 @@ class TextDateExtractor:
                 span = (match.start(), match.end())
                 if not _is_overlapping(*span):
                     seen_spans.add(span)
+                    has_4digit = bool(re.search(r"\b(?:1[0-9]|20)\d{2}\b", raw_val))
+                    conf = 0.98 if has_4digit else 0.88
                     candidates.append(
                         DateCandidate(
                             raw_text=raw_val,
                             parsed_date=parsed,
                             source=ExtractionSource.TEXT_HEADER,
-                            confidence=0.98,
+                            confidence=conf,
                             start_char=match.start(),
                             end_char=match.end(),
                             is_full_date=_is_text_full_date(raw_val),
+                            has_4digit_year=has_4digit,
                         )
                     )
 
@@ -191,8 +196,11 @@ class TextDateExtractor:
                 parsed = self._parse_date_string(raw_text)
                 if parsed and 1000 <= parsed.year <= 2100:
                     seen_spans.add(span)
+                    has_4digit = bool(re.search(r"\b(?:1[0-9]|20)\d{2}\b", raw_text)) or bool(re.search(r"\b\d{10}\b", raw_text))
+                    is_full = _is_text_full_date(raw_text)
                     early_boost = 0.05 if match.start() < 150 else 0.0
-                    confidence = min(0.90 + early_boost, 0.95)
+                    base_conf = 0.90 if (has_4digit and is_full) else (0.80 if has_4digit else 0.72)
+                    confidence = min(base_conf + early_boost, 0.95)
                     candidates.append(
                         DateCandidate(
                             raw_text=raw_text,
@@ -201,7 +209,8 @@ class TextDateExtractor:
                             confidence=confidence,
                             start_char=match.start(),
                             end_char=match.end(),
-                            is_full_date=_is_text_full_date(raw_text),
+                            is_full_date=is_full,
+                            has_4digit_year=has_4digit,
                         )
                     )
 
@@ -217,8 +226,11 @@ class TextDateExtractor:
                 parsed = self._parse_date_string(cleaned_ent)
                 if parsed and 1000 <= parsed.year <= 2100:
                     seen_spans.add(span)
-                    early_boost = 0.10 if ent.start_char < 150 else 0.0
-                    confidence = min(0.85 + early_boost, 0.95)
+                    has_4digit = bool(re.search(r"\b(?:1[0-9]|20)\d{2}\b", cleaned_ent))
+                    is_full = _is_text_full_date(cleaned_ent)
+                    early_boost = 0.05 if ent.start_char < 150 else 0.0
+                    base_conf = 0.85 if (has_4digit and is_full) else (0.75 if has_4digit else 0.70)
+                    confidence = min(base_conf + early_boost, 0.92)
                     candidates.append(
                         DateCandidate(
                             raw_text=cleaned_ent,
@@ -227,7 +239,8 @@ class TextDateExtractor:
                             confidence=confidence,
                             start_char=ent.start_char,
                             end_char=ent.end_char,
-                            is_full_date=_is_text_full_date(cleaned_ent),
+                            is_full_date=is_full,
+                            has_4digit_year=has_4digit,
                         )
                     )
 
@@ -241,13 +254,15 @@ class TextDateExtractor:
                             continue
                         if dt and 1000 <= dt.year <= 2100:
                             cleaned_raw = raw_str.strip().rstrip(".,;\"'")
+                            has_4digit = bool(re.search(r"\b(?:1[0-9]|20)\d{2}\b", cleaned_raw))
                             candidates.append(
                                 DateCandidate(
                                     raw_text=cleaned_raw,
                                     parsed_date=dt,
                                     source=ExtractionSource.TEXT_HEADER,
-                                    confidence=0.80,
+                                    confidence=0.65 if not has_4digit else 0.80,
                                     is_full_date=_is_text_full_date(cleaned_raw),
+                                    has_4digit_year=has_4digit,
                                 )
                             )
             except Exception:
@@ -255,11 +270,14 @@ class TextDateExtractor:
 
         # Priority ordering for document text candidates:
         # 1. Full dates (is_full_date=True) before partial dates
-        # 2. Confidence (explicit headers / frontmatter >= 0.95 first)
-        # 3. First in document (lowest start_char)
+        # 2. Explicit 4-digit year before ambiguous 2-digit year
+        # 3. Confidence score (explicit headers / frontmatter >= 0.95 first)
+        # 4. First in document (lowest start_char)
+        # 5. Length of matched text
         candidates.sort(
             key=lambda c: (
                 1 if c.is_full_date else 0,
+                1 if c.has_4digit_year else 0,
                 c.confidence,
                 -(c.start_char if c.start_char is not None else 999999),
                 len(c.raw_text),
@@ -366,6 +384,7 @@ class TextDateExtractor:
                     source=ExtractionSource.TEXT_HEADER,
                     confidence=0.98,
                     is_full_date=True,
+                    has_4digit_year=True,
                 )
             except ValueError:
                 pass
@@ -384,6 +403,7 @@ class TextDateExtractor:
                     source=ExtractionSource.TEXT_HEADER,
                     confidence=0.98,
                     is_full_date=True,
+                    has_4digit_year=True,
                 )
             except ValueError:
                 pass
@@ -404,6 +424,7 @@ class TextDateExtractor:
                         source=ExtractionSource.TEXT_HEADER,
                         confidence=0.95,
                         is_full_date=True,
+                        has_4digit_year=True,
                     )
             except (ValueError, OverflowError, OSError):
                 pass

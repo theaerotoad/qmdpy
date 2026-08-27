@@ -232,6 +232,7 @@ class FilenameDateExtractor:
                     confidence = 0.95 if full_date else 0.80
 
                     found_spans.add(span)
+                    has_4digit = bool(re.search(r"\b(?:1[0-9]|20)\d{2}\b", matched_str))
                     candidates.append(
                         DateCandidate(
                             raw_text=matched_str,
@@ -241,6 +242,7 @@ class FilenameDateExtractor:
                             start_char=match.start(),
                             end_char=match.end(),
                             is_full_date=full_date,
+                            has_4digit_year=has_4digit,
                         )
                     )
 
@@ -252,11 +254,13 @@ class FilenameDateExtractor:
 
         # Priority ordering for path candidates:
         # 1. Full dates (is_full_date=True) before partial dates
-        # 2. Last in path (highest start_char in path string)
-        # 3. Confidence and text length descending
+        # 2. 4-digit explicit year before 2-digit year
+        # 3. Last in path (highest start_char in path string)
+        # 4. Confidence and text length descending
         candidates.sort(
             key=lambda c: (
                 1 if c.is_full_date else 0,
+                1 if c.has_4digit_year else 0,
                 c.start_char if c.start_char is not None else -1,
                 c.confidence,
                 len(c.raw_text),
@@ -281,5 +285,6 @@ class FilenameDateExtractor:
                 source=ExtractionSource.FILENAME,
                 confidence=0.60,
                 is_full_date=_is_full_date(stem),
+                has_4digit_year=bool(re.search(r"\b(?:1[0-9]|20)\d{2}\b", stem)),
             )
         return None

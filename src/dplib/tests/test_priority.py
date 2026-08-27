@@ -98,3 +98,36 @@ def test_priority_agreement_boost_between_path_and_document(resolver):
     assert report.resolved_date.month == 7
     assert report.resolved_date.day == 20
     assert report.confidence >= 0.98
+
+
+def test_priority_four_digit_year_over_earlier_two_digit_year_in_doc(resolver):
+    text = (
+        "Archived reference: 10/15/95.\n"
+        "This version officially certified on October 15, 2024."
+    )
+    report = resolver.resolve(filename="notes.txt", text_content=text)
+    assert report.resolved_date is not None
+    assert report.resolved_date.year == 2024
+    assert report.resolved_date.month == 10
+    assert report.resolved_date.day == 15
+
+
+def test_priority_rental_confirmation_with_time_tokens(resolver):
+    text = (
+        "# Chicago Backup Car   Avis Rent A Car\n\n"
+        "## Pick-Up\n\n"
+        "## Return\n\n"
+        "Chicago Midway Intl Airport, MDW Detroit Metropolitan Airport, DTW **Sat, Jun 28, 11:00 AM Thu, Jul 03, 11:00 AM**\n\n"
+        "# YOUR CAR\n\n"
+        "## Intermediate SUV\n\n"
+        "Toyota Rav4 or similar **Automatic Transmission**\n\n"
+        "### Pick-Up\n\n"
+        "Chicago Midway Intl Airport, MDW Saturday, Jun 28, 2025, 11:00 AM\n\n"
+        "### Return\n\n"
+        "Detroit Metropolitan Airport, DTW Thursday, Jul 03, 2025, 11:00 AM\n"
+    )
+    report = resolver.resolve(filename="Chicago Backup Car - Avis Rent a Car.pdf", text_content=text)
+    assert report.resolved_date is not None
+    assert report.resolved_date.year == 2025
+    assert report.resolved_date.month == 6
+    assert report.resolved_date.day == 28

@@ -22,6 +22,7 @@ class DateCandidate:
     start_char: Optional[int] = None
     end_char: Optional[int] = None
     is_full_date: bool = True
+    has_4digit_year: bool = True
 
 
 @dataclass

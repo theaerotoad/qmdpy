@@ -75,6 +75,10 @@ class DateResolver:
         # Priority 2: Document text candidate (first in document > later in document)
         if filename_candidates:
             top = filename_candidates[0]
+            # If filename candidate is only a partial date, but document text has a full date with 4-digit year,
+            # prefer the more specific full document date.
+            if not top.is_full_date and text_candidates and text_candidates[0].is_full_date and text_candidates[0].has_4digit_year:
+                top = text_candidates[0]
         else:
             top = text_candidates[0]
 
@@ -89,6 +93,7 @@ class DateResolver:
                     start_char=top.start_char,
                     end_char=top.end_char,
                     is_full_date=top.is_full_date,
+                    has_4digit_year=top.has_4digit_year,
                 )
 
         return DateExtractionReport(
