@@ -764,10 +764,11 @@ class Store:
             return vecs[0]
         return []
 
-    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
+    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
-        query_text = self.llm.format_query_for_embedding(query)
-        query_vec = self.get_query_embedding(query_text)
+        if query_vec is None:
+            query_text = self.llm.format_query_for_embedding(query)
+            query_vec = self.get_query_embedding(query_text)
         if not query_vec:
             return []
         
@@ -991,11 +992,22 @@ class Store:
                         fts_results.append(r)
         t_fts = (time.perf_counter() - t_fts_start) * 1000
 
+        t_embed_start = time.perf_counter()
+        vec_query_embeddings = {}
+        for vq in vec_queries:
+            query_text = self.llm.format_query_for_embedding(vq)
+            q_vec = self.get_query_embedding(query_text)
+            if q_vec:
+                vec_query_embeddings[vq] = q_vec
+        t_embed = (time.perf_counter() - t_embed_start) * 1000
+
         t_vec_start = time.perf_counter()
         vec_results = []
         for vq in vec_queries:
-            vec_results.extend(self.search_vec(vq, limit=vec_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker))
-        t_vec = (time.perf_counter() - t_vec_start) * 1000
+            q_vec = vec_query_embeddings.get(vq)
+            if q_vec:
+                vec_results.extend(self.search_vec(vq, limit=vec_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=q_vec))
+        t_vec_knn = (time.perf_counter() - t_vec_start) * 1000
 
         self.last_exclusion_stats = {
             "excluded_chunks": len(excluded_chunks_tracker),
@@ -1058,7 +1070,8 @@ class Store:
                 print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
                 print(f"  • Query Expansion:         {t_expand:>7.2f} ms")
                 print(f"  • Lexical (FTS) Search:    {t_fts:>7.2f} ms ({len(fts_results)} hits)")
-                print(f"  • Vector (Semantic) Search:{t_vec:>7.2f} ms ({len(vec_results)} hits)")
+                print(f"  • Query Embedding (LLM):   {t_embed:>7.2f} ms")
+                print(f"  • Vector (KNN) Search:     {t_vec_knn:>7.2f} ms ({len(vec_results)} hits)")
                 print(f"  • RRF Fusion:              {t_rrf:>7.2f} ms")
                 print(f"  • Total Search:            {t_total:>7.2f} ms")
                 print(f"{CYAN}------------------------{RESET}\n")
@@ -1150,7 +1163,8 @@ class Store:
             print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
             print(f"  • Query Expansion:         {t_expand:>7.2f} ms")
             print(f"  • Lexical (FTS) Search:    {t_fts:>7.2f} ms ({len(fts_results)} hits)")
-            print(f"  • Vector (Semantic) Search:{t_vec:>7.2f} ms ({len(vec_results)} hits)")
+            print(f"  • Query Embedding (LLM):   {t_embed:>7.2f} ms")
+            print(f"  • Vector (KNN) Search:     {t_vec_knn:>7.2f} ms ({len(vec_results)} hits)")
             print(f"  • RRF Fusion:              {t_rrf:>7.2f} ms ({len(top_candidates)} candidates)")
             if rerank or reranker_only:
                 print(f"  • Cross-Encoder Rerank:    {t_rerank:>7.2f} ms ({len(top_candidates)} scored)")
