@@ -483,3 +483,38 @@ def test_indexing_date_updated_on_rename(db_conn, temp_db_path, tmp_path, mock_l
 
     cursor.execute("SELECT doc_date FROM documents WHERE path='2025-05-05_doc.md'")
     assert cursor.fetchone()[0] == "2025-05-05"
+
+
+def test_indexing_real_dplib_integration(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Verify live end-to-end date extraction using actual dplib resolver without mocks."""
+    notes_dir = tmp_path / "live_date_notes"
+    notes_dir.mkdir()
+
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+
+    # 1. Path-based date
+    file1 = notes_dir / "2023-11-25_release_notes.md"
+    file1.write_text("Release summary.")
+
+    # 2. Front matter date
+    file2 = notes_dir / "changelog.md"
+    file2.write_text("---\ndate: 2024-04-10\n---\nFull changelog text.")
+
+    store.index_collection("test", config.collections["test"])
+
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT path, doc_date FROM documents ORDER BY path")
+    rows = cursor.fetchall()
+    assert len(rows) == 2
+
+    assert rows[0][0] == "2023-11-25_release_notes.md"
+    assert rows[0][1] is not None
+    assert "2023-11-25" in rows[0][1]
+
+    assert rows[1][0] == "changelog.md"
+    assert rows[1][1] is not None
+    assert "2024-04-10" in rows[1][1]
