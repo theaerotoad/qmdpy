@@ -812,7 +812,7 @@ class Store:
                         params.append(f"%{p_val}%")
 
                 cursor.execute(query_sql, tuple(params))
-                candidates = []
+                raw_candidates = []
                 for rowid, dist, text_blob, doc_path, doc_title, coll, seq_id, hdrs in cursor.fetchall():
                     key = (coll or "", doc_path, seq_id)
                     if exclude_seen_set and key in exclude_seen_set:
@@ -824,16 +824,17 @@ class Store:
                     else:
                         score = max(0.0, 1.0 - float(dist))
 
+                    raw_candidates.append((score, doc_path, doc_title, text_blob, coll, seq_id, hdrs))
+
+                raw_candidates.sort(key=lambda x: x[0], reverse=True)
+                candidates = []
+                for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs) in enumerate(raw_candidates[:limit]):
                     candidates.append(Result(
                         path=doc_path, title=doc_title, text=decompress_text(text_blob), score=score,
-                        source="vec", collection=coll, seq_id=seq_id, headers=hdrs
+                        source="vec", collection=coll, seq_id=seq_id, headers=hdrs,
+                        vec_score=score, vec_rank=vec_idx + 1
                     ))
-
-                candidates.sort(key=lambda x: x.score, reverse=True)
-                for vec_idx, c in enumerate(candidates):
-                    c.vec_score = c.score
-                    c.vec_rank = vec_idx + 1
-                return candidates[:limit]
+                return candidates
             except sqlite3.OperationalError:
                 pass
 
@@ -863,7 +864,7 @@ class Store:
         cursor.execute(query_sql, tuple(params))
         
         dim = len(query_vec)
-        candidates = []
+        raw_candidates = []
         for emb_blob, text_blob, doc_path, doc_title, coll, seq_id, hdrs in cursor.fetchall():
             key = (coll or "", doc_path, seq_id)
             if exclude_seen_set and key in exclude_seen_set:
@@ -877,16 +878,17 @@ class Store:
             mag_v = math.sqrt(sum(a * a for a in vec))
             sim = dot_prod / (mag_q * mag_v) if mag_q and mag_v else 0
             
-            candidates.append(Result(
-                path=doc_path, title=doc_title, text=decompress_text(text_blob), score=sim, 
-                source="vec", collection=coll, seq_id=seq_id, headers=hdrs
-            ))
+            raw_candidates.append((sim, doc_path, doc_title, text_blob, coll, seq_id, hdrs))
         
-        candidates.sort(key=lambda x: x.score, reverse=True)
-        for vec_idx, c in enumerate(candidates):
-            c.vec_score = c.score
-            c.vec_rank = vec_idx + 1
-        return candidates[:limit]
+        raw_candidates.sort(key=lambda x: x[0], reverse=True)
+        candidates = []
+        for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs) in enumerate(raw_candidates[:limit]):
+            candidates.append(Result(
+                path=doc_path, title=doc_title, text=decompress_text(text_blob), score=score, 
+                source="vec", collection=coll, seq_id=seq_id, headers=hdrs,
+                vec_score=score, vec_rank=vec_idx + 1
+            ))
+        return candidates
 
     def hybrid_search(
         self, 
