@@ -259,25 +259,26 @@ def handle_discover(args, store: Store):
         if exclude_seen:
             exclude_seen_set = all_seen
 
-    use_cache = False if getattr(args, "no_cache", False) else None
+    search_kwargs = {
+        "query": query,
+        "limit": limit,
+        "verbose": args.verbose,
+        "rerank": rerank,
+        "reranker_only": getattr(args, "rerank_only", False),
+        "collection": args.collection,
+        "lexical_query": args.lex,
+        "title": args.title,
+        "path": args.path,
+        "fts_limit": fts_limit,
+        "vec_limit": vec_limit,
+        "rerank_candidates": rerank_candidates,
+        "exclude_seen_set": exclude_seen_set,
+        "w2n": is_w2n,
+    }
+    if getattr(args, "no_cache", False):
+        search_kwargs["use_cache"] = False
 
-    results = store.discover(
-        query=query,
-        limit=limit,
-        verbose=args.verbose,
-        rerank=rerank,
-        reranker_only=getattr(args, "rerank_only", False),
-        collection=args.collection,
-        lexical_query=args.lex,
-        title=args.title,
-        path=args.path,
-        fts_limit=fts_limit,
-        vec_limit=vec_limit,
-        rerank_candidates=rerank_candidates,
-        exclude_seen_set=exclude_seen_set,
-        w2n=is_w2n,
-        use_cache=use_cache
-    )
+    results = store.discover(**search_kwargs)
 
     if getattr(args, "redact_pii", False):
         for r in results:
@@ -357,41 +358,32 @@ def handle_search(args, store: Store):
         if exclude_seen:
             exclude_seen_set = all_seen
 
-    use_cache = False if getattr(args, "no_cache", False) else None
+    search_kwargs = {
+        "limit": limit,
+        "verbose": args.verbose,
+        "rerank": rerank,
+        "reranker_only": args.rerank_only,
+        "collection": args.collection,
+        "lexical_query": args.lex,
+        "title": args.title,
+        "path": args.path,
+        "fts_limit": fts_limit,
+        "vec_limit": vec_limit,
+        "rerank_candidates": rerank_candidates,
+        "exclude_seen_set": exclude_seen_set,
+    }
+    if getattr(args, "no_cache", False):
+        search_kwargs["use_cache"] = False
 
     if is_w2n:
         results = store.wide_to_narrow_search(
             query,
-            limit=limit,
-            verbose=args.verbose,
-            rerank=rerank,
-            reranker_only=args.rerank_only,
-            collection=args.collection,
-            lexical_query=args.lex,
-            title=args.title,
-            path=args.path,
-            fts_limit=fts_limit,
-            vec_limit=vec_limit,
-            rerank_candidates=rerank_candidates,
-            exclude_seen_set=exclude_seen_set,
-            use_cache=use_cache
+            **search_kwargs
         )
     else:
         results = store.hybrid_search(
             query, 
-            limit=limit, 
-            verbose=args.verbose, 
-            rerank=rerank, 
-            reranker_only=args.rerank_only, 
-            collection=args.collection, 
-            lexical_query=args.lex, 
-            title=args.title, 
-            path=args.path, 
-            fts_limit=fts_limit, 
-            vec_limit=vec_limit, 
-            rerank_candidates=rerank_candidates, 
-            exclude_seen_set=exclude_seen_set,
-            use_cache=use_cache
+            **search_kwargs
         )
     
     if getattr(args, "redact_pii", False):
