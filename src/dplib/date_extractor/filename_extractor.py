@@ -166,7 +166,15 @@ class FilenameDateExtractor:
                     except ValueError:
                         parsed = None
 
-                # 2. Handle compact 8-digit numeric format YYYYMMDD
+                # 2. Handle standard ISO calendar date YYYY-MM-DD across delimiters
+                elif re.fullmatch(r"(?:19|20)\d{2}[-_/.](?:0[1-9]|1[0-2])[-_/.](?:0[1-9]|[12]\d|3[01])", matched_str):
+                    norm_iso = re.sub(r"[-_/.]", "-", matched_str)
+                    try:
+                        parsed = datetime.strptime(norm_iso, "%Y-%m-%d")
+                    except ValueError:
+                        parsed = None
+
+                # 3. Handle compact 8-digit numeric format YYYYMMDD
                 elif re.fullmatch(r"(?:19|20)\d{6}", matched_str):
                     try:
                         parsed = datetime.strptime(matched_str, "%Y%m%d")

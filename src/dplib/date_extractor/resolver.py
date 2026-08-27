@@ -15,7 +15,7 @@ class DateResolver:
         self,
         filename_extractor: Optional[FilenameDateExtractor] = None,
         text_extractor: Optional[TextDateExtractor] = None,
-        header_char_limit: int = 500,
+        header_char_limit: int = 2000,
     ):
         self.filename_extractor = filename_extractor or FilenameDateExtractor()
         self.text_extractor = text_extractor or TextDateExtractor()

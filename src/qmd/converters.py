@@ -10,10 +10,20 @@ from collections import Counter
 from pathlib import Path
 from typing import Union, List, Optional, Dict, Any
 
-try:
-    import dplib
-except ImportError:
-    dplib = None
+def _get_dplib():
+    try:
+        import dplib
+        return dplib
+    except ImportError:
+        import sys
+        src_dir = str(Path(__file__).resolve().parent.parent)
+        if src_dir not in sys.path:
+            sys.path.insert(0, src_dir)
+        try:
+            import dplib
+            return dplib
+        except ImportError:
+            return None
 
 SUPPORTED_EXTENSIONS = {
     ".md", ".markdown", ".txt",
@@ -950,22 +960,28 @@ def guess_document_date(file_path: Union[str, Path], markdown_body: str = "") ->
     """
     Attempts to infer the document date from the filename/path and markdown content using dplib.
     """
-    if dplib is None:
+    dplib_mod = _get_dplib()
+    if dplib_mod is None:
         return None
     try:
         sample_content = markdown_body[:4000] if markdown_body else ""
-        if hasattr(dplib, "extract_date"):
+        if hasattr(dplib_mod, "extract_date"):
             try:
-                res = dplib.extract_date(path=str(file_path), content=sample_content)
+                res = dplib_mod.extract_date(path=str(file_path), content=sample_content)
             except TypeError:
-                res = dplib.extract_date(str(file_path), sample_content)
+                res = dplib_mod.extract_date(str(file_path), sample_content)
             if res:
+                if hasattr(res, "hour") and res.hour == 0 and res.minute == 0 and res.second == 0 and res.microsecond == 0:
+                    return res.strftime("%Y-%m-%d")
                 return res.isoformat() if hasattr(res, "isoformat") else str(res)
-        elif hasattr(dplib, "DateResolver"):
-            resolver = dplib.DateResolver()
+        elif hasattr(dplib_mod, "DateResolver"):
+            resolver = dplib_mod.DateResolver()
             report = resolver.resolve(filename=str(file_path).replace("\\", "/"), text_content=sample_content)
             if report and report.resolved_date:
-                return report.resolved_date.isoformat()
+                dt = report.resolved_date
+                if dt.hour == 0 and dt.minute == 0 and dt.second == 0 and dt.microsecond == 0:
+                    return dt.strftime("%Y-%m-%d")
+                return dt.isoformat()
     except Exception:
         pass
     return None

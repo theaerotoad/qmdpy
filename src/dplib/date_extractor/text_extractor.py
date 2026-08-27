@@ -22,7 +22,7 @@ YEAR_2OR4DIGIT_PATTERN = r"(?:(?:1[0-9]|20)\d{2}|(?:\'?[0-9]{2}))"
 
 # Common header label prefixes in document bodies (including YAML/TOML/JSON metadata and prose headers)
 HEADER_PREFIX_PATTERN = re.compile(
-    r"(?:[\"\']?(?:date|created|published|created_at|updated_at|publish_date|publish_at|modified|as_of|as\s+of|dated|generated(?:\s+on)?|recorded(?:\s+on)?)[\"\']?\s*[:=]\s*[\"\']?(?P<date>[^\r\n;\"]{3,60})[\"\']?)",
+    r"(?:[\"\']?(?:date|created|published|created_at|updated_at|publish_date|publish_at|modified|as_of|as\s+of|dated|generated(?:\s+on)?|recorded(?:\s+on)?|delivery(?:\s+date)?|order(?:\s+date)?|invoice(?:\s+date)?)[\"\']?\s*[:=]\s*[\"\']?(?P<date>[^\r\n;\"]{3,60})[\"\']?)",
     re.IGNORECASE,
 )
 
@@ -148,7 +148,7 @@ class TextDateExtractor:
             "REQUIRE_PARTS": ["year"],
         }
 
-    def extract(self, text: str, max_chars: int = 500) -> List[DateCandidate]:
+    def extract(self, text: str, max_chars: int = 2000) -> List[DateCandidate]:
         snippet = text[:max_chars]
         candidates: List[DateCandidate] = []
         seen_spans: set[tuple[int, int]] = set()
