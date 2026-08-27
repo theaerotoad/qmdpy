@@ -8,7 +8,7 @@ from dateparser.search import search_dates
 import spacy
 from spacy.language import Language
 
-from date_extractor.models import DateCandidate, ExtractionSource
+from .models import DateCandidate, ExtractionSource
 
 # Reusable month pattern supporting full names, 3/4-letter abbreviations, and optional trailing periods (e.g. Dec., Sept., Feb.)
 MONTH_NAME_PATTERN = (

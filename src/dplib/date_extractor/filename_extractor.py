@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Optional
 import dateparser
 
-from date_extractor.models import DateCandidate, ExtractionSource
+from .models import DateCandidate, ExtractionSource
 
 MONTH_NAME_PATTERN = (
     r"(?:Jan(?:uary|\.)?|Feb(?:ruary|\.)?|Mar(?:ch|\.)?|Apr(?:il|\.)?|May|"

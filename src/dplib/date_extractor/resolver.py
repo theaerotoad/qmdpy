@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Union
 
-from date_extractor.filename_extractor import FilenameDateExtractor
-from date_extractor.models import DateCandidate, DateExtractionReport, ExtractionSource
-from date_extractor.text_extractor import TextDateExtractor
+from .filename_extractor import FilenameDateExtractor
+from .models import DateCandidate, DateExtractionReport, ExtractionSource
+from .text_extractor import TextDateExtractor
 
 
 class DateResolver:

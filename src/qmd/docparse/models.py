@@ -37,6 +37,7 @@ class InferredAttributes:
     title: Optional[str] = None
     author: Optional[str] = None
     summary: Optional[str] = None
+    doc_date: Optional[str] = None
 
 @dataclass
 class DocumentStructure:
@@ -60,6 +61,7 @@ class Metadata:
     date_indexed: int
     file_signature: Optional[str] = None
     has_tables: bool = False
+    doc_date: Optional[str] = None
     inferred_attributes: InferredAttributes = field(default_factory=InferredAttributes)
     document_structure: List[DocumentStructure] = field(default_factory=list)
     chunking_parameters: Optional[ChunkingParameters] = None
