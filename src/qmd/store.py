@@ -942,13 +942,6 @@ class Store:
         vec_queries = [query]
         t_expand = (time.perf_counter() - t_expand_start) * 1000
 
-        if verbose:
-            print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
-            print(f"{DIM}Original Query:{RESET} {query}")
-            print(f"{YELLOW}Lexical (FTS):{RESET} {lex_queries}")
-            print(f"{MAGENTA}Vector (Semantic):{RESET} {vec_queries}")
-            print(f"{CYAN}--------------------------{RESET}\n")
-
         fts_results = []
         seen_fts_keys = set()
         min_fts_quorum = 3
@@ -1009,9 +1002,6 @@ class Store:
             "excluded_docs": len({(coll, p) for (coll, p, seq) in excluded_chunks_tracker})
         }
 
-        if verbose:
-            print(f"{DIM}Candidates found -> FTS: {len(fts_results)} | Vector: {len(vec_results)}{RESET}")
-
         t_rrf_start = time.perf_counter()
         rrf_scores: Dict[Tuple[str, str, int], float] = {}
         metadata: Dict[Tuple[str, str, int], Result] = {}
@@ -1060,13 +1050,17 @@ class Store:
         if not top_candidates:
             if verbose:
                 t_total = (time.perf_counter() - t_total_start) * 1000
-                print(f"{YELLOW}No candidates remained after RRF fusion.{RESET}")
+                print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
+                print(f"{DIM}Query:{RESET} {query}")
+                print(f"{YELLOW}Lexical (FTS):{RESET} {lex_queries}")
+                print(f"{MAGENTA}Vector (Semantic):{RESET} {vec_queries}")
+                print(f"{DIM}Candidates: FTS={len(fts_results)} | Vector={len(vec_results)} | RRF=0{RESET}")
                 print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
-                print(f"  • Query Expansion / NLP:    {t_expand:>7.2f} ms")
-                print(f"  • Lexical (FTS) Retrieval:  {t_fts:>7.2f} ms ({len(fts_results)} hits)")
-                print(f"  • Vector (Semantic) Search: {t_vec:>7.2f} ms ({len(vec_results)} hits)")
-                print(f"  • RRF Fusion & Scoring:     {t_rrf:>7.2f} ms (0 candidates)")
-                print(f"  • Total Hybrid Search:      {t_total:>7.2f} ms")
+                print(f"  • Query Expansion:         {t_expand:>7.2f} ms")
+                print(f"  • Lexical (FTS) Search:    {t_fts:>7.2f} ms ({len(fts_results)} hits)")
+                print(f"  • Vector (Semantic) Search:{t_vec:>7.2f} ms ({len(vec_results)} hits)")
+                print(f"  • RRF Fusion:              {t_rrf:>7.2f} ms")
+                print(f"  • Total Search:            {t_total:>7.2f} ms")
                 print(f"{CYAN}------------------------{RESET}\n")
             return []
 
@@ -1148,15 +1142,20 @@ class Store:
         t_total = (time.perf_counter() - t_total_start) * 1000
 
         if verbose:
+            print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
+            print(f"{DIM}Query:{RESET} {query}")
+            print(f"{YELLOW}Lexical (FTS):{RESET} {lex_queries}")
+            print(f"{MAGENTA}Vector (Semantic):{RESET} {vec_queries}")
+            print(f"{DIM}Candidates: FTS={len(fts_results)} | Vector={len(vec_results)} | RRF={len(top_candidates)}{RESET}")
             print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
-            print(f"  • Query Expansion / NLP:    {t_expand:>7.2f} ms")
-            print(f"  • Lexical (FTS) Retrieval:  {t_fts:>7.2f} ms ({len(fts_results)} hits)")
-            print(f"  • Vector (Semantic) Search: {t_vec:>7.2f} ms ({len(vec_results)} hits)")
-            print(f"  • RRF Fusion & Scoring:     {t_rrf:>7.2f} ms ({len(top_candidates)} candidates)")
+            print(f"  • Query Expansion:         {t_expand:>7.2f} ms")
+            print(f"  • Lexical (FTS) Search:    {t_fts:>7.2f} ms ({len(fts_results)} hits)")
+            print(f"  • Vector (Semantic) Search:{t_vec:>7.2f} ms ({len(vec_results)} hits)")
+            print(f"  • RRF Fusion:              {t_rrf:>7.2f} ms ({len(top_candidates)} candidates)")
             if rerank or reranker_only:
-                print(f"  • Cross-Encoder Reranking:  {t_rerank:>7.2f} ms ({len(top_candidates)} scored)")
-            print(f"  • Deduplication & Slicing:  {t_dedup:>7.2f} ms ({len(ret_results)} returned)")
-            print(f"  • Total Hybrid Search:      {t_total:>7.2f} ms")
+                print(f"  • Cross-Encoder Rerank:    {t_rerank:>7.2f} ms ({len(top_candidates)} scored)")
+            print(f"  • Dedup & Slicing:         {t_dedup:>7.2f} ms ({len(ret_results)} returned)")
+            print(f"  • Total Search:            {t_total:>7.2f} ms")
             print(f"{CYAN}------------------------{RESET}\n")
 
         return ret_results
@@ -1214,8 +1213,8 @@ class Store:
         wide_results = self.hybrid_search(
             query,
             limit=wide_limit,
-            verbose=verbose,
-            rerank=False,  # Defer reranking until after container filtering
+            verbose=False,  # Sub-call timing suppressed in favor of unified W2N timing summary
+            rerank=False,   # Defer reranking until after container filtering
             reranker_only=False,
             collection=collection,
             lexical_query=lexical_query,
@@ -1249,12 +1248,6 @@ class Store:
         top_docs = set(sorted(doc_scores, key=doc_scores.get, reverse=True)[:top_containers])
         top_dirs = set(sorted(dir_scores, key=dir_scores.get, reverse=True)[:top_containers])
         t_agg = (time.perf_counter() - t_agg_start) * 1000
-
-        if verbose:
-            print(f"{CYAN}--- Wide-to-Narrow Container Diagnostics ---{RESET}")
-            print(f"{YELLOW}Top Matching Documents:{RESET} {list(top_docs)}")
-            print(f"{MAGENTA}Top Matching Directories:{RESET} {list(top_dirs)}")
-            print(f"{CYAN}---------------------------------------------{RESET}\n")
 
         # Step 3: Narrow Phase - Apply container density boosts
         t_boost_start = time.perf_counter()
@@ -1326,14 +1319,19 @@ class Store:
         t_total = (time.perf_counter() - t_total_start) * 1000
 
         if verbose:
-            print(f"\n{CYAN}--- Wide-to-Narrow Timing Breakdown ---{RESET}")
-            print(f"  • Wide Retrieval Phase:     {t_wide:>7.2f} ms ({len(wide_results)} candidates)")
-            print(f"  • Container Aggregation:    {t_agg:>7.2f} ms ({len(top_docs)} docs, {len(top_dirs)} dirs)")
-            print(f"  • Narrow Density Boosting:  {t_boost:>7.2f} ms ({len(boosted_results)} boosted)")
+            print(f"\n{CYAN}--- Search Diagnostics (Wide-to-Narrow) ---{RESET}")
+            print(f"{DIM}Query:{RESET} {query}")
+            print(f"{YELLOW}Top Documents:{RESET} {list(top_docs)}")
+            print(f"{MAGENTA}Top Directories:{RESET} {list(top_dirs)}")
+            print(f"{DIM}Candidates: Wide={len(wide_results)} | Boosted={len(boosted_results)} | Returned={len(ret_results)}{RESET}")
+            print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+            print(f"  • Wide Retrieval:          {t_wide:>7.2f} ms ({len(wide_results)} chunks)")
+            print(f"  • Container Aggregation:   {t_agg:>7.2f} ms ({len(top_docs)} docs, {len(top_dirs)} dirs)")
+            print(f"  • Narrow Density Boosting: {t_boost:>7.2f} ms ({len(boosted_results)} boosted)")
             if rerank or reranker_only:
-                print(f"  • Cross-Encoder Reranking:  {t_rerank:>7.2f} ms ({len(candidate_pool)} scored)")
-            print(f"  • Slicing & Ranking:        {t_dedup:>7.2f} ms ({len(ret_results)} returned)")
-            print(f"  • Total Wide-to-Narrow:     {t_total:>7.2f} ms")
+                print(f"  • Cross-Encoder Rerank:    {t_rerank:>7.2f} ms ({len(candidate_pool)} scored)")
+            print(f"  • Dedup & Slicing:         {t_dedup:>7.2f} ms ({len(ret_results)} returned)")
+            print(f"  • Total Search:            {t_total:>7.2f} ms")
             print(f"{CYAN}---------------------------------------{RESET}\n")
 
         return ret_results
@@ -1389,7 +1387,7 @@ class Store:
             candidates = self.wide_to_narrow_search(
                 query=query,
                 limit=fetch_limit,
-                verbose=verbose,
+                verbose=False,  # Sub-call timing suppressed in favor of unified discover timing summary
                 rerank=rerank,
                 reranker_only=reranker_only,
                 collection=collection,
@@ -1406,7 +1404,7 @@ class Store:
             candidates = self.hybrid_search(
                 query=query,
                 limit=fetch_limit,
-                verbose=verbose,
+                verbose=False,  # Sub-call timing suppressed in favor of unified discover timing summary
                 rerank=rerank,
                 reranker_only=reranker_only,
                 collection=collection,
@@ -1468,10 +1466,14 @@ class Store:
         t_total = (time.perf_counter() - t_total_start) * 1000
 
         if verbose:
-            print(f"\n{CYAN}--- Discover Timing Breakdown ---{RESET}")
-            print(f"  • Candidate Retrieval:      {t_cand:>7.2f} ms ({len(candidates)} chunks)")
-            print(f"  • Document Grouping:        {t_group:>7.2f} ms ({len(final_results)} documents)")
-            print(f"  • Total Discover Search:    {t_total:>7.2f} ms")
+            print(f"\n{CYAN}--- Search Diagnostics (Discover) ---{RESET}")
+            print(f"{DIM}Query:{RESET} {query}")
+            print(f"{DIM}Mode:{RESET} {'Wide-to-Narrow' if w2n else 'Hybrid'} | {DIM}Rerank:{RESET} {rerank or reranker_only}")
+            print(f"{DIM}Candidates: {len(candidates)} chunks -> {len(final_results)} top documents{RESET}")
+            print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+            print(f"  • Candidate Retrieval:     {t_cand:>7.2f} ms ({len(candidates)} chunks)")
+            print(f"  • Top-Hit Doc Grouping:    {t_group:>7.2f} ms ({len(final_results)} documents)")
+            print(f"  • Total Search:            {t_total:>7.2f} ms")
             print(f"{CYAN}---------------------------------{RESET}\n")
 
         return final_results
