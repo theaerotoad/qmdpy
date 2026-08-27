@@ -399,3 +399,87 @@ def test_prune_orphaned_collections_cleans_errors(db_conn, temp_db_path, tmp_pat
     # Prune old_coll
     store.prune_orphaned_collections(active_collections=[])
     assert len(store.get_indexing_errors(collection="old_coll")) == 0
+
+
+def test_indexing_date_extraction(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that document date is extracted via dplib and persisted in documents table."""
+    notes_dir = tmp_path / "date_notes"
+    notes_dir.mkdir()
+
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+
+    # 1. File with date in filename
+    file1 = notes_dir / "2023-10-15-meeting-notes.md"
+    file1.write_text("Meeting content.")
+
+    # 2. File with date in front matter
+    file2 = notes_dir / "project_report.md"
+    file2.write_text("---\ndate: 2024-01-20\ntitle: Report\n---\nReport body.")
+
+    def mock_extract_date(path, content=""):
+        if "2023-10-15" in str(path):
+            return "2023-10-15"
+        if "2024-01-20" in content:
+            return "2024-01-20"
+        return None
+
+    mock_dplib = MagicMock()
+    mock_dplib.extract_date.side_effect = mock_extract_date
+
+    with patch("qmd.store.dplib", mock_dplib):
+        store.index_collection("test", config.collections["test"])
+
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT path, doc_date FROM documents ORDER BY path")
+    rows = cursor.fetchall()
+    assert len(rows) == 2
+    assert rows[0][0] == "2023-10-15-meeting-notes.md"
+    assert rows[0][1] == "2023-10-15"
+    assert rows[1][0] == "project_report.md"
+    assert rows[1][1] == "2024-01-20"
+
+
+def test_indexing_date_updated_on_rename(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that moving/renaming a file updates its doc_date if path-based date changes."""
+    notes_dir = tmp_path / "date_rename_notes"
+    notes_dir.mkdir()
+
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+
+    file1 = notes_dir / "2022-01-01_doc.md"
+    file1.write_text("Static content")
+
+    def mock_extract(path, content=""):
+        if "2022-01-01" in str(path):
+            return "2022-01-01"
+        if "2025-05-05" in str(path):
+            return "2025-05-05"
+        return None
+
+    mock_dplib = MagicMock()
+    mock_dplib.extract_date.side_effect = mock_extract
+
+    with patch("qmd.store.dplib", mock_dplib):
+        store.index_collection("test", config.collections["test"])
+
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT doc_date FROM documents WHERE path='2022-01-01_doc.md'")
+    assert cursor.fetchone()[0] == "2022-01-01"
+
+    # Rename file
+    file2 = notes_dir / "2025-05-05_doc.md"
+    file1.rename(file2)
+
+    with patch("qmd.store.dplib", mock_dplib):
+        store.index_collection("test", config.collections["test"])
+
+    cursor.execute("SELECT doc_date FROM documents WHERE path='2025-05-05_doc.md'")
+    assert cursor.fetchone()[0] == "2025-05-05"

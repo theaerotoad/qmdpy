@@ -445,10 +445,16 @@ def init_schema(conn: sqlite3.Connection):
         title TEXT NOT NULL,
         hash TEXT NOT NULL REFERENCES content(hash),
         modified_at TEXT NOT NULL,
+        doc_date TEXT,
         active INTEGER DEFAULT 1,
         UNIQUE(collection, path)
     );
     """)
+
+    try:
+        cursor.execute("ALTER TABLE documents ADD COLUMN doc_date TEXT")
+    except sqlite3.OperationalError:
+        pass
 
     # 3. View for FTS5 External Content
     cursor.execute("DROP VIEW IF EXISTS document_search_view;")

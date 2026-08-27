@@ -29,6 +29,63 @@ from qmd.docparse.parser import parse_markdown_to_blocks, extract_outline
 from qmd.docparse.grouper import group_blocks_into_chunks
 from qmd.docparse.models import Chunk
 
+try:
+    import dplib
+except ImportError:
+    dplib = None
+
+
+def extract_document_date(file_path: Union[str, Path], markdown_body: str = "") -> Optional[str]:
+    """
+    Extracts or infers a document date using dplib from file path/filename and front matter/early content.
+    """
+    if dplib is None:
+        return None
+
+    path_str = str(file_path)
+    sample_content = markdown_body[:4000] if markdown_body else ""
+
+    try:
+        if hasattr(dplib, "extract_date"):
+            try:
+                res = dplib.extract_date(path=path_str, content=sample_content)
+            except TypeError:
+                res = dplib.extract_date(path_str, sample_content)
+            if res:
+                return res.isoformat() if hasattr(res, "isoformat") else str(res)
+        elif hasattr(dplib, "parse_document_date"):
+            try:
+                res = dplib.parse_document_date(path=path_str, content=sample_content)
+            except TypeError:
+                res = dplib.parse_document_date(path_str, sample_content)
+            if res:
+                return res.isoformat() if hasattr(res, "isoformat") else str(res)
+        elif hasattr(dplib, "parse_date"):
+            try:
+                res = dplib.parse_date(path=path_str, text=sample_content)
+            except TypeError:
+                try:
+                    res = dplib.parse_date(path_str, sample_content)
+                except TypeError:
+                    res = dplib.parse_date(path_str) or dplib.parse_date(sample_content)
+            if res:
+                return res.isoformat() if hasattr(res, "isoformat") else str(res)
+        elif hasattr(dplib, "parse_frontmatter") and hasattr(dplib, "parse_path"):
+            res = dplib.parse_frontmatter(sample_content) or dplib.parse_path(path_str)
+            if res:
+                return res.isoformat() if hasattr(res, "isoformat") else str(res)
+        elif hasattr(dplib, "parse"):
+            try:
+                res = dplib.parse(path_str, sample_content)
+            except TypeError:
+                res = dplib.parse(path_str) or dplib.parse(sample_content)
+            if res:
+                return res.isoformat() if hasattr(res, "isoformat") else str(res)
+    except Exception:
+        pass
+
+    return None
+
 
 def encode_vector(vec: List[float], quant_type: str = "none") -> bytes:
     quant_type = (quant_type or "none").lower()
@@ -59,6 +116,7 @@ def _results_to_json(results: List['Result']) -> str:
             "collection": r.collection,
             "seq_id": r.seq_id,
             "headers": getattr(r, "headers", ""),
+            "doc_date": getattr(r, "doc_date", None),
             "fts_score": getattr(r, "fts_score", None),
             "fts_rank": getattr(r, "fts_rank", None),
             "vec_score": getattr(r, "vec_score", None),
@@ -84,6 +142,7 @@ def _json_to_results(json_str: str) -> List['Result']:
             collection=item.get("collection", ""),
             seq_id=item.get("seq_id", 0),
             headers=item.get("headers", ""),
+            doc_date=item.get("doc_date"),
             fts_score=item.get("fts_score"),
             fts_rank=item.get("fts_rank"),
             vec_score=item.get("vec_score"),
@@ -121,6 +180,7 @@ class Result:
     collection: str = ""
     seq_id: int = 0  # 0 for FTS/whole doc, specific index for chunks
     headers: str = ""
+    doc_date: Optional[str] = None
     fts_score: Optional[float] = None
     fts_rank: Optional[int] = None
     vec_score: Optional[float] = None
@@ -406,16 +466,17 @@ class Store:
                 for doc_id, old_path in existing_docs:
                     if old_path not in current_paths:
                         # This is a move/rename. Update metadata to reflect new path.
-                        cursor.execute("""
-                            UPDATE documents SET path = ?, title = ?, modified_at = ?
-                            WHERE id = ?
-                        """, (rel_path, title, now, doc_id))
-                        
-                        cursor.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
-                        
                         cursor.execute("SELECT body FROM content WHERE hash = ?", (file_hash,))
                         c_row = cursor.fetchone()
                         markdown_body = decompress_text(c_row[0]) if c_row else ""
+                        doc_date = extract_document_date(file_path, markdown_body)
+
+                        cursor.execute("""
+                            UPDATE documents SET path = ?, title = ?, modified_at = ?, doc_date = ?
+                            WHERE id = ?
+                        """, (rel_path, title, now, doc_date, doc_id))
+                        
+                        cursor.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
                         
                         cursor.execute(
                             "INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, ?, ?, ?, ?)",
@@ -455,16 +516,18 @@ class Store:
                     ON CONFLICT(hash) DO UPDATE SET body = excluded.body, created_at = excluded.created_at
                 """, (file_hash, compress_text(markdown_body), now))
 
+            doc_date = extract_document_date(file_path, markdown_body)
+
             if existing_doc:
                 cursor.execute("""
-                    UPDATE documents SET hash = ?, modified_at = ?, title = ?
+                    UPDATE documents SET hash = ?, modified_at = ?, title = ?, doc_date = ?
                     WHERE id = ?
-                """, (file_hash, now, title, doc_id))
+                """, (file_hash, now, title, doc_date, doc_id))
             else:
                 cursor.execute("""
-                    INSERT INTO documents (collection, path, title, hash, modified_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (collection_name, rel_path, title, file_hash, now))
+                    INSERT INTO documents (collection, path, title, hash, modified_at, doc_date)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (collection_name, rel_path, title, file_hash, now, doc_date))
                 doc_id = cursor.lastrowid
 
             cursor.execute(
