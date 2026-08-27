@@ -4,6 +4,7 @@ import subprocess
 import os
 import secrets
 import re
+import time
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Set
 
@@ -411,8 +412,12 @@ def handle_search(args, store: Store):
         max_chunks = cfg_val if isinstance(cfg_val, int) else 30
 
     if is_doc:
+        t_group_start = time.perf_counter()
         grouped = group_results_by_doc(results)
         grouped = grouped[:limit]
+        t_group = (time.perf_counter() - t_group_start) * 1000
+        if args.verbose:
+            print(f"{DIM}[Document Grouping & Snippet Merge]: {t_group:.2f} ms ({len(grouped)} docs){RESET}\n")
 
         # Enforce max_chunks cap across all grouped documents
         truncation_info = None

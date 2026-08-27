@@ -904,22 +904,35 @@ class Store:
         exclude_seen_set: Optional[set] = None,
         use_cache: Optional[bool] = None
     ) -> List[Result]:
+        t_total_start = time.perf_counter()
         excluded_chunks_tracker: set = set()
         should_cache = use_cache if use_cache is not None else getattr(self.config, 'cache_search_results', True)
         
         if should_cache and not exclude_seen_set:
+            t_cache_start = time.perf_counter()
             cache_key = self._build_search_cache_key(
                 "hybrid", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
             cached_json = get_cached_search_results(self.history_conn, cache_key)
+            t_cache = (time.perf_counter() - t_cache_start) * 1000
             if cached_json:
                 self.last_exclusion_stats = {"excluded_chunks": 0, "excluded_docs": 0}
+                if verbose:
+                    t_total = (time.perf_counter() - t_total_start) * 1000
+                    print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
+                    print(f"{DIM}Original Query:{RESET} {query}")
+                    print(f"{GREEN}[Cache Hit]{RESET} Loaded results from search cache in {t_cache:.2f}ms")
+                    print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                    print(f"  • Cache Lookup:            {t_cache:>7.2f} ms")
+                    print(f"  • Total Hybrid Search:     {t_total:>7.2f} ms")
+                    print(f"{CYAN}------------------------{RESET}\n")
                 return _json_to_results(cached_json)
 
         fts_lim = fts_limit if fts_limit is not None else getattr(self.config, 'fts_limit', 50)
         vec_lim = vec_limit if vec_limit is not None else getattr(self.config, 'vec_limit', 50)
         rr_cand = rerank_candidates if rerank_candidates is not None else getattr(self.config, 'rerank_candidates', 20)
 
+        t_expand_start = time.perf_counter()
         # Generate default spaCy FTS expanded lexical queries
         if lexical_query:
             lex_queries = [lexical_query]
@@ -927,6 +940,7 @@ class Store:
             lex_queries = build_spacy_fts_queries(query, model_name=self.config.spacy_model)
 
         vec_queries = [query]
+        t_expand = (time.perf_counter() - t_expand_start) * 1000
 
         if verbose:
             print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
@@ -939,6 +953,7 @@ class Store:
         seen_fts_keys = set()
         min_fts_quorum = 3
 
+        t_fts_start = time.perf_counter()
         # Gated FTS Execution: Run strict conjunctions first; stop if quorum reached
         for q_idx, lq in enumerate(lex_queries):
             tier_results = self.search_fts(lq, limit=fts_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker)
@@ -981,10 +996,13 @@ class Store:
                         if r.fts_score is not None:
                             r.fts_score *= 0.5
                         fts_results.append(r)
+        t_fts = (time.perf_counter() - t_fts_start) * 1000
 
+        t_vec_start = time.perf_counter()
         vec_results = []
         for vq in vec_queries:
             vec_results.extend(self.search_vec(vq, limit=vec_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker))
+        t_vec = (time.perf_counter() - t_vec_start) * 1000
 
         self.last_exclusion_stats = {
             "excluded_chunks": len(excluded_chunks_tracker),
@@ -994,6 +1012,7 @@ class Store:
         if verbose:
             print(f"{DIM}Candidates found -> FTS: {len(fts_results)} | Vector: {len(vec_results)}{RESET}")
 
+        t_rrf_start = time.perf_counter()
         rrf_scores: Dict[Tuple[str, str, int], float] = {}
         metadata: Dict[Tuple[str, str, int], Result] = {}
         sources_found: Dict[Tuple[str, str, int], set] = {}
@@ -1036,12 +1055,23 @@ class Store:
             res.rrf_rank = rrf_idx + 1
 
         top_candidates = [metadata[key] for key, score in fused[:rr_cand]]
+        t_rrf = (time.perf_counter() - t_rrf_start) * 1000
 
         if not top_candidates:
-            if verbose: print(f"{YELLOW}No candidates remained after RRF fusion.{RESET}")
+            if verbose:
+                t_total = (time.perf_counter() - t_total_start) * 1000
+                print(f"{YELLOW}No candidates remained after RRF fusion.{RESET}")
+                print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                print(f"  • Query Expansion / NLP:    {t_expand:>7.2f} ms")
+                print(f"  • Lexical (FTS) Retrieval:  {t_fts:>7.2f} ms ({len(fts_results)} hits)")
+                print(f"  • Vector (Semantic) Search: {t_vec:>7.2f} ms ({len(vec_results)} hits)")
+                print(f"  • RRF Fusion & Scoring:     {t_rrf:>7.2f} ms (0 candidates)")
+                print(f"  • Total Hybrid Search:      {t_total:>7.2f} ms")
+                print(f"{CYAN}------------------------{RESET}\n")
             return []
 
         final_results = []
+        t_rerank = 0.0
 
         if not rerank and not reranker_only:
             # Skip reranking entirely
@@ -1050,6 +1080,7 @@ class Store:
                 res.source = "hybrid"
                 final_results.append(res)
         else:
+            t_rerank_start = time.perf_counter()
             rerank_docs = [f"File: {c.path}\nContent: {c.text}" for c in top_candidates]
             rerank_results = self.llm.rerank(query, rerank_docs)
             
@@ -1089,7 +1120,9 @@ class Store:
                 res.score = final_score
                 res.source = "hybrid"
                 final_results.append(res)
+            t_rerank = (time.perf_counter() - t_rerank_start) * 1000
 
+        t_dedup_start = time.perf_counter()
         # Sort by the final calculated score
         final_results.sort(key=lambda x: x.score, reverse=True)
         
@@ -1111,6 +1144,21 @@ class Store:
         ret_results = unique_results[:limit]
         if should_cache and not exclude_seen_set:
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(ret_results))
+        t_dedup = (time.perf_counter() - t_dedup_start) * 1000
+        t_total = (time.perf_counter() - t_total_start) * 1000
+
+        if verbose:
+            print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+            print(f"  • Query Expansion / NLP:    {t_expand:>7.2f} ms")
+            print(f"  • Lexical (FTS) Retrieval:  {t_fts:>7.2f} ms ({len(fts_results)} hits)")
+            print(f"  • Vector (Semantic) Search: {t_vec:>7.2f} ms ({len(vec_results)} hits)")
+            print(f"  • RRF Fusion & Scoring:     {t_rrf:>7.2f} ms ({len(top_candidates)} candidates)")
+            if rerank or reranker_only:
+                print(f"  • Cross-Encoder Reranking:  {t_rerank:>7.2f} ms ({len(top_candidates)} scored)")
+            print(f"  • Deduplication & Slicing:  {t_dedup:>7.2f} ms ({len(ret_results)} returned)")
+            print(f"  • Total Hybrid Search:      {t_total:>7.2f} ms")
+            print(f"{CYAN}------------------------{RESET}\n")
+
         return ret_results
 
     def wide_to_narrow_search(
@@ -1137,19 +1185,32 @@ class Store:
         2. Scores documents and parent directories based on chunk density and relevance.
         3. Boosts chunks residing within the top matching documents and directories.
         """
+        t_total_start = time.perf_counter()
         should_cache = use_cache if use_cache is not None else getattr(self.config, 'cache_search_results', True)
         if should_cache and not exclude_seen_set:
+            t_cache_start = time.perf_counter()
             cache_key = self._build_search_cache_key(
                 "w2n", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
             cached_json = get_cached_search_results(self.history_conn, cache_key)
+            t_cache = (time.perf_counter() - t_cache_start) * 1000
             if cached_json:
                 self.last_exclusion_stats = {"excluded_chunks": 0, "excluded_docs": 0}
+                if verbose:
+                    t_total = (time.perf_counter() - t_total_start) * 1000
+                    print(f"\n{CYAN}--- Wide-to-Narrow Diagnostics ---{RESET}")
+                    print(f"{DIM}Original Query:{RESET} {query}")
+                    print(f"{GREEN}[Cache Hit]{RESET} Loaded results from search cache in {t_cache:.2f}ms")
+                    print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                    print(f"  • Cache Lookup:            {t_cache:>7.2f} ms")
+                    print(f"  • Total Wide-to-Narrow:    {t_total:>7.2f} ms")
+                    print(f"{CYAN}------------------------{RESET}\n")
                 return _json_to_results(cached_json)
 
         # Step 1: Wide Phase - Fetch a broader pool of candidates based on configured limits
         cfg_max = max(getattr(self.config, 'fts_limit', 50), getattr(self.config, 'vec_limit', 50))
         wide_limit = max(cfg_max, limit * 5)
+        t_wide_start = time.perf_counter()
         wide_results = self.hybrid_search(
             query,
             limit=wide_limit,
@@ -1163,13 +1224,16 @@ class Store:
             fts_limit=fts_limit,
             vec_limit=vec_limit,
             rerank_candidates=rerank_candidates,
-            exclude_seen_set=exclude_seen_set
+            exclude_seen_set=exclude_seen_set,
+            use_cache=False
         )
+        t_wide = (time.perf_counter() - t_wide_start) * 1000
 
         if not wide_results:
             return []
 
         # Step 2: Aggregate relevance at Document and Directory levels
+        t_agg_start = time.perf_counter()
         doc_scores: Dict[str, float] = {}
         dir_scores: Dict[str, float] = {}
 
@@ -1184,6 +1248,7 @@ class Store:
 
         top_docs = set(sorted(doc_scores, key=doc_scores.get, reverse=True)[:top_containers])
         top_dirs = set(sorted(dir_scores, key=dir_scores.get, reverse=True)[:top_containers])
+        t_agg = (time.perf_counter() - t_agg_start) * 1000
 
         if verbose:
             print(f"{CYAN}--- Wide-to-Narrow Container Diagnostics ---{RESET}")
@@ -1192,6 +1257,7 @@ class Store:
             print(f"{CYAN}---------------------------------------------{RESET}\n")
 
         # Step 3: Narrow Phase - Apply container density boosts
+        t_boost_start = time.perf_counter()
         boosted_results = []
         for res in wide_results:
             parent_dir = str(Path(res.path).parent)
@@ -1215,9 +1281,12 @@ class Store:
 
         boosted_results.sort(key=lambda x: x.score, reverse=True)
         candidate_pool = boosted_results[:limit * 2]
+        t_boost = (time.perf_counter() - t_boost_start) * 1000
 
         # Step 4: Optional LLM Reranking on the top W2N candidates
+        t_rerank = 0.0
         if rerank or reranker_only:
+            t_rerank_start = time.perf_counter()
             rerank_docs = [f"File: {c.path}\nContent: {c.text}" for c in candidate_pool]
             rerank_results = self.llm.rerank(query, rerank_docs)
             
@@ -1244,13 +1313,29 @@ class Store:
                     res.score = (0.50 * norm_pool[i]) + (0.50 * norm_rerank[i])
 
             candidate_pool.sort(key=lambda x: x.score, reverse=True)
+            t_rerank = (time.perf_counter() - t_rerank_start) * 1000
 
+        t_dedup_start = time.perf_counter()
         for i, res in enumerate(candidate_pool):
             res.rank = i + 1
 
         ret_results = candidate_pool[:limit]
         if should_cache and not exclude_seen_set:
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(ret_results))
+        t_dedup = (time.perf_counter() - t_dedup_start) * 1000
+        t_total = (time.perf_counter() - t_total_start) * 1000
+
+        if verbose:
+            print(f"\n{CYAN}--- Wide-to-Narrow Timing Breakdown ---{RESET}")
+            print(f"  • Wide Retrieval Phase:     {t_wide:>7.2f} ms ({len(wide_results)} candidates)")
+            print(f"  • Container Aggregation:    {t_agg:>7.2f} ms ({len(top_docs)} docs, {len(top_dirs)} dirs)")
+            print(f"  • Narrow Density Boosting:  {t_boost:>7.2f} ms ({len(boosted_results)} boosted)")
+            if rerank or reranker_only:
+                print(f"  • Cross-Encoder Reranking:  {t_rerank:>7.2f} ms ({len(candidate_pool)} scored)")
+            print(f"  • Slicing & Ranking:        {t_dedup:>7.2f} ms ({len(ret_results)} returned)")
+            print(f"  • Total Wide-to-Narrow:     {t_total:>7.2f} ms")
+            print(f"{CYAN}---------------------------------------{RESET}\n")
+
         return ret_results
 
     def discover(
@@ -1275,18 +1360,31 @@ class Store:
         Discover Search: Retrieves top matching documents, returning ONLY the single
         highest-scoring chunk for each document, along with total match count per document.
         """
+        t_total_start = time.perf_counter()
         should_cache = use_cache if use_cache is not None else getattr(self.config, 'cache_search_results', True)
         if should_cache and not exclude_seen_set:
+            t_cache_start = time.perf_counter()
             cache_key = self._build_search_cache_key(
                 "discover", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
             cached_json = get_cached_search_results(self.history_conn, cache_key)
+            t_cache = (time.perf_counter() - t_cache_start) * 1000
             if cached_json:
                 self.last_exclusion_stats = {"excluded_chunks": 0, "excluded_docs": 0}
+                if verbose:
+                    t_total = (time.perf_counter() - t_total_start) * 1000
+                    print(f"\n{CYAN}--- Discover Diagnostics ---{RESET}")
+                    print(f"{DIM}Original Query:{RESET} {query}")
+                    print(f"{GREEN}[Cache Hit]{RESET} Loaded results from search cache in {t_cache:.2f}ms")
+                    print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                    print(f"  • Cache Lookup:            {t_cache:>7.2f} ms")
+                    print(f"  • Total Discover Search:   {t_total:>7.2f} ms")
+                    print(f"{CYAN}------------------------{RESET}\n")
                 return _json_to_results(cached_json)
 
         fetch_limit = max(limit * 6, getattr(self.config, 'fts_limit', 50), getattr(self.config, 'vec_limit', 50))
 
+        t_cand_start = time.perf_counter()
         if w2n:
             candidates = self.wide_to_narrow_search(
                 query=query,
@@ -1301,7 +1399,8 @@ class Store:
                 fts_limit=fts_limit,
                 vec_limit=vec_limit,
                 rerank_candidates=rerank_candidates,
-                exclude_seen_set=exclude_seen_set
+                exclude_seen_set=exclude_seen_set,
+                use_cache=False
             )
         else:
             candidates = self.hybrid_search(
@@ -1317,12 +1416,15 @@ class Store:
                 fts_limit=fts_limit,
                 vec_limit=vec_limit,
                 rerank_candidates=rerank_candidates,
-                exclude_seen_set=exclude_seen_set
+                exclude_seen_set=exclude_seen_set,
+                use_cache=False
             )
+        t_cand = (time.perf_counter() - t_cand_start) * 1000
 
         if not candidates:
             return []
 
+        t_group_start = time.perf_counter()
         doc_map: Dict[Tuple[str, str], List[Result]] = {}
         for c in candidates:
             key = (c.collection, c.path)
@@ -1362,6 +1464,15 @@ class Store:
 
         if should_cache and not exclude_seen_set:
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(final_results))
+        t_group = (time.perf_counter() - t_group_start) * 1000
+        t_total = (time.perf_counter() - t_total_start) * 1000
+
+        if verbose:
+            print(f"\n{CYAN}--- Discover Timing Breakdown ---{RESET}")
+            print(f"  • Candidate Retrieval:      {t_cand:>7.2f} ms ({len(candidates)} chunks)")
+            print(f"  • Document Grouping:        {t_group:>7.2f} ms ({len(final_results)} documents)")
+            print(f"  • Total Discover Search:    {t_total:>7.2f} ms")
+            print(f"{CYAN}---------------------------------{RESET}\n")
 
         return final_results
 
