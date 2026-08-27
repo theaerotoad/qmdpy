@@ -901,11 +901,13 @@ class Store:
         fts_limit: Optional[int] = None,
         vec_limit: Optional[int] = None,
         rerank_candidates: Optional[int] = None,
-        exclude_seen_set: Optional[set] = None
+        exclude_seen_set: Optional[set] = None,
+        use_cache: Optional[bool] = None
     ) -> List[Result]:
         excluded_chunks_tracker: set = set()
+        should_cache = use_cache if use_cache is not None else getattr(self.config, 'cache_search_results', True)
         
-        if not exclude_seen_set:
+        if should_cache and not exclude_seen_set:
             cache_key = self._build_search_cache_key(
                 "hybrid", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
@@ -1107,7 +1109,7 @@ class Store:
             res.rank = i + 1
 
         ret_results = unique_results[:limit]
-        if not exclude_seen_set:
+        if should_cache and not exclude_seen_set:
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(ret_results))
         return ret_results
 
@@ -1126,7 +1128,8 @@ class Store:
         fts_limit: Optional[int] = None,
         vec_limit: Optional[int] = None,
         rerank_candidates: Optional[int] = None,
-        exclude_seen_set: Optional[set] = None
+        exclude_seen_set: Optional[set] = None,
+        use_cache: Optional[bool] = None
     ) -> List[Result]:
         """
         Hierarchical Wide-to-Narrow (W2N) Search:
@@ -1134,7 +1137,8 @@ class Store:
         2. Scores documents and parent directories based on chunk density and relevance.
         3. Boosts chunks residing within the top matching documents and directories.
         """
-        if not exclude_seen_set:
+        should_cache = use_cache if use_cache is not None else getattr(self.config, 'cache_search_results', True)
+        if should_cache and not exclude_seen_set:
             cache_key = self._build_search_cache_key(
                 "w2n", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
@@ -1245,7 +1249,7 @@ class Store:
             res.rank = i + 1
 
         ret_results = candidate_pool[:limit]
-        if not exclude_seen_set:
+        if should_cache and not exclude_seen_set:
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(ret_results))
         return ret_results
 
@@ -1264,13 +1268,15 @@ class Store:
         vec_limit: Optional[int] = None,
         rerank_candidates: Optional[int] = None,
         exclude_seen_set: Optional[set] = None,
-        w2n: bool = False
+        w2n: bool = False,
+        use_cache: Optional[bool] = None
     ) -> List[Result]:
         """
         Discover Search: Retrieves top matching documents, returning ONLY the single
         highest-scoring chunk for each document, along with total match count per document.
         """
-        if not exclude_seen_set:
+        should_cache = use_cache if use_cache is not None else getattr(self.config, 'cache_search_results', True)
+        if should_cache and not exclude_seen_set:
             cache_key = self._build_search_cache_key(
                 "discover", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
@@ -1354,7 +1360,7 @@ class Store:
 
         final_results = discover_results[:limit]
 
-        if not exclude_seen_set:
+        if should_cache and not exclude_seen_set:
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(final_results))
 
         return final_results

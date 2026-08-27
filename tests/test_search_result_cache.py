@@ -45,3 +45,38 @@ def test_full_search_result_caching_and_invalidation(db_conn, tmp_path):
     res3 = store.hybrid_search(query, rerank=True)
     assert len(res3) > 0
     assert mock_rerank.call_count == 2
+
+
+def test_search_result_caching_disabled_via_config(db_conn, tmp_path):
+    history_db_path = tmp_path / "history_disabled.db"
+    doc_dir = tmp_path / "docs_disabled"
+    doc_dir.mkdir()
+    (doc_dir / "test.md").write_text("# Title\n\nDisabled caching search content.")
+
+    config = Config(
+        db_path=str(tmp_path / "main_disabled.db"),
+        history_db_path=str(history_db_path),
+        cache_search_results=False,
+        collections={"test": CollectionConfig(path=str(doc_dir))}
+    )
+    
+    init_schema(db_conn)
+    store = Store(config=config, connection=db_conn)
+    
+    mock_rerank = MagicMock(return_value=[{"index": 0, "score": 0.95}])
+    store.llm.rerank = mock_rerank
+    store.llm.embed_batch = MagicMock(return_value=[[0.1] * 768])
+    
+    store.index_collection("test", config.collections["test"])
+
+    query = "Disabled caching search"
+    
+    # First search: calls reranker
+    res1 = store.hybrid_search(query, rerank=True)
+    assert len(res1) > 0
+    assert mock_rerank.call_count == 1
+    
+    # Second search with cache_search_results=False: bypasses cache and calls reranker again
+    res2 = store.hybrid_search(query, rerank=True)
+    assert len(res2) > 0
+    assert mock_rerank.call_count == 2

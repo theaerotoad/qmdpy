@@ -56,7 +56,8 @@ class Config:
     # spaCy FTS Settings
     spacy_model: str = "en_core_web_sm"
 
-    # Search Limits
+    # Search Limits & Caching
+    cache_search_results: bool = True
     fts_limit: int = 50
     vec_limit: int = 50
     rerank_candidates: int = 20
@@ -147,6 +148,12 @@ class Config:
         vector_quantization = os.environ.get("QMD_VECTOR_QUANTIZATION") or data.get("vector_quantization") or "none"
         spacy_model = os.environ.get("SPACY_MODEL") or data.get("spacy_model") or "en_core_web_sm"
 
+        cache_results_env = os.environ.get("QMD_CACHE_SEARCH_RESULTS")
+        if cache_results_env is not None:
+            cache_search_results = cache_results_env.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            cache_search_results = data.get('cache_search_results', True)
+
         return cls(
             collections=collections,
             db_path=db_path,
@@ -175,6 +182,7 @@ class Config:
             max_chunk_size=data.get('max_chunk_size', 2048),
             strip_links=data.get('strip_links', True),
             spacy_model=spacy_model,
+            cache_search_results=cache_search_results,
             fts_limit=data.get('fts_limit', 50),
             vec_limit=data.get('vec_limit', 50),
             rerank_candidates=data.get('rerank_candidates', 20),

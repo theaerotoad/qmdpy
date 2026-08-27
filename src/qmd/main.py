@@ -259,6 +259,8 @@ def handle_discover(args, store: Store):
         if exclude_seen:
             exclude_seen_set = all_seen
 
+    use_cache = False if getattr(args, "no_cache", False) else None
+
     results = store.discover(
         query=query,
         limit=limit,
@@ -273,7 +275,8 @@ def handle_discover(args, store: Store):
         vec_limit=vec_limit,
         rerank_candidates=rerank_candidates,
         exclude_seen_set=exclude_seen_set,
-        w2n=is_w2n
+        w2n=is_w2n,
+        use_cache=use_cache
     )
 
     if getattr(args, "redact_pii", False):
@@ -354,6 +357,8 @@ def handle_search(args, store: Store):
         if exclude_seen:
             exclude_seen_set = all_seen
 
+    use_cache = False if getattr(args, "no_cache", False) else None
+
     if is_w2n:
         results = store.wide_to_narrow_search(
             query,
@@ -368,23 +373,25 @@ def handle_search(args, store: Store):
             fts_limit=fts_limit,
             vec_limit=vec_limit,
             rerank_candidates=rerank_candidates,
-            exclude_seen_set=exclude_seen_set
+            exclude_seen_set=exclude_seen_set,
+            use_cache=use_cache
         )
     else:
         results = store.hybrid_search(
             query, 
             limit=limit, 
-            verbose=args.verbose,
-            rerank=rerank,
-            reranker_only=args.rerank_only,
-            collection=args.collection,
-            lexical_query=args.lex,
-            title=args.title,
-            path=args.path,
-            fts_limit=fts_limit,
-            vec_limit=vec_limit,
-            rerank_candidates=rerank_candidates,
-            exclude_seen_set=exclude_seen_set
+            verbose=args.verbose, 
+            rerank=rerank, 
+            reranker_only=args.rerank_only, 
+            collection=args.collection, 
+            lexical_query=args.lex, 
+            title=args.title, 
+            path=args.path, 
+            fts_limit=fts_limit, 
+            vec_limit=vec_limit, 
+            rerank_candidates=rerank_candidates, 
+            exclude_seen_set=exclude_seen_set,
+            use_cache=use_cache
         )
     
     if getattr(args, "redact_pii", False):
@@ -866,6 +873,7 @@ def build_parser():
     d_mode_group.add_argument("--broad", action="store_true", help="Broad search: alias for Wide-to-Narrow hierarchical search (--w2n)")
     d_mode_group.add_argument("--limit", type=int, default=None, help="Number of final documents to show")
     d_mode_group.add_argument("--max-chunks", type=int, default=None, help="Max documents to return (defaults to config max_chunks_per_response or 30)")
+    d_mode_group.add_argument("--no-cache", action="store_true", help="Bypass and do not write to search result cache")
     d_mode_group.add_argument("--fts-limit", type=int, default=None, help="Max number of FTS (lexical) matches to retrieve")
     d_mode_group.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
     d_mode_group.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")
@@ -900,6 +908,7 @@ def build_parser():
     mode_group.add_argument("--broad", action="store_true", help="Broad search: alias for Wide-to-Narrow hierarchical search (--w2n)")
     mode_group.add_argument("--limit", type=int, default=None, help="Number of final results to show")
     mode_group.add_argument("--max-chunks", type=int, default=None, help="Max chunks to return (defaults to config max_chunks_per_response or 30)")
+    mode_group.add_argument("--no-cache", action="store_true", help="Bypass and do not write to search result cache")
     mode_group.add_argument("--fts-limit", type=int, default=None, help="Max number of FTS (lexical) matches to retrieve")
     mode_group.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
     mode_group.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")

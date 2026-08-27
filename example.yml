@@ -30,6 +30,7 @@ target_chunk_size: 1024          # Optimal character count per chunk
 max_chunk_size: 2048             # Hard limit before forcing a split
 
 # --- Search Sizing & Limit Configurations ---
+cache_search_results: true # Cache full query results in history DB (Default: true)
 fts_limit: 200          # Max lexical (FTS) candidates fetched per query pass (Default: 50)
 vec_limit: 200          # Max vector (semantic) candidates fetched per query pass (Default: 50)
 rerank_candidates: 40   # Number of fused RRF candidates passed to the reranker (Default: 20)
