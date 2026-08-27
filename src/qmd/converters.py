@@ -10,6 +10,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Union, List, Optional, Dict, Any
 
+try:
+    import dplib
+except ImportError:
+    dplib = None
+
 SUPPORTED_EXTENSIONS = {
     ".md", ".markdown", ".txt",
     ".pdf",
@@ -941,6 +946,31 @@ def _convert_html(path: Path) -> str:
     return result.strip()
 
 
+def guess_document_date(file_path: Union[str, Path], markdown_body: str = "") -> Optional[str]:
+    """
+    Attempts to infer the document date from the filename/path and markdown content using dplib.
+    """
+    if dplib is None:
+        return None
+    try:
+        sample_content = markdown_body[:4000] if markdown_body else ""
+        if hasattr(dplib, "extract_date"):
+            try:
+                res = dplib.extract_date(path=str(file_path), content=sample_content)
+            except TypeError:
+                res = dplib.extract_date(str(file_path), sample_content)
+            if res:
+                return res.isoformat() if hasattr(res, "isoformat") else str(res)
+        elif hasattr(dplib, "DateResolver"):
+            resolver = dplib.DateResolver()
+            report = resolver.resolve(filename=str(file_path).replace("\\", "/"), text_content=sample_content)
+            if report and report.resolved_date:
+                return report.resolved_date.isoformat()
+    except Exception:
+        pass
+    return None
+
+
 def _format_matrix_to_md_table(matrix: List[List[str]]) -> str:
     if not matrix:
         return ""
@@ -1025,6 +1055,9 @@ def main():
     print(md_content)
     print("=" * 80)
     print(f"Stats: {len(md_content)} characters, {len(md_content.splitlines())} lines")
+    inferred_date = guess_document_date(file_path, md_content)
+    date_str = inferred_date if inferred_date else "None detected"
+    print(f"Inferred Date: {date_str}")
 
     if args.output:
         out_path = Path(args.output).expanduser().resolve()

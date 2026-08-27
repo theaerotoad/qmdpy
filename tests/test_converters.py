@@ -177,3 +177,44 @@ def test_process_image_routing_and_concurrency(monkeypatch):
     assert concurrent_results[0] == "# MD for a.png"
     assert concurrent_results[1] == "# MD for b.png"
     assert concurrent_results[2] == "# MD for c.png"
+
+
+def test_guess_document_date(tmp_path):
+    from qmd.converters import guess_document_date
+
+    # Path date
+    f1 = tmp_path / "2024-08-20_report.txt"
+    f1.write_text("Regular content without internal date.", encoding="utf-8")
+    d1 = guess_document_date(f1, f1.read_text(encoding="utf-8"))
+    assert d1 is not None
+    assert "2024-08-20" in d1
+
+    # Content date
+    f2 = tmp_path / "meeting_notes.md"
+    content2 = "---\ndate: 2025-01-15\n---\nDiscussion points."
+    f2.write_text(content2, encoding="utf-8")
+    d2 = guess_document_date(f2, content2)
+    assert d2 is not None
+    assert "2025-01-15" in d2
+
+    # No date
+    f3 = tmp_path / "random_document.txt"
+    content3 = "Just some text without dates."
+    f3.write_text(content3, encoding="utf-8")
+    d3 = guess_document_date(f3, content3)
+    assert d3 is None
+
+
+def test_converter_main_inferred_date_output(tmp_path, capsys, monkeypatch):
+    import sys
+    from qmd.converters import main
+
+    f = tmp_path / "2026-03-30_summary.md"
+    f.write_text("# Project Summary\nAll done.", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "argv", ["converters.py", str(f)])
+    main()
+
+    captured = capsys.readouterr()
+    assert "Inferred Date:" in captured.out
+    assert "2026-03-30" in captured.out
