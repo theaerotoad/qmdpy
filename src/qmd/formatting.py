@@ -646,8 +646,53 @@ def format_chunks_xml(results: List, window: int = 0, truncation_info: Optional[
         print(output)
     return output
 
-def format_outline_xml(outline: Dict, print_output: bool = True):
-    """Outputs document heading outline as XML."""
+def _build_heading_tree(headings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Builds a tree of heading nodes from a flat list of headings with hierarchy levels."""
+    root_nodes: List[Dict[str, Any]] = []
+    stack: List[Tuple[int, Dict[str, Any]]] = []
+
+    for h in headings:
+        node = {
+            "level": h.get("level", 1),
+            "text": h.get("text", ""),
+            "start_seq": h.get("start_seq", 0),
+            "end_seq": h.get("end_seq", 0),
+            "char_count": h.get("char_count", 0),
+            "children": []
+        }
+        while stack and stack[-1][0] >= node["level"]:
+            stack.pop()
+
+        if stack:
+            stack[-1][1]["children"].append(node)
+        else:
+            root_nodes.append(node)
+
+        stack.append((node["level"], node))
+
+    return root_nodes
+
+def _render_heading_node_xml(node: Dict[str, Any], indent_level: int, lines: List[str]):
+    """Recursively formats heading tree nodes into compact, token-efficient XML."""
+    indent = "  " * indent_level
+    level = node.get("level", 1)
+    start_seq = node.get("start_seq", 0)
+    end_seq = node.get("end_seq", 0)
+    chars = node.get("char_count", 0)
+    text = escape_xml_attr(node.get("text", ""))
+    seq_str = f"{start_seq}-{end_seq}" if start_seq != end_seq else f"{start_seq}"
+    children = node.get("children", [])
+
+    if children:
+        lines.append(f'{indent}<section level="{level}" title="{text}" seq="{seq_str}" chars="{chars}">')
+        for child in children:
+            _render_heading_node_xml(child, indent_level + 1, lines)
+        lines.append(f'{indent}</section>')
+    else:
+        lines.append(f'{indent}<section level="{level}" title="{text}" seq="{seq_str}" chars="{chars}" />')
+
+def format_outline_xml(outline: Dict, print_output: bool = True) -> str:
+    """Outputs document heading outline as a token-efficient XML tree for LLM context."""
     if not outline:
         output = '<outline>\n</outline>'
         if print_output:
@@ -666,18 +711,12 @@ def format_outline_xml(outline: Dict, print_output: bool = True):
     lines = [
         f'<outline uri="{escape_xml_attr(uri)}"{coll_attr}{path_attr} title="{title}" total_chunks="{total_chunks}" total_chars="{total_chars}">'
     ]
-    for h in outline.get('headings', []):
-        level = h.get('level', 1)
-        start_seq = h.get('start_seq', 0)
-        end_seq = h.get('end_seq', 0)
-        char_count = h.get('char_count', 0)
-        text = escape_xml_attr(h.get('text', ''))
-        seq_range = f"{start_seq}-{end_seq}" if start_seq != end_seq else f"{start_seq}"
-        read_ref = f"{coll}:{path}:{seq_range}" if coll else f"{path}:{seq_range}"
-        read_attr = f' read="qmd read \'{escape_xml_attr(read_ref)}\'"'
-        lines.append(
-            f'  <heading level="{level}" start_seq="{start_seq}" end_seq="{end_seq}" char_count="{char_count}"{read_attr}>{text}</heading>'
-        )
+
+    headings = outline.get('headings', [])
+    tree_nodes = _build_heading_tree(headings)
+    for node in tree_nodes:
+        _render_heading_node_xml(node, 1, lines)
+
     lines.append('</outline>')
     output = "\n".join(lines)
     if print_output:

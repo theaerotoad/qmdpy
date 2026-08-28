@@ -487,7 +487,12 @@ def handle_outline(args, store: Store):
     coll = spec["collection"] or getattr(args, "collection", None)
     target_path = spec["path"] if spec["path"] is not None else args.path
 
-    outline = store.get_document_outline(collection=coll, path=target_path)
+    outline = store.get_document_outline(
+        collection=coll,
+        path=target_path,
+        max_depth=getattr(args, "depth", None),
+        pattern=getattr(args, "pattern", None)
+    )
     if not outline:
         if args.json:
             import json
@@ -924,6 +929,8 @@ def build_parser():
     outline_parser = subparsers.add_parser("outline", help="Show heading outline and chunk mapping for a document", parents=[parent_parser])
     outline_parser.add_argument("path", help="Path or relative path to the document")
     outline_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
+    outline_parser.add_argument("-d", "--depth", type=int, default=None, help="Maximum heading depth to display (e.g. 1 for H1 only, 2 for H1-H2)")
+    outline_parser.add_argument("-p", "--pattern", type=str, default=None, help="Filter headings by substring pattern")
     outline_parser.add_argument("--json", action="store_true", help="Output outline as JSON")
     outline_parser.add_argument("--xml", action="store_true", help="Output outline as XML for LLM context")
     outline_parser.add_argument("--llm", action="store_true", help="Alias for --xml")

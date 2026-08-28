@@ -147,7 +147,10 @@ def test_xml_formatting_flat_and_doc(capsys):
         "title": "Doc",
         "total_chunks": 20,
         "total_chars": 5000,
-        "headings": [{"level": 1, "start_seq": 0, "end_seq": 9, "char_count": 2500, "text": "Intro & Setup"}]
+        "headings": [
+            {"level": 1, "start_seq": 0, "end_seq": 9, "char_count": 2500, "text": "Intro & Setup"},
+            {"level": 2, "start_seq": 0, "end_seq": 4, "char_count": 1200, "text": "Getting Started"}
+        ]
     }
     format_outline_xml(outline)
     outline_out = capsys.readouterr().out
@@ -155,7 +158,8 @@ def test_xml_formatting_flat_and_doc(capsys):
     assert 'collection="main"' in outline_out
     assert 'path="doc.md"' in outline_out
     assert 'title="Doc"' in outline_out
-    assert '<heading level="1" start_seq="0" end_seq="9" char_count="2500" read="qmd read \'main:doc.md:0-9\'">Intro &amp; Setup</heading>' in outline_out
+    assert '<section level="1" title="Intro &amp; Setup" seq="0-9" chars="2500">' in outline_out
+    assert '<section level="2" title="Getting Started" seq="0-4" chars="1200" />' in outline_out
 
 def test_cli_xml_flags(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["qmd", "search", "helios", "--xml", "--flat"])

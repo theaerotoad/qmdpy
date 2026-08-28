@@ -1494,7 +1494,13 @@ class Store:
 
         return final_results
 
-    def get_document_outline(self, collection: Optional[str], path: str) -> Optional[Dict[str, Any]]:
+    def get_document_outline(
+        self,
+        collection: Optional[str],
+        path: str,
+        max_depth: Optional[int] = None,
+        pattern: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """Extracts document structure heading hierarchy correlated with chunk sequence ranges."""
         cursor = self.conn.cursor()
         if collection:
@@ -1606,6 +1612,13 @@ class Store:
                 "end_seq": end_seq,
                 "char_count": section_chars
             })
+
+        if max_depth is not None:
+            structured_headings = [h for h in structured_headings if h["level"] <= max_depth]
+
+        if pattern:
+            p_lower = pattern.lower()
+            structured_headings = [h for h in structured_headings if p_lower in h["text"].lower()]
 
         return {
             "collection": coll_name,
