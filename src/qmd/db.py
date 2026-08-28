@@ -537,9 +537,15 @@ def init_schema(conn: sqlite3.Connection):
         doc_hash TEXT NOT NULL,
         seq_id INTEGER NOT NULL,
         chunk_text BLOB NOT NULL,
+        headers TEXT,
         FOREIGN KEY (rowid) REFERENCES vectors(rowid) ON DELETE CASCADE
     );
     """)
+
+    try:
+        cursor.execute("ALTER TABLE chunk_metadata ADD COLUMN headers TEXT")
+    except sqlite3.OperationalError:
+        pass
 
     # 6. Chunk-Level FTS5 Virtual Table
     cursor.execute("""
