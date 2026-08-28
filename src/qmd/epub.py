@@ -434,7 +434,7 @@ class EPUBHTMLToMarkdown(HTMLParser):
         aria_level = attrs_dict.get('aria-level', '')
         is_aria_heading = (role == 'heading' and aria_level.isdigit())
         cls = attrs_dict.get('class', '').lower()
-        is_heading_class = bool(re.search(r'\b(chapter[-_]?(title|num|number)?|part[-_]?(title|num|number)?|heading[-_]?[1-6]|h[1-6]|section[-_]?title|chaptitle)\b', cls))
+        is_heading_class = bool(re.search(r'\b(title|subtitle|subhead|chapter[-_]?(title|num|number)?|part[-_]?(title|num|number)?|heading[-_]?[1-6]|h[1-6]|section[-_]?(title)?|chaptitle)\b', cls))
 
         if tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or is_aria_heading:
             if is_aria_heading:
@@ -456,7 +456,7 @@ class EPUBHTMLToMarkdown(HTMLParser):
                 self.used_toc_entries.add(id(self.file_level_toc))
 
             self.header_stack.append({'level': assigned_level, 'raw_level': raw_level, 'buf': [], 'toc_entry': matched_toc})
-        elif (tag in ('p', 'div', 'section') and (self.pending_toc_entry or (not self.has_emitted_any_heading and self.file_level_toc and is_heading_class))) and not self.header_stack:
+        elif tag == 'p' and (self.pending_toc_entry or (not self.has_emitted_any_heading and self.file_level_toc and is_heading_class)) and not self.header_stack:
             toc_target = self.pending_toc_entry or self.file_level_toc
             if toc_target and id(toc_target) not in self.used_toc_entries:
                 self.header_stack.append({
@@ -653,7 +653,7 @@ class EPUBHTMLToMarkdown(HTMLParser):
     def get_markdown(self):
         raw = "".join(self.output)
 
-        if not self.has_emitted_any_heading and self.file_level_toc and id(self.file_level_toc) not in self.used_toc_entries:
+        if self.file_level_toc and id(self.file_level_toc) not in self.used_toc_entries:
             stripped_raw = raw.strip()
             if stripped_raw:
                 heading_line = f"{'#' * self.file_level_toc.level} {self.file_level_toc.title}"
