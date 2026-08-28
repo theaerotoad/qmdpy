@@ -208,3 +208,143 @@ def test_parse_target_spec():
     assert t6_quoted["collection"] == "Books"
     assert t6_quoted["path"] == "Special & Doc.md"
     assert t6_quoted["seq"] == [1, 2, 3]
+
+# --- Federation and Include Tests ---
+
+def test_config_include_basic(tmp_path):
+    child_yaml = tmp_path / "child.yml"
+    child_yaml.write_text("""
+db_path: "./child.db"
+embed_model: "EmbeddingGemma 300m"
+collections:
+  child_coll:
+    path: /tmp/child
+    glob: "*.md"
+""")
+    master_yaml = tmp_path / "master.yml"
+    master_yaml.write_text(f"""
+db_path: "./master.db"
+embed_model: "EmbeddingGemma 300m"
+include:
+  - "{child_yaml.name}"
+collections:
+  master_coll:
+    path: /tmp/master
+    glob: "*.md"
+""")
+    cfg = load_config(master_yaml)
+    assert cfg.is_federated is True
+    assert "master_coll" in cfg.collections
+    assert "child_coll" in cfg.collections
+    assert len(cfg.included_configs) == 1
+    assert cfg.included_configs[0].collections["child_coll"].path == "/tmp/child"
+
+
+def test_config_include_self_referential_rejection(tmp_path):
+    cfg_file = tmp_path / "self.yml"
+    cfg_file.write_text(f"""
+db_path: "./self.db"
+include:
+  - "{cfg_file.name}"
+collections:
+  self_coll:
+    path: /tmp/self
+""")
+    with pytest.raises(ValueError, match="Self-referential"):
+        load_config(cfg_file)
+
+
+def test_config_include_circular_rejection(tmp_path):
+    a_yaml = tmp_path / "a.yml"
+    b_yaml = tmp_path / "b.yml"
+    a_yaml.write_text("""
+db_path: "./a.db"
+embed_model: "EmbeddingGemma 300m"
+include:
+  - "b.yml"
+collections:
+  a_coll:
+    path: /tmp/a
+""")
+    b_yaml.write_text("""
+db_path: "./b.db"
+embed_model: "EmbeddingGemma 300m"
+include:
+  - "a.yml"
+collections:
+  b_coll:
+    path: /tmp/b
+""")
+    with pytest.raises(ValueError, match="Circular"):
+        load_config(a_yaml)
+
+
+def test_config_include_embedding_mismatch_rejection(tmp_path):
+    child_yaml = tmp_path / "child_mismatch.yml"
+    child_yaml.write_text("""
+db_path: "./child_m.db"
+embed_model: "OtherEmbedding 500m"
+collections:
+  child_coll:
+    path: /tmp/child
+""")
+    master_yaml = tmp_path / "master.yml"
+    master_yaml.write_text(f"""
+db_path: "./master.db"
+embed_model: "EmbeddingGemma 300m"
+include:
+  - "{child_yaml.name}"
+collections:
+  master_coll:
+    path: /tmp/master
+""")
+    with pytest.raises(ValueError, match="Embedding model mismatch"):
+        load_config(master_yaml)
+
+
+def test_config_include_duplicate_collection_rejection(tmp_path):
+    child_yaml = tmp_path / "child_dup.yml"
+    child_yaml.write_text("""
+db_path: "./child_dup.db"
+embed_model: "EmbeddingGemma 300m"
+collections:
+  shared_coll:
+    path: /tmp/child_shared
+""")
+    master_yaml = tmp_path / "master.yml"
+    master_yaml.write_text(f"""
+db_path: "./master.db"
+embed_model: "EmbeddingGemma 300m"
+include:
+  - "{child_yaml.name}"
+collections:
+  shared_coll:
+    path: /tmp/master_shared
+""")
+    with pytest.raises(ValueError, match="Duplicate collection name"):
+        load_config(master_yaml)
+
+
+def test_config_include_master_url_override(tmp_path):
+    child_yaml = tmp_path / "child.yml"
+    child_yaml.write_text("""
+db_path: "./child.db"
+embed_model: "EmbeddingGemma 300m"
+llm_url: "http://child-server:9999"
+collections:
+  child_coll:
+    path: /tmp/child
+""")
+    master_yaml = tmp_path / "master.yml"
+    master_yaml.write_text(f"""
+db_path: "./master.db"
+embed_model: "EmbeddingGemma 300m"
+llm_url: "http://master-server:8888"
+include:
+  - "{child_yaml.name}"
+collections:
+  master_coll:
+    path: /tmp/master
+""")
+    cfg = load_config(master_yaml)
+    assert cfg.included_configs[0].llm_url == "http://master-server:8888"

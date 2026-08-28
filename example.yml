@@ -41,6 +41,11 @@ default_limit: 10       # Default number of final results returned if --limit is
 rerank_model: "Ettin Reranker"
 embed_model: "EmbeddingGemma 300m"
 
+# --- External Collection Includes ---
+# include:
+#   - "./extra-collections.yml"
+#   - "/path/to/another-index.yml"
+
 collections:
   # Option 2: Explicit list of allowed file extensions
   Books:

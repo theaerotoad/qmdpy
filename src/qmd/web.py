@@ -435,7 +435,9 @@ def get_document():
     if not collection or not path:
         return jsonify({"error": "Missing params"}), 400
 
-    cursor = get_store().conn.cursor()
+    store = get_store()
+    target_store = getattr(store, "collection_store_map", {}).get(collection, store) if collection else store
+    cursor = target_store.conn.cursor()
     cursor.execute('''
         SELECT c.body, d.title
         FROM documents d
@@ -478,7 +480,8 @@ def collections():
     for k, v in cfg.collections.items():
         doc_count = 0
         try:
-            cursor = store.conn.cursor()
+            target_store = getattr(store, "collection_store_map", {}).get(k, store)
+            cursor = target_store.conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM documents WHERE collection = ?", (k,))
             row = cursor.fetchone()
             if row:
@@ -579,10 +582,13 @@ def get_collections_tree():
 
 @app.route('/api/update', methods=['POST'])
 def update():
-    data = request.json
+    cfg = get_config()
+    if getattr(cfg, "is_federated", False):
+        return jsonify({"status": "error", "message": "Updating/indexing is disabled in federated include mode. Update individual collection configurations directly."}), 400
+
+    data = request.json or {}
     collection = data.get('collection')
     force = data.get('force', False)
-    cfg = get_config()
     
     if collection and collection in cfg.collections:
         try:
