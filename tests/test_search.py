@@ -382,3 +382,101 @@ def test_search_vec_quantization(db_conn, monkeypatch):
     assert len(results) == 1
     assert results[0].path == "m.md"
     assert results[0].score > 0.8
+
+
+def test_federated_multi_db_search(tmp_path):
+    from qmd.db import get_connection, init_schema
+    from qmd.utils import compress_text
+    from qmd.store import encode_vector, Store
+    from qmd.config import load_config
+
+    master_db_path = tmp_path / "master.db"
+    child_db_path = tmp_path / "child.db"
+
+    # Setup master database
+    conn_m = get_connection(master_db_path)
+    init_schema(conn_m)
+    cur_m = conn_m.cursor()
+    cur_m.execute("INSERT INTO content (hash, body, created_at) VALUES ('hm', 'master document content about databases', 'now')")
+    cur_m.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('master_coll', 'doc_m.md', 'Master Doc', 'hm', 'now')")
+    id_m = cur_m.lastrowid
+    cur_m.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'master_coll', 'doc_m.md', 'Master Doc', 'master document content about databases')", (id_m,))
+    dummy_vec = encode_vector([0.0] * 768)
+    cur_m.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (id_m, dummy_vec))
+    cur_m.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'hm', 0, ?, 'MasterHeader')", (id_m, compress_text("master document content about databases")))
+    cur_m.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'master_coll', 'doc_m.md', 'Master Doc', 'master document content about databases', 'MasterHeader')", (id_m,))
+    conn_m.commit()
+    conn_m.close()
+
+    # Setup child database
+    conn_c = get_connection(child_db_path)
+    init_schema(conn_c)
+    cur_c = conn_c.cursor()
+    cur_c.execute("INSERT INTO content (hash, body, created_at) VALUES ('hc', 'child document content about databases', 'now')")
+    cur_c.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('child_coll', 'doc_c.md', 'Child Doc', 'hc', 'now')")
+    id_c = cur_c.lastrowid
+    cur_c.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'child_coll', 'doc_c.md', 'Child Doc', 'child document content about databases')", (id_c,))
+    cur_c.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (id_c, dummy_vec))
+    cur_c.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'hc', 0, ?, 'ChildHeader')", (id_c, compress_text("child document content about databases")))
+    cur_c.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'child_coll', 'doc_c.md', 'Child Doc', 'child document content about databases', 'ChildHeader')", (id_c,))
+    conn_c.commit()
+    conn_c.close()
+
+    # Create master and included YAML configs
+    child_yaml = tmp_path / "child.yml"
+    child_yaml.write_text(f"""
+db_path: "{child_db_path}"
+embed_model: "EmbeddingGemma 300m"
+collections:
+  child_coll:
+    path: "{tmp_path}"
+    glob: "*.md"
+""")
+    master_yaml = tmp_path / "master.yml"
+    master_yaml.write_text(f"""
+db_path: "{master_db_path}"
+embed_model: "EmbeddingGemma 300m"
+include:
+  - "{child_yaml.name}"
+collections:
+  master_coll:
+    path: "{tmp_path}"
+    glob: "*.md"
+""")
+
+    cfg = load_config(master_yaml)
+    store = Store(cfg, read_only=True)
+
+    # 1. Federated FTS search across all databases
+    res_fts = store.search_fts("databases")
+    assert len(res_fts) == 2
+    colls = {r.collection for r in res_fts}
+    assert colls == {"master_coll", "child_coll"}
+
+    # 2. Filtered search targeting child collection
+    res_child = store.search_fts("databases", collection="child_coll")
+    assert len(res_child) == 1
+    assert res_child[0].collection == "child_coll"
+    assert res_child[0].path == "doc_c.md"
+
+    # 3. Federated Discover search
+    res_disc = store.discover("databases", limit=10)
+    assert len(res_disc) == 2
+    assert {r.collection for r in res_disc} == {"master_coll", "child_coll"}
+
+    # 4. Target chunk, outline, and grep collection routing
+    child_chunk = store.get_chunk_by_seq("child_coll", "doc_c.md", seq_id=0)
+    assert len(child_chunk) == 1
+    assert "child document content" in child_chunk[0].text
+
+    outline = store.get_document_outline("child_coll", "doc_c.md")
+    assert outline is not None
+    assert outline["collection"] == "child_coll"
+
+    grep_res = store.grep_search("content", collection="child_coll")
+    assert len(grep_res) == 1
+    assert grep_res[0]["collection"] == "child_coll"
+
+    # 5. Verify mutation prohibition in federated mode
+    with pytest.raises(RuntimeError, match="federated include mode"):
+        store.index_collection("master_coll", cfg.collections["master_coll"])

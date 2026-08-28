@@ -477,6 +477,7 @@ def collections():
     cfg = get_config()
     store = get_store()
     colls = []
+    is_fed = getattr(cfg, "is_federated", False)
     for k, v in cfg.collections.items():
         doc_count = 0
         try:
@@ -488,7 +489,13 @@ def collections():
                 doc_count = row[0]
         except Exception:
             pass
-        colls.append({"name": k, "path": str(v.path), "doc_count": doc_count})
+        colls.append({
+            "name": k,
+            "path": str(v.path),
+            "doc_count": doc_count,
+            "is_federated": is_fed,
+            "can_reindex": not is_fed
+        })
     return jsonify(colls)
 
 @app.route('/api/grep', methods=['POST'])
