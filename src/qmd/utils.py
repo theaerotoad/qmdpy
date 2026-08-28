@@ -479,10 +479,10 @@ def parse_query_directives(query: str) -> Tuple[str, Dict[str, Any]]:
     if p is not None:
         directives["path"] = p
 
-    # Collection filter
+    # Collection filter (supports exact, wildcards, or comma-separated lists)
     c = _extract_str(r'(?:col|in|c):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
     if c is not None:
-        directives["collection"] = c
+        directives["collection"] = c.strip()
 
     # Lexical / FTS override
     l = _extract_str(r'(?:lex|fts|l):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')

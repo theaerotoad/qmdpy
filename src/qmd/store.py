@@ -87,6 +87,38 @@ def extract_document_date(file_path: Union[str, Path], markdown_body: str = "") 
     return None
 
 
+def _build_collection_sql_filter(column_name: str, collection: Optional[Union[str, List[str]]]) -> Tuple[str, List[str]]:
+    """
+    Constructs SQL WHERE clause and parameter list for collection filtering.
+    Supports exact match, substring match, wildcards (*, ?), and comma-separated lists.
+    """
+    if not collection:
+        return "", []
+
+    tokens = []
+    if isinstance(collection, str):
+        if collection.strip():
+            tokens = [c.strip() for c in collection.split(',') if c.strip()]
+    elif isinstance(collection, (list, tuple, set)):
+        tokens = [str(c).strip() for c in collection if str(c).strip()]
+
+    if not tokens:
+        return "", []
+
+    clauses = []
+    params = []
+    for tok in tokens:
+        if '*' in tok or '?' in tok:
+            clauses.append(f"{column_name} LIKE ?")
+            params.append(tok.replace('*', '%').replace('?', '_'))
+        else:
+            clauses.append(f"{column_name} LIKE ?")
+            params.append(f"%{tok}%")
+
+    sql = f" AND ({' OR '.join(clauses)})" if clauses else ""
+    return sql, params
+
+
 def encode_vector(vec: List[float], quant_type: str = "none") -> bytes:
     quant_type = (quant_type or "none").lower()
     if quant_type in ("int8",):
@@ -256,6 +288,52 @@ class Store:
             if coll_name not in self.collection_store_map:
                 self.collection_store_map[coll_name] = self
 
+    def _get_target_stores_for_collection(self, collection: Optional[Union[str, List[str]]]) -> List['Store']:
+        """
+        Determines which stores (self and/or child stores) should be queried based on collection filter.
+        Supports exact names, wildcards (*, ?), comma-separated names, or substring matching.
+        """
+        if not self.child_stores:
+            return [self]
+
+        if not collection:
+            return [self] + self.child_stores
+
+        coll_tokens = []
+        if isinstance(collection, str):
+            if collection.strip():
+                coll_tokens = [c.strip().lower() for c in collection.split(',') if c.strip()]
+        elif isinstance(collection, (list, tuple, set)):
+            coll_tokens = [str(c).strip().lower() for c in collection if str(c).strip()]
+
+        if not coll_tokens:
+            return [self] + self.child_stores
+
+        import fnmatch
+        matched_stores = set()
+        for coll_name, store in self.collection_store_map.items():
+            coll_lower = coll_name.lower()
+            for tok in coll_tokens:
+                if '*' in tok or '?' in tok:
+                    if fnmatch.fnmatch(coll_lower, tok):
+                        matched_stores.add(store)
+                        break
+                else:
+                    if tok in coll_lower:
+                        matched_stores.add(store)
+                        break
+
+        if matched_stores:
+            ordered = []
+            if self in matched_stores:
+                ordered.append(self)
+            for cs in self.child_stores:
+                if cs in matched_stores and cs not in ordered:
+                    ordered.append(cs)
+            return ordered
+
+        return [self] + self.child_stores
+
     def _hydrate_results_text_local(self, results: List[Result]):
         needed = [r for r in results if not r.text]
         if not needed:
@@ -339,13 +417,18 @@ class Store:
         else:
             path_val = path or ""
 
+        if isinstance(collection, (list, tuple, set)):
+            coll_val: Union[str, List[str]] = sorted([str(c).strip() for c in collection if str(c).strip()])
+        else:
+            coll_val = collection or ""
+
         key_data = {
             "search_type": search_type,
             "query": query,
             "limit": limit,
             "rerank": rerank,
             "reranker_only": reranker_only,
-            "collection": collection or "",
+            "collection": coll_val,
             "lexical_query": lexical_query or "",
             "title": title or "",
             "path": path_val,
@@ -500,18 +583,17 @@ class Store:
         """)
         self.conn.commit()
 
-    def get_indexing_errors(self, collection: Optional[str] = None, path: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_indexing_errors(self, collection: Optional[Union[str, List[str]]] = None, path: Optional[str] = None) -> List[Dict[str, Any]]:
         """Retrieves list of documents that encountered errors or partial failures during indexing."""
-        if collection and collection in self.collection_store_map:
-            target_store = self.collection_store_map[collection]
-            if target_store is not self:
-                return target_store.get_indexing_errors(collection=collection, path=path)
-
-        local_errors = get_indexing_errors(self.conn, collection=collection, path=path)
-        if self.child_stores and not collection:
-            for child in self.child_stores:
-                local_errors.extend(child.get_indexing_errors(collection=collection, path=path))
-        return local_errors
+        target_stores = self._get_target_stores_for_collection(collection)
+        all_errors = []
+        for store in target_stores:
+            if store is self:
+                local_errors = get_indexing_errors(self.conn, collection=collection, path=path)
+                all_errors.extend(local_errors)
+            else:
+                all_errors.extend(store.get_indexing_errors(collection=collection, path=path))
+        return all_errors
 
     def _process_file(self, collection_name: str, base_path: Path, file_path: Path, current_paths: set, force: bool = False) -> bool:
         rel_path = str(file_path.relative_to(base_path))
@@ -777,8 +859,8 @@ class Store:
             JOIN chunk_metadata m ON f.rowid = m.rowid
             WHERE chunks_fts MATCH ?
         """
-        filters_sql = ""
-        if collection: filters_sql += " AND f.collection = ?"
+        coll_sql, coll_params = _build_collection_sql_filter("f.collection", collection)
+        filters_sql = coll_sql
         if title: filters_sql += " AND f.title LIKE ?"
         if paths:
             path_clauses = " OR ".join(["f.filepath LIKE ?" for _ in paths])
@@ -789,7 +871,7 @@ class Store:
 
         def build_params(q_val):
             p = [q_val]
-            if collection: p.append(collection)
+            p.extend(coll_params)
             if title: p.append(f"%{title}%")
             for p_val in paths:
                 p.append(f"%{p_val}%")
@@ -838,24 +920,24 @@ class Store:
 
         return results
 
-    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False) -> List[Result]:
+    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False) -> List[Result]:
         """Lexical search directly on chunks across local and federated stores."""
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
         
-        if collection and collection in self.collection_store_map:
-            target_store = self.collection_store_map[collection]
-            if target_store is not self:
-                return target_store.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+        target_stores = self._get_target_stores_for_collection(collection)
+        if len(target_stores) == 1 and target_stores[0] is self:
+            return self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
 
-        if self.child_stores and not collection:
-            all_results = self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
-            for child in self.child_stores:
-                child_res = child.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
-                all_results.extend(child_res)
-            all_results.sort(key=lambda r: r.score, reverse=True)
-            return all_results[:limit]
+        all_results = []
+        for store in target_stores:
+            if store is self:
+                res = self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+            else:
+                res = store.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+            all_results.extend(res)
 
-        return self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+        all_results.sort(key=lambda r: r.score, reverse=True)
+        return all_results[:limit]
 
     def get_query_embedding(self, formatted_query: str) -> List[float]:
         embed_model = getattr(self.config, "embed_model", "EmbeddingGemma 300m")
@@ -904,9 +986,9 @@ class Store:
                 """
                 params = [query_blob, k_val]
 
-                if collection:
-                    query_sql += " AND d.collection = ?"
-                    params.append(collection)
+                coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
+                query_sql += coll_sql
+                params.extend(coll_params)
                 if title:
                     query_sql += " AND d.title LIKE ?"
                     params.append(f"%{title}%")
@@ -954,9 +1036,10 @@ class Store:
         """
         where_clauses = []
         params = []
-        if collection:
-            where_clauses.append("d.collection = ?")
-            params.append(collection)
+        coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
+        if coll_sql:
+            where_clauses.append(coll_sql[5:])
+            params.extend(coll_params)
         if title:
             where_clauses.append("d.title LIKE ?")
             params.append(f"%{title}%")
@@ -999,7 +1082,7 @@ class Store:
             ))
         return candidates
 
-    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False) -> List[Result]:
+    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
         if query_vec is None:
             query_text = self.llm.format_query_for_embedding(query)
@@ -1007,20 +1090,20 @@ class Store:
         if not query_vec:
             return []
 
-        if collection and collection in self.collection_store_map:
-            target_store = self.collection_store_map[collection]
-            if target_store is not self:
-                return target_store.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+        target_stores = self._get_target_stores_for_collection(collection)
+        if len(target_stores) == 1 and target_stores[0] is self:
+            return self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
 
-        if self.child_stores and not collection:
-            all_results = self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
-            for child in self.child_stores:
-                child_res = child.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
-                all_results.extend(child_res)
-            all_results.sort(key=lambda r: r.score, reverse=True)
-            return all_results[:limit]
+        all_results = []
+        for store in target_stores:
+            if store is self:
+                res = self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+            else:
+                res = store.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+            all_results.extend(res)
 
-        return self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+        all_results.sort(key=lambda r: r.score, reverse=True)
+        return all_results[:limit]
 
     def hybrid_search(
         self, 
@@ -1653,20 +1736,14 @@ class Store:
         pattern: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Extracts document structure heading hierarchy correlated with chunk sequence ranges."""
-        if collection and collection in self.collection_store_map:
-            target_store = self.collection_store_map[collection]
-            if target_store is not self:
-                return target_store.get_document_outline(collection, path, max_depth, pattern)
-
-        res = self._get_document_outline_local(collection, path, max_depth, pattern)
-        if res is not None:
-            return res
-
-        if not collection and self.child_stores:
-            for child in self.child_stores:
-                child_res = child.get_document_outline(collection, path, max_depth, pattern)
-                if child_res is not None:
-                    return child_res
+        target_stores = self._get_target_stores_for_collection(collection)
+        for store in target_stores:
+            if store is self:
+                res = self._get_document_outline_local(collection, path, max_depth, pattern)
+            else:
+                res = store.get_document_outline(collection, path, max_depth, pattern)
+            if res is not None:
+                return res
         return None
 
     def _get_document_outline_local(
@@ -1677,18 +1754,13 @@ class Store:
         pattern: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         cursor = self.conn.cursor()
-        if collection:
-            cursor.execute("SELECT id, collection, path, title, hash FROM documents WHERE collection = ? AND path = ?", (collection, path))
-        else:
-            cursor.execute("SELECT id, collection, path, title, hash FROM documents WHERE path = ?", (path,))
+        coll_sql, coll_params = _build_collection_sql_filter("collection", collection)
 
+        cursor.execute(f"SELECT id, collection, path, title, hash FROM documents WHERE path = ?{coll_sql}", (path, *coll_params))
         doc_row = cursor.fetchone()
         if not doc_row:
             # Fallback to substring matching on path
-            if collection:
-                cursor.execute("SELECT id, collection, path, title, hash FROM documents WHERE collection = ? AND path LIKE ?", (collection, f"%{path}%"))
-            else:
-                cursor.execute("SELECT id, collection, path, title, hash FROM documents WHERE path LIKE ?", (f"%{path}%",))
+            cursor.execute(f"SELECT id, collection, path, title, hash FROM documents WHERE path LIKE ?{coll_sql}", (f"%{path}%", *coll_params))
             doc_row = cursor.fetchone()
 
         if not doc_row:
@@ -1943,35 +2015,24 @@ class Store:
 
     def get_chunk_by_seq(self, collection: Optional[str], path: str, seq_id: Union[int, List[int]] = 0, window: int = 0) -> List[Result]:
         """Retrieves target chunk(s) by collection, path, and seq_id(s) along with ±window surrounding chunks."""
-        if collection and collection in self.collection_store_map:
-            target_store = self.collection_store_map[collection]
-            if target_store is not self:
-                return target_store.get_chunk_by_seq(collection, path, seq_id=seq_id, window=window)
-
-        res = self._get_chunk_by_seq_local(collection, path, seq_id=seq_id, window=window)
-        if res:
-            return res
-
-        if not collection and self.child_stores:
-            for child in self.child_stores:
-                child_res = child.get_chunk_by_seq(collection, path, seq_id=seq_id, window=window)
-                if child_res:
-                    return child_res
+        target_stores = self._get_target_stores_for_collection(collection)
+        for store in target_stores:
+            if store is self:
+                res = self._get_chunk_by_seq_local(collection, path, seq_id=seq_id, window=window)
+            else:
+                res = store.get_chunk_by_seq(collection, path, seq_id=seq_id, window=window)
+            if res:
+                return res
         return []
 
     def _get_chunk_by_seq_local(self, collection: Optional[str], path: str, seq_id: Union[int, List[int]] = 0, window: int = 0) -> List[Result]:
         cursor = self.conn.cursor()
-        if collection:
-            cursor.execute("SELECT hash, collection, path, title FROM documents WHERE collection = ? AND path = ?", (collection, path))
-        else:
-            cursor.execute("SELECT hash, collection, path, title FROM documents WHERE path = ?", (path,))
+        coll_sql, coll_params = _build_collection_sql_filter("collection", collection)
 
+        cursor.execute(f"SELECT hash, collection, path, title FROM documents WHERE path = ?{coll_sql}", (path, *coll_params))
         row = cursor.fetchone()
         if not row:
-            if collection:
-                cursor.execute("SELECT hash, collection, path, title FROM documents WHERE collection = ? AND path LIKE ?", (collection, f"%{path}%"))
-            else:
-                cursor.execute("SELECT hash, collection, path, title FROM documents WHERE path LIKE ?", (f"%{path}%",))
+            cursor.execute(f"SELECT hash, collection, path, title FROM documents WHERE path LIKE ?{coll_sql}", (f"%{path}%", *coll_params))
             row = cursor.fetchone()
 
         if not row:
@@ -2021,25 +2082,22 @@ class Store:
         case_sensitive: bool = False
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], None]:
         """Builds a nested folder directory tree structure of indexed documents, optionally filtered by pattern/regex."""
-        if collection and collection in self.collection_store_map:
-            target_store = self.collection_store_map[collection]
-            if target_store is not self:
-                return target_store.get_collection_tree(collection, max_depth, pattern, is_regex, case_sensitive)
-
-        if collection:
-            return self._get_collection_tree_local(collection, max_depth, pattern, is_regex, case_sensitive)
-
+        target_stores = self._get_target_stores_for_collection(collection)
         all_trees: List[Dict[str, Any]] = []
-        local_tree = self._get_collection_tree_local(None, max_depth, pattern, is_regex, case_sensitive)
-        if isinstance(local_tree, list):
-            all_trees.extend(local_tree)
+        for store in target_stores:
+            if store is self:
+                tree = self._get_collection_tree_local(collection, max_depth, pattern, is_regex, case_sensitive)
+            else:
+                tree = store.get_collection_tree(collection, max_depth, pattern, is_regex, case_sensitive)
+            if isinstance(tree, list):
+                all_trees.extend(tree)
+            elif isinstance(tree, dict):
+                all_trees.append(tree)
 
-        if self.child_stores:
-            for child in self.child_stores:
-                child_tree = child.get_collection_tree(None, max_depth, pattern, is_regex, case_sensitive)
-                if isinstance(child_tree, list):
-                    all_trees.extend(child_tree)
-
+        if collection and len(all_trees) == 1:
+            return all_trees[0]
+        if not all_trees and collection:
+            return None
         return all_trees
 
     def _get_collection_tree_local(
@@ -2053,10 +2111,12 @@ class Store:
         cursor = self.conn.cursor()
 
         if collection:
-            cursor.execute("SELECT DISTINCT collection FROM documents WHERE collection = ?", (collection,))
-            if not cursor.fetchone():
+            coll_sql, coll_params = _build_collection_sql_filter("collection", collection)
+            where_clause = " WHERE " + coll_sql[5:] if coll_sql else ""
+            cursor.execute(f"SELECT DISTINCT collection FROM documents{where_clause} ORDER BY collection ASC", tuple(coll_params))
+            collections = [row[0] for row in cursor.fetchall()]
+            if not collections:
                 return None
-            collections = [collection]
         else:
             cursor.execute("SELECT DISTINCT collection FROM documents ORDER BY collection ASC")
             collections = [row[0] for row in cursor.fetchall()]
@@ -2145,7 +2205,7 @@ class Store:
         pattern: str,
         is_regex: bool = False,
         case_sensitive: bool = False,
-        collection: Optional[str] = None,
+        collection: Optional[Union[str, List[str]]] = None,
         path: Optional[Union[str, List[str]]] = None,
         limit: int = 50
     ) -> List[Dict[str, Any]]:
@@ -2153,29 +2213,26 @@ class Store:
         if not pattern:
             return []
 
-        if collection and collection in self.collection_store_map:
-            target_store = self.collection_store_map[collection]
-            if target_store is not self:
-                return target_store.grep_search(pattern, is_regex=is_regex, case_sensitive=case_sensitive, collection=collection, path=path, limit=limit)
+        target_stores = self._get_target_stores_for_collection(collection)
+        all_matches = []
+        for store in target_stores:
+            if len(all_matches) >= limit:
+                break
+            rem = limit - len(all_matches)
+            if store is self:
+                matches = self._grep_search_local(pattern, is_regex=is_regex, case_sensitive=case_sensitive, collection=collection, path=path, limit=rem)
+            else:
+                matches = store.grep_search(pattern, is_regex=is_regex, case_sensitive=case_sensitive, collection=collection, path=path, limit=rem)
+            all_matches.extend(matches)
 
-        if self.child_stores and not collection:
-            all_matches = self._grep_search_local(pattern, is_regex=is_regex, case_sensitive=case_sensitive, collection=collection, path=path, limit=limit)
-            for child in self.child_stores:
-                if len(all_matches) >= limit:
-                    break
-                rem = limit - len(all_matches)
-                child_matches = child.grep_search(pattern, is_regex=is_regex, case_sensitive=case_sensitive, collection=collection, path=path, limit=rem)
-                all_matches.extend(child_matches)
-            return all_matches[:limit]
-
-        return self._grep_search_local(pattern, is_regex=is_regex, case_sensitive=case_sensitive, collection=collection, path=path, limit=limit)
+        return all_matches[:limit]
 
     def _grep_search_local(
         self,
         pattern: str,
         is_regex: bool = False,
         case_sensitive: bool = False,
-        collection: Optional[str] = None,
+        collection: Optional[Union[str, List[str]]] = None,
         path: Optional[Union[str, List[str]]] = None,
         limit: int = 50
     ) -> List[Dict[str, Any]]:
@@ -2204,9 +2261,10 @@ class Store:
         """
         where_clauses = []
         params = []
-        if collection:
-            where_clauses.append("d.collection = ?")
-            params.append(collection)
+        coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
+        if coll_sql:
+            where_clauses.append(coll_sql[5:])
+            params.extend(coll_params)
         if paths:
             where_clauses.append("(" + " OR ".join(["d.path LIKE ?" for _ in paths]) + ")")
             for p_val in paths:

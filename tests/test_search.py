@@ -278,6 +278,25 @@ def test_search_collection_filter(db_conn, monkeypatch):
     assert res_a[0].collection == "coll_a"
     assert res_a[0].path == "doc_a.md"
 
+    # With partial filter 'a', should return coll_a
+    res_partial_a = store.search_fts("python", collection="a")
+    assert len(res_partial_a) == 1
+    assert res_partial_a[0].collection == "coll_a"
+
+    # With partial filter 'coll', should return both coll_a and coll_b
+    res_partial_coll = store.search_fts("python", collection="coll")
+    assert len(res_partial_coll) == 2
+    assert {r.collection for r in res_partial_coll} == {"coll_a", "coll_b"}
+
+    # With wildcard pattern '*_b', should return coll_b
+    res_wildcard = store.search_fts("python", collection="*_b")
+    assert len(res_wildcard) == 1
+    assert res_wildcard[0].collection == "coll_b"
+
+    # With comma-separated list 'coll_a, coll_b', should return both
+    res_comma = store.search_fts("python", collection="coll_a, coll_b")
+    assert len(res_comma) == 2
+
 def test_search_metadata_filters(db_conn, monkeypatch):
     config = Config(db_path=":memory:")
     store = Store(config, connection=db_conn)
@@ -477,6 +496,39 @@ collections:
     assert len(grep_res) == 1
     assert grep_res[0]["collection"] == "child_coll"
 
-    # 5. Verify mutation prohibition in federated mode
+    # 5. Partial collection searches across federated databases
+    # 5a. Partial match targeting child database ('child' -> 'child_coll')
+    res_fed_child_partial = store.search_fts("databases", collection="child")
+    assert len(res_fed_child_partial) == 1
+    assert res_fed_child_partial[0].collection == "child_coll"
+
+    # 5b. Partial match targeting master database ('master' -> 'master_coll')
+    res_fed_master_partial = store.search_fts("databases", collection="master")
+    assert len(res_fed_master_partial) == 1
+    assert res_fed_master_partial[0].collection == "master_coll"
+
+    # 5c. Shared partial match spanning both databases ('coll' -> 'master_coll' and 'child_coll')
+    res_fed_both_partial = store.search_fts("databases", collection="coll")
+    assert len(res_fed_both_partial) == 2
+    assert {r.collection for r in res_fed_both_partial} == {"master_coll", "child_coll"}
+
+    # 5d. Wildcard pattern spanning both databases ('*coll*')
+    res_fed_wildcard = store.search_fts("databases", collection="*coll*")
+    assert len(res_fed_wildcard) == 2
+
+    # 5e. Comma-separated list spanning both databases ('master, child')
+    res_fed_comma = store.search_fts("databases", collection="master, child")
+    assert len(res_fed_comma) == 2
+
+    # 5f. Target document outline and chunk resolution using partial collection name
+    outline_partial = store.get_document_outline("child", "doc_c.md")
+    assert outline_partial is not None
+    assert outline_partial["collection"] == "child_coll"
+
+    chunk_partial = store.get_chunk_by_seq("child", "doc_c.md", seq_id=0)
+    assert len(chunk_partial) == 1
+    assert chunk_partial[0].collection == "child_coll"
+
+    # 6. Verify mutation prohibition in federated mode
     with pytest.raises(RuntimeError, match="federated include mode"):
         store.index_collection("master_coll", cfg.collections["master_coll"])
