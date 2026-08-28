@@ -173,6 +173,17 @@ async function loadCollections(populateSettings = false) {
                 data.forEach(c => {
                     const card = document.createElement('div');
                     card.className = "flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800";
+                    const canReindex = c.can_reindex !== false && !c.is_federated;
+                    const actionHtml = canReindex ? `
+                        <button type="button" class="btn-reindex bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 transition shadow-sm flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Re-index
+                        </button>
+                    ` : `
+                        <span class="text-[11px] text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2 py-1 rounded-md font-mono">
+                            Included (Read-Only)
+                        </span>
+                    `;
                     card.innerHTML = `
                         <div>
                             <div class="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -181,12 +192,12 @@ async function loadCollections(populateSettings = false) {
                             </div>
                             <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono">${escapeHtml(c.path || '')}</div>
                         </div>
-                        <button type="button" class="btn-reindex bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 transition shadow-sm flex items-center gap-1.5">
-                            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                            Re-index
-                        </button>
+                        ${actionHtml}
                     `;
-                    card.querySelector('.btn-reindex').onclick = (e) => triggerReindex(c.name, e.currentTarget);
+                    const reindexBtn = card.querySelector('.btn-reindex');
+                    if (reindexBtn) {
+                        reindexBtn.onclick = (e) => triggerReindex(c.name, e.currentTarget);
+                    }
                     listEl.appendChild(card);
                 });
             }
