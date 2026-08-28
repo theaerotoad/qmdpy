@@ -228,6 +228,77 @@ def test_convert_epub_with_nav_xhtml_toc(tmp_path):
     assert "### Chapter 1: Getting Started" in md
     assert "Getting started body text." in md
 
+def test_convert_epub_deduplicates_repeated_headings_and_titles(tmp_path):
+    import zipfile
+    epub_file = tmp_path / "test_dedup.epub"
+
+    container_xml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+
+    content_opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="BookId">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Self Discovery</dc:title>
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="p1" href="part1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="c1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="p1"/>
+    <itemref idref="c1"/>
+  </spine>
+</package>"""
+
+    toc_ncx = """<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>
+    <navPoint id="np-1" playOrder="1">
+      <navLabel><text>PART I: THE INWARD JOURNEY</text></navLabel>
+      <content src="part1.xhtml"/>
+    </navPoint>
+    <navPoint id="np-2" playOrder="2">
+      <navLabel><text>CHAPTER 1: Identifying Your Personality Type</text></navLabel>
+      <content src="ch1.xhtml"/>
+    </navPoint>
+  </navMap>
+</ncx>"""
+
+    part1_xhtml = """<!DOCTYPE html>
+<html>
+<body>
+  <p class="part-title">PART I: THE INWARD JOURNEY</p>
+</body>
+</html>"""
+
+    ch1_xhtml = """<!DOCTYPE html>
+<html>
+<body>
+  <p class="chapter-title">CHAPTER 1: Identifying Your Personality Type</p>
+  <p>CHAPTER 1: Identifying Your Personality Type</p>
+  <p>THE ENNEAGRAM is a geometric figure that maps out the personality types.</p>
+</body>
+</html>"""
+
+    with zipfile.ZipFile(epub_file, 'w') as z:
+        z.writestr("META-INF/container.xml", container_xml)
+        z.writestr("OEBPS/content.opf", content_opf)
+        z.writestr("OEBPS/toc.ncx", toc_ncx)
+        z.writestr("OEBPS/part1.xhtml", part1_xhtml)
+        z.writestr("OEBPS/ch1.xhtml", ch1_xhtml)
+
+    md = convert_to_markdown(epub_file)
+    assert md.count("PART I: THE INWARD JOURNEY") == 1
+    assert md.count("CHAPTER 1: Identifying Your Personality Type") == 1
+    assert "## PART I: THE INWARD JOURNEY" in md
+    assert "## CHAPTER 1: Identifying Your Personality Type" in md
+    assert "THE ENNEAGRAM is a geometric figure that maps out the personality types." in md
+
 def test_convert_text_file(tmp_path):
     txt_file = tmp_path / "test.txt"
     txt_file.write_text("Simple text file line 1\nLine 2\n", encoding="utf-8")

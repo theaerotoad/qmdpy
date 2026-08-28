@@ -266,8 +266,25 @@ def _titles_match(t1: str, t2: str) -> bool:
         return False
     if n1 == n2:
         return True
-    if n1 in n2 or n2 in n1:
+
+    # Strip common prefixes like 'chapter 1', 'part 1', etc.
+    clean_pfx = lambda s: re.sub(r'^(chapter|part|section|book|unit)\s+([0-9]+|[ivxldcm]+)[:.\s-]*', '', s).strip()
+    c1 = clean_pfx(n1)
+    c2 = clean_pfx(n2)
+    if c1 and c2 and c1 == c2:
         return True
+    if c1 and c1 == n2:
+        return True
+    if c2 and c2 == n1:
+        return True
+
+    # Substring check with constrained length difference to avoid false positive matches on body text
+    w1 = n1.split()
+    w2 = n2.split()
+    if n1 in n2 or n2 in n1:
+        if abs(len(w1) - len(w2)) <= 3 and min(len(w1), len(w2)) >= 2:
+            return True
+
     return False
 
 
@@ -347,7 +364,7 @@ class EPUBHTMLToMarkdown(HTMLParser):
         aria_level = attrs_dict.get('aria-level', '')
         is_aria_heading = (role == 'heading' and aria_level.isdigit())
         cls = attrs_dict.get('class', '').lower()
-        is_heading_class = bool(re.search(r'\b(chapter[-_]?(title|num|number)?|heading[-_]?[1-6]|h[1-6]|section[-_]?title)\b', cls))
+        is_heading_class = bool(re.search(r'\b(chapter[-_]?(title|num|number)?|part[-_]?(title|num|number)?|heading[-_]?[1-6]|h[1-6]|section[-_]?title|chaptitle)\b', cls))
 
         if tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or is_aria_heading:
             if is_aria_heading:
@@ -472,7 +489,10 @@ class EPUBHTMLToMarkdown(HTMLParser):
                     self.has_emitted_any_heading = True
                 else:
                     if toc_entry:
-                        self.output.append(f"\n\n{'#' * level} {toc_entry.title}\n\n{raw_text}\n\n")
+                        if _titles_match(clean_text, toc_entry.title) or len(clean_text.split()) < 15:
+                            self.output.append(f"\n\n{'#' * level} {toc_entry.title}\n\n")
+                        else:
+                            self.output.append(f"\n\n{'#' * level} {toc_entry.title}\n\n{raw_text}\n\n")
                         self.has_emitted_any_heading = True
                     else:
                         self.output.append(f"\n\n{raw_text}\n\n")
@@ -564,9 +584,23 @@ class EPUBHTMLToMarkdown(HTMLParser):
         raw = "".join(self.output)
 
         if not self.has_emitted_any_heading and self.file_level_toc and id(self.file_level_toc) not in self.used_toc_entries:
-            if raw.strip():
-                raw = f"\n\n{'#' * self.file_level_toc.level} {self.file_level_toc.title}\n\n" + raw
+            stripped_raw = raw.strip()
+            if stripped_raw:
+                heading_line = f"{'#' * self.file_level_toc.level} {self.file_level_toc.title}"
+                blocks = re.split(r'\n{2,}', stripped_raw)
+                first_block = blocks[0].strip() if blocks else ""
+
+                if first_block and _titles_match(self.file_level_toc.title, first_block):
+                    blocks[0] = heading_line
+                    raw = "\n\n".join(blocks)
+                elif len(blocks) >= 2 and _titles_match(self.file_level_toc.title, first_block + " " + blocks[1].strip()):
+                    blocks = [heading_line] + blocks[2:]
+                    raw = "\n\n".join(blocks)
+                else:
+                    raw = f"\n\n{heading_line}\n\n" + stripped_raw
+
                 self.used_toc_entries.add(id(self.file_level_toc))
+                self.has_emitted_any_heading = True
 
         lines = raw.splitlines()
         cleaned_lines = []
@@ -586,12 +620,69 @@ class EPUBHTMLToMarkdown(HTMLParser):
         return text.strip()
 
 
+def deduplicate_headings_and_titles(markdown_text: str) -> str:
+    """
+    Removes duplicate consecutive headings and plain-text paragraphs immediately
+    following a heading that repeat the heading's title.
+    """
+    blocks = re.split(r'\n{2,}', markdown_text.strip())
+    if not blocks or blocks == ['']:
+        return markdown_text.strip()
+
+    cleaned_blocks = []
+    last_heading_text = None
+
+    for block in blocks:
+        stripped = block.strip()
+        if not stripped:
+            continue
+
+        heading_match = re.match(r'^(#{1,6})\s+(.*)$', stripped)
+        if heading_match:
+            h_text = heading_match.group(2).strip()
+            if last_heading_text and _titles_match(last_heading_text, h_text):
+                # Consecutive duplicate heading, skip it
+                continue
+            last_heading_text = h_text
+            cleaned_blocks.append(stripped)
+            continue
+
+        if stripped == '---':
+            if cleaned_blocks and cleaned_blocks[-1] == '---':
+                continue
+            cleaned_blocks.append('---')
+            continue
+
+        if last_heading_text:
+            lines = stripped.splitlines()
+            first_line = lines[0].strip()
+
+            if _titles_match(last_heading_text, stripped) or _titles_match(last_heading_text, first_line):
+                if len(lines) == 1 or _titles_match(last_heading_text, stripped):
+                    # Entire block repeats the heading title; drop it
+                    continue
+                else:
+                    # First line repeats heading title; drop first line and keep remainder
+                    rest = "\n".join(lines[1:]).strip()
+                    if rest:
+                        cleaned_blocks.append(rest)
+                    last_heading_text = None
+                    continue
+
+        last_heading_text = None
+        cleaned_blocks.append(stripped)
+
+    res = "\n\n".join(cleaned_blocks).strip()
+    return re.sub(r'(?:\n\n---\n\n)+', '\n\n---\n\n', res)
+
+
 def normalize_headings(markdown_text: str, epub_title: Optional[str] = None) -> str:
     """
     Ensures the document has a single L1 heading (#) at the top.
     Normalizes body heading levels so that the highest-level body headings
-    start at L2 (##), preserving relative hierarchy.
+    start at L2 (##), preserving relative hierarchy and eliminating duplicates.
     """
+    markdown_text = deduplicate_headings_and_titles(markdown_text)
     lines = markdown_text.splitlines()
 
     first_heading_idx = None
@@ -658,7 +749,8 @@ def normalize_headings(markdown_text: str, epub_title: Optional[str] = None) -> 
                 new_lines.append(line)
 
     result = "\n".join(new_lines).strip()
-    return re.sub(r'\n{3,}', '\n\n', result)
+    result = re.sub(r'\n{3,}', '\n\n', result)
+    return deduplicate_headings_and_titles(result)
 
 
 def convert_epub_to_markdown(
