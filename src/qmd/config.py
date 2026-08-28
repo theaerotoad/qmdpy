@@ -2,7 +2,7 @@ import os
 import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional, List, Union
+from typing import Dict, Optional, List, Union, Set
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "qmd" / "index.yml"
 
@@ -20,6 +20,9 @@ class Config:
     db_path: Optional[str] = None 
     history_db_path: Optional[str] = None
     config_path: Optional[str] = None
+    include: List[str] = field(default_factory=list)
+    is_federated: bool = False
+    included_configs: List['Config'] = field(default_factory=list)
     
     # Core LLM Settings
     llm_url: str = "http://127.0.0.1:8888"
@@ -64,7 +67,7 @@ class Config:
     default_limit: int = 10
 
     @classmethod
-    def from_dict(cls, data: Dict, config_path: Optional[Path] = None) -> 'Config':
+    def from_dict(cls, data: Dict, config_path: Optional[Path] = None, visited_configs: Optional[Set[Path]] = None) -> 'Config':
         collections_raw = data.get('collections', {})
         collections = {}
         for name, cfg in collections_raw.items():
@@ -154,11 +157,98 @@ class Config:
         else:
             cache_search_results = data.get('cache_search_results', True)
 
+        current_resolved_path = config_path.resolve() if config_path else None
+        active_visited: Set[Path] = set(visited_configs) if visited_configs else set()
+        if current_resolved_path:
+            active_visited.add(current_resolved_path)
+
+        include_raw = data.get('include') or data.get('includes') or []
+        if isinstance(include_raw, str):
+            include_raw = [include_raw]
+        elif not isinstance(include_raw, list):
+            include_raw = []
+        include_list: List[str] = [str(item).strip() for item in include_raw if str(item).strip()]
+
+        included_configs: List['Config'] = []
+        for inc_item in include_list:
+            inc_p = Path(inc_item).expanduser()
+            if not inc_p.is_absolute() and config_path:
+                inc_resolved = (config_path.parent / inc_p).resolve()
+            else:
+                inc_resolved = inc_p.resolve()
+
+            if current_resolved_path and inc_resolved == current_resolved_path:
+                raise ValueError(f"Self-referential configuration include detected: '{inc_resolved}'")
+
+            if inc_resolved in active_visited:
+                raise ValueError(f"Circular configuration include detected: '{inc_resolved}'")
+
+            if not inc_resolved.exists():
+                raise FileNotFoundError(f"Included configuration file not found: '{inc_resolved}'")
+
+            child_cfg = load_config(inc_resolved, visited_configs=active_visited)
+
+            # Validate embedding compatibility
+            if child_cfg.embed_model != embed_model:
+                raise ValueError(
+                    f"Embedding model mismatch in included config '{inc_resolved}': "
+                    f"master uses '{embed_model}', child uses '{child_cfg.embed_model}'"
+                )
+            if child_cfg.vector_quantization != vector_quantization:
+                raise ValueError(
+                    f"Vector quantization mismatch in included config '{inc_resolved}': "
+                    f"master uses '{vector_quantization}', child uses '{child_cfg.vector_quantization}'"
+                )
+
+            # Validate database path uniqueness
+            if child_cfg.db_path and db_path and child_cfg.db_path == db_path:
+                raise ValueError(f"Duplicate database path '{child_cfg.db_path}' in included config '{inc_resolved}'")
+            for prev_child in included_configs:
+                if prev_child.db_path and child_cfg.db_path and prev_child.db_path == child_cfg.db_path:
+                    raise ValueError(f"Duplicate database path '{child_cfg.db_path}' across included configs: '{inc_resolved}'")
+
+            # Validate collection name collisions
+            for coll_name in child_cfg.collections:
+                if coll_name in collections:
+                    raise ValueError(f"Duplicate collection name '{coll_name}' in included config '{inc_resolved}' already exists in master configuration")
+                for prev_child in included_configs:
+                    if coll_name in prev_child.collections:
+                        raise ValueError(f"Duplicate collection name '{coll_name}' in included config '{inc_resolved}' already exists in included config '{prev_child.config_path}'")
+
+            # Master LLM endpoints unconditionally override child configuration endpoints
+            child_cfg.llm_url = llm_url
+            child_cfg.api_key = api_key
+            child_cfg.embed_url = embed_url
+            child_cfg.rerank_url = rerank_url
+            child_cfg.embed_api_key = embed_api_key
+            child_cfg.rerank_api_key = rerank_api_key
+            child_cfg.vision_url = vision_url
+            child_cfg.vision_api_key = vision_api_key
+            child_cfg.multimodal_url = multimodal_url
+            child_cfg.multimodal_api_key = multimodal_api_key
+            child_cfg.multimodal_model = multimodal_model
+            child_cfg.multimodal_prompt = multimodal_prompt
+            child_cfg.max_image_concurrency = max_image_concurrency
+            child_cfg.request_timeout = request_timeout
+            child_cfg.embed_batch_size = embed_batch_size
+            child_cfg.rerank_model = rerank_model
+            child_cfg.generate_model = generate_model
+
+            included_configs.append(child_cfg)
+
+        # Merge included collections into overall collections view
+        all_collections = dict(collections)
+        for child_cfg in included_configs:
+            all_collections.update(child_cfg.collections)
+
         return cls(
-            collections=collections,
+            collections=all_collections,
             db_path=db_path,
             history_db_path=history_db_path,
             config_path=str(config_path.resolve()) if config_path else None,
+            include=include_list,
+            is_federated=len(included_configs) > 0,
+            included_configs=included_configs,
             llm_url=llm_url,
             api_key=api_key,
             embed_url=embed_url,
@@ -189,7 +279,7 @@ class Config:
             default_limit=data.get('default_limit', 10)
         )
 
-def load_config(path: Optional[Union[str, Path]] = None) -> Config:
+def load_config(path: Optional[Union[str, Path]] = None, visited_configs: Optional[Set[Path]] = None) -> Config:
     """
     Reads configuration from YAML file. Returns default empty config if not found.
     Path resolution order: passed path -> QMD_CONFIG / QMD_CONFIG_PATH env var -> DEFAULT_CONFIG_PATH
@@ -204,12 +294,14 @@ def load_config(path: Optional[Union[str, Path]] = None) -> Config:
         config_path = Path(path).expanduser().resolve()
 
     if not config_path.exists():
-        return Config.from_dict({}, config_path=config_path)
+        return Config.from_dict({}, config_path=config_path, visited_configs=visited_configs)
 
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f) or {}
-            return Config.from_dict(data, config_path=config_path)
+            return Config.from_dict(data, config_path=config_path, visited_configs=visited_configs)
+    except (ValueError, FileNotFoundError):
+        raise
     except Exception as e:
         print(f"Warning: Failed to load config at {config_path}: {e}")
-        return Config.from_dict({}, config_path=config_path)
+        return Config.from_dict({}, config_path=config_path, visited_configs=visited_configs)

@@ -772,6 +772,9 @@ def handle_collections_list(args, store: Store):
 
 def handle_update(args, store: Store):
     config = store.config
+    if getattr(config, "is_federated", False):
+        print(f"{RED}Error: Updating/indexing is disabled in federated include mode. Update individual collection configurations directly.{RESET}")
+        sys.exit(1)
     
     # 1. Update existing collections
     for name, coll_cfg in config.collections.items():
@@ -1060,6 +1063,9 @@ def main():
 
     config = load_config(config_path)
     is_write = args.command in ["update"]
+    if is_write and getattr(config, "is_federated", False):
+        print(f"{RED}Error: Updating/indexing is disabled in federated include mode. Update individual collection configurations directly.{RESET}")
+        sys.exit(1)
     store = Store(config, read_only=not is_write)
 
     try:

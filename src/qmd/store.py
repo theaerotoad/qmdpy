@@ -196,6 +196,8 @@ class Store:
     def __init__(self, config: Config, connection: Optional[sqlite3.Connection] = None, read_only: bool = False):
         self.config = config
         self.read_only = read_only
+        self.child_stores: List['Store'] = []
+        self.collection_store_map: Dict[str, 'Store'] = {}
         
         if connection:
             self.conn = connection
@@ -239,11 +241,22 @@ class Store:
             timeout=getattr(config, "request_timeout", 120.0)
         )
 
-    def _hydrate_results_text(self, results: List[Result]):
-        """
-        Hydrates missing or deferred text in Result objects by batch-fetching
-        and decompressing chunk_text from chunk_metadata.
-        """
+        # Initialize child stores for federated inclusion
+        if getattr(config, "included_configs", None):
+            for child_cfg in config.included_configs:
+                child_store = Store(child_cfg, read_only=True)
+                child_store.llm = self.llm
+                child_store.history_conn = self.history_conn
+                self.child_stores.append(child_store)
+                for coll_name in child_cfg.collections.keys():
+                    self.collection_store_map[coll_name] = child_store
+
+        # Map local collections to self
+        for coll_name in config.collections.keys():
+            if coll_name not in self.collection_store_map:
+                self.collection_store_map[coll_name] = self
+
+    def _hydrate_results_text_local(self, results: List[Result]):
         needed = [r for r in results if not r.text]
         if not needed:
             return
@@ -278,6 +291,29 @@ class Store:
                     if r.rowid is None and row[1] is not None:
                         r.rowid = row[1]
 
+    def _hydrate_results_text(self, results: List[Result]):
+        """
+        Hydrates missing or deferred text in Result objects by batch-fetching
+        and decompressing chunk_text across local and federated stores.
+        """
+        needed = [r for r in results if not r.text]
+        if not needed:
+            return
+
+        if self.child_stores:
+            store_batches: Dict['Store', List[Result]] = {}
+            for r in needed:
+                target_store = self.collection_store_map.get(r.collection, self)
+                store_batches.setdefault(target_store, []).append(r)
+
+            for target_store, batch in store_batches.items():
+                if target_store is self:
+                    self._hydrate_results_text_local(batch)
+                else:
+                    target_store._hydrate_results_text(batch)
+        else:
+            self._hydrate_results_text_local(needed)
+
     def _build_search_cache_key(
         self,
         search_type: str,
@@ -293,7 +329,8 @@ class Store:
         vec_limit: Optional[int],
         rerank_candidates: Optional[int]
     ) -> str:
-        db_last_updated = get_db_meta(self.conn, "last_updated") or ""
+        all_stores = [self] + getattr(self, "child_stores", [])
+        db_last_updated = ",".join([get_db_meta(s.conn, "last_updated") or "" for s in all_stores])
         embed_model = getattr(self.config, "embed_model", "")
         rerank_model = getattr(self.config, "rerank_model", "")
 
@@ -352,8 +389,8 @@ class Store:
 
     def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False):
         """Scans files, detects changes, chunks, embeds, and updates DB."""
-        if self.read_only:
-            raise RuntimeError("Cannot index collection on a read-only Store instance.")
+        if self.read_only or getattr(self.config, "is_federated", False):
+            raise RuntimeError("Cannot index collection in read-only or federated include mode.")
         base_path = Path(collection_cfg.path).expanduser().resolve()
         if not base_path.exists():
             print(f"Skipping {name}: Path not found {base_path}")
@@ -404,8 +441,8 @@ class Store:
 
     def prune_orphaned_collections(self, active_collections: List[str]):
         """Removes documents, FTS entries, and orphaned vectors/content for collections no longer in config."""
-        if self.read_only:
-            raise RuntimeError("Cannot prune collections on a read-only Store instance.")
+        if self.read_only or getattr(self.config, "is_federated", False):
+            raise RuntimeError("Cannot prune collections in read-only or federated include mode.")
         cursor = self.conn.cursor()
         
         if not active_collections:
@@ -465,7 +502,16 @@ class Store:
 
     def get_indexing_errors(self, collection: Optional[str] = None, path: Optional[str] = None) -> List[Dict[str, Any]]:
         """Retrieves list of documents that encountered errors or partial failures during indexing."""
-        return get_indexing_errors(self.conn, collection=collection, path=path)
+        if collection and collection in self.collection_store_map:
+            target_store = self.collection_store_map[collection]
+            if target_store is not self:
+                return target_store.get_indexing_errors(collection=collection, path=path)
+
+        local_errors = get_indexing_errors(self.conn, collection=collection, path=path)
+        if self.child_stores and not collection:
+            for child in self.child_stores:
+                local_errors.extend(child.get_indexing_errors(collection=collection, path=path))
+        return local_errors
 
     def _process_file(self, collection_name: str, base_path: Path, file_path: Path, current_paths: set, force: bool = False) -> bool:
         rel_path = str(file_path.relative_to(base_path))
@@ -696,20 +742,13 @@ class Store:
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (vector_rowid, collection_name, rel_path, title, chunk_text, context_str))
 
-    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False) -> List[Result]:
-        """Lexical search directly on chunks using chunks_fts."""
+    def _search_fts_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
-        # Allow pre-formatted FTS query expressions (quotes, AND, OR, NOT) to pass through directly
         if '"' in query or ' AND ' in query or ' OR ' in query or ' NOT ' in query:
             fts_query = query
         else:
-            # Sanitize inputs by removing double quotes that could break syntax
             sanitized = query.replace('"', '')
-            
-            # Split into individual terms to create an intersection query (AND logic)
             raw_terms = sanitized.split()
-            
-            # Filter out common stop words to prevent skewed FTS rankings
             stop_words = {
                 "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "if", 
                 "in", "into", "is", "it", "no", "not", "of", "on", "or", "such", 
@@ -717,19 +756,13 @@ class Store:
                 "to", "was", "will", "with"
             }
             terms = [t for t in raw_terms if t.lower() not in stop_words]
-            
-            # Fallback to raw terms if all words were filtered out 
             if not terms:
                 terms = raw_terms
-                
             if not terms:
                 return []
-                
-            # Wrap terms in quotes to handle special chars, join with AND
             fts_query = " AND ".join([f'"{term}"' for term in terms])
         
         cursor = self.conn.cursor()
-
         paths = []
         if isinstance(path, str):
             if path.strip():
@@ -752,8 +785,6 @@ class Store:
             filters_sql += f" AND ({path_clauses})"
         
         order_sql = " ORDER BY f.rank LIMIT ?"
-        
-        # Scale up candidate over-fetch limit so seen chunks don't starve candidate quorum
         sql_limit = max(limit * 5, limit + (len(exclude_seen_set) * 2 if exclude_seen_set else 0)) if exclude_seen_set else limit
 
         def build_params(q_val):
@@ -769,7 +800,6 @@ class Store:
             cursor.execute(base_sql + filters_sql + order_sql, tuple(build_params(fts_query)))
             rows = cursor.fetchall()
         except sqlite3.OperationalError as e:
-            # Fallback: if complex syntax fails, try raw phrase matching once more
             try:
                 cursor.execute(base_sql + filters_sql + order_sql, tuple(build_params(f'"{sanitized}"')))
                 rows = cursor.fetchall()
@@ -780,14 +810,12 @@ class Store:
         results = []
         for row in rows:
             doc_path, doc_title, chunk_text, rank, coll, rowid, seq_id, headers = row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]
-            
             key = (coll or "", doc_path, seq_id)
             if exclude_seen_set and key in exclude_seen_set:
                 if excluded_chunks_tracker is not None:
                     excluded_chunks_tracker.add(key)
                 continue
 
-            # Convert SQLite FTS5 BM25 negative rank into a positive score
             raw_bm25 = -float(rank) if float(rank) < 0 else float(rank)
             calculated_fts_score = max(0.0001, raw_bm25)
             calculated_fts_rank = len(results) + 1
@@ -810,6 +838,25 @@ class Store:
 
         return results
 
+    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False) -> List[Result]:
+        """Lexical search directly on chunks across local and federated stores."""
+        limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
+        
+        if collection and collection in self.collection_store_map:
+            target_store = self.collection_store_map[collection]
+            if target_store is not self:
+                return target_store.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+
+        if self.child_stores and not collection:
+            all_results = self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+            for child in self.child_stores:
+                child_res = child.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+                all_results.extend(child_res)
+            all_results.sort(key=lambda r: r.score, reverse=True)
+            return all_results[:limit]
+
+        return self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+
     def get_query_embedding(self, formatted_query: str) -> List[float]:
         embed_model = getattr(self.config, "embed_model", "EmbeddingGemma 300m")
         cached_vec = get_cached_query_embedding(self.history_conn, formatted_query, embed_model)
@@ -822,7 +869,7 @@ class Store:
             return vecs[0]
         return []
 
-    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False) -> List[Result]:
+    def _search_vec_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
         if query_vec is None:
             query_text = self.llm.format_query_for_embedding(query)
@@ -841,7 +888,6 @@ class Store:
         elif isinstance(path, (list, tuple, set)):
             paths = [str(p).strip() for p in path if str(p).strip()]
 
-        # Check if sqlite-vec is active and virtual table is set up
         if is_sqlite_vec_active(self.conn):
             try:
                 query_blob = encode_vector(query_vec, quant_type)
@@ -899,7 +945,6 @@ class Store:
             except sqlite3.OperationalError:
                 pass
 
-        # Fallback: Python vector comparison
         chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
         query_sql = f"""
             SELECT v.embedding, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''), v.rowid
@@ -953,6 +998,29 @@ class Store:
                 rowid=r_id
             ))
         return candidates
+
+    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False) -> List[Result]:
+        limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
+        if query_vec is None:
+            query_text = self.llm.format_query_for_embedding(query)
+            query_vec = self.get_query_embedding(query_text)
+        if not query_vec:
+            return []
+
+        if collection and collection in self.collection_store_map:
+            target_store = self.collection_store_map[collection]
+            if target_store is not self:
+                return target_store.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+
+        if self.child_stores and not collection:
+            all_results = self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+            for child in self.child_stores:
+                child_res = child.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+                all_results.extend(child_res)
+            all_results.sort(key=lambda r: r.score, reverse=True)
+            return all_results[:limit]
+
+        return self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
 
     def hybrid_search(
         self, 
@@ -1585,6 +1653,29 @@ class Store:
         pattern: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Extracts document structure heading hierarchy correlated with chunk sequence ranges."""
+        if collection and collection in self.collection_store_map:
+            target_store = self.collection_store_map[collection]
+            if target_store is not self:
+                return target_store.get_document_outline(collection, path, max_depth, pattern)
+
+        res = self._get_document_outline_local(collection, path, max_depth, pattern)
+        if res is not None:
+            return res
+
+        if not collection and self.child_stores:
+            for child in self.child_stores:
+                child_res = child.get_document_outline(collection, path, max_depth, pattern)
+                if child_res is not None:
+                    return child_res
+        return None
+
+    def _get_document_outline_local(
+        self,
+        collection: Optional[str],
+        path: str,
+        max_depth: Optional[int] = None,
+        pattern: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         cursor = self.conn.cursor()
         if collection:
             cursor.execute("SELECT id, collection, path, title, hash FROM documents WHERE collection = ? AND path = ?", (collection, path))
@@ -1771,6 +1862,18 @@ class Store:
         if not rowids:
             return []
 
+        res = self._get_chunk_by_id_local(rowids, window=window)
+        if res:
+            return res
+
+        if self.child_stores:
+            for child in self.child_stores:
+                child_res = child.get_chunk_by_id(rowids, window=window)
+                if child_res:
+                    return child_res
+        return []
+
+    def _get_chunk_by_id_local(self, rowids: List[int], window: int = 0) -> List[Result]:
         cursor = self.conn.cursor()
         if window == 0:
             placeholders = ','.join(['?'] * len(rowids))
@@ -1840,6 +1943,23 @@ class Store:
 
     def get_chunk_by_seq(self, collection: Optional[str], path: str, seq_id: Union[int, List[int]] = 0, window: int = 0) -> List[Result]:
         """Retrieves target chunk(s) by collection, path, and seq_id(s) along with ±window surrounding chunks."""
+        if collection and collection in self.collection_store_map:
+            target_store = self.collection_store_map[collection]
+            if target_store is not self:
+                return target_store.get_chunk_by_seq(collection, path, seq_id=seq_id, window=window)
+
+        res = self._get_chunk_by_seq_local(collection, path, seq_id=seq_id, window=window)
+        if res:
+            return res
+
+        if not collection and self.child_stores:
+            for child in self.child_stores:
+                child_res = child.get_chunk_by_seq(collection, path, seq_id=seq_id, window=window)
+                if child_res:
+                    return child_res
+        return []
+
+    def _get_chunk_by_seq_local(self, collection: Optional[str], path: str, seq_id: Union[int, List[int]] = 0, window: int = 0) -> List[Result]:
         cursor = self.conn.cursor()
         if collection:
             cursor.execute("SELECT hash, collection, path, title FROM documents WHERE collection = ? AND path = ?", (collection, path))
@@ -1901,6 +2021,35 @@ class Store:
         case_sensitive: bool = False
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], None]:
         """Builds a nested folder directory tree structure of indexed documents, optionally filtered by pattern/regex."""
+        if collection and collection in self.collection_store_map:
+            target_store = self.collection_store_map[collection]
+            if target_store is not self:
+                return target_store.get_collection_tree(collection, max_depth, pattern, is_regex, case_sensitive)
+
+        if collection:
+            return self._get_collection_tree_local(collection, max_depth, pattern, is_regex, case_sensitive)
+
+        all_trees: List[Dict[str, Any]] = []
+        local_tree = self._get_collection_tree_local(None, max_depth, pattern, is_regex, case_sensitive)
+        if isinstance(local_tree, list):
+            all_trees.extend(local_tree)
+
+        if self.child_stores:
+            for child in self.child_stores:
+                child_tree = child.get_collection_tree(None, max_depth, pattern, is_regex, case_sensitive)
+                if isinstance(child_tree, list):
+                    all_trees.extend(child_tree)
+
+        return all_trees
+
+    def _get_collection_tree_local(
+        self,
+        collection: Optional[str] = None,
+        max_depth: Optional[int] = None,
+        pattern: Optional[str] = None,
+        is_regex: bool = False,
+        case_sensitive: bool = False
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]], None]:
         cursor = self.conn.cursor()
 
         if collection:
@@ -2003,6 +2152,33 @@ class Store:
         """Performs direct string or regular expression pattern search across decompressed document bodies."""
         if not pattern:
             return []
+
+        if collection and collection in self.collection_store_map:
+            target_store = self.collection_store_map[collection]
+            if target_store is not self:
+                return target_store.grep_search(pattern, is_regex=is_regex, case_sensitive=case_sensitive, collection=collection, path=path, limit=limit)
+
+        if self.child_stores and not collection:
+            all_matches = self._grep_search_local(pattern, is_regex=is_regex, case_sensitive=case_sensitive, collection=collection, path=path, limit=limit)
+            for child in self.child_stores:
+                if len(all_matches) >= limit:
+                    break
+                rem = limit - len(all_matches)
+                child_matches = child.grep_search(pattern, is_regex=is_regex, case_sensitive=case_sensitive, collection=collection, path=path, limit=rem)
+                all_matches.extend(child_matches)
+            return all_matches[:limit]
+
+        return self._grep_search_local(pattern, is_regex=is_regex, case_sensitive=case_sensitive, collection=collection, path=path, limit=limit)
+
+    def _grep_search_local(
+        self,
+        pattern: str,
+        is_regex: bool = False,
+        case_sensitive: bool = False,
+        collection: Optional[str] = None,
+        path: Optional[Union[str, List[str]]] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
 
         flags = 0 if case_sensitive else re.IGNORECASE
         if is_regex:
