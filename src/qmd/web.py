@@ -25,11 +25,12 @@ def get_config():
         app.config['config'] = load_config(app.config.get('CONFIG_PATH'))
     return app.config['config']
 
-def get_store():
+def get_store(read_only: bool = True):
     """Get a thread-local instance of the Store to avoid SQLite threading errors."""
-    if 'store' not in g:
-        g.store = Store(get_config())
-    return g.store
+    key = 'store_ro' if read_only else 'store_rw'
+    if key not in g:
+        setattr(g, key, Store(get_config(), read_only=read_only))
+    return getattr(g, key)
 
 def extract_batch_commands(input_data: Union[str, List[str]], max_commands: int = 5) -> List[str]:
     """Extracts up to max_commands valid command lines from raw text, LLM thinking blocks, tool calls, or XML blocks."""
@@ -585,7 +586,7 @@ def update():
     
     if collection and collection in cfg.collections:
         try:
-            get_store().index_collection(collection, cfg.collections[collection], force=force)
+            get_store(read_only=False).index_collection(collection, cfg.collections[collection], force=force)
             return jsonify({"status": "success", "message": f"Successfully updated collection: {collection}"})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500

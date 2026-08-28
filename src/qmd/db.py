@@ -2,7 +2,7 @@ import sqlite3
 import struct
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple, Set
+from typing import Optional, List, Dict, Any, Tuple, Set, Union
 
 from qmd.utils import decompress_text
 
@@ -100,22 +100,36 @@ def ensure_vector_table(conn: sqlite3.Connection, dim: int, quant_type: str = "n
         );
         """)
 
-def get_connection(db_path: Path) -> sqlite3.Connection:
+def get_connection(db_path: Union[Path, str], read_only: bool = False) -> sqlite3.Connection:
     """
     Connects to SQLite database.
     Sets isolation_level=None to disable Python's implicit transaction management.
-    Enables WAL mode for performance.
+    Enables WAL mode and busy_timeout for concurrency.
+    Supports read_only=True via SQLite URI mode.
     """
-    if db_path.parent and not db_path.parent.exists():
-        db_path.parent.mkdir(parents=True, exist_ok=True)
+    if str(db_path) == ":memory:":
+        conn = sqlite3.connect(":memory:", isolation_level=None)
+        conn.execute("PRAGMA busy_timeout = 30000;")
+        register_functions(conn)
+        load_sqlite_vec(conn)
+        return conn
 
-    conn = sqlite3.connect(str(db_path), isolation_level=None)
-    
-    # Standard performance pragmas
-    conn.execute("PRAGMA journal_mode = WAL;")
+    path_obj = Path(db_path)
+    if not read_only and path_obj.parent and not path_obj.parent.exists():
+        path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+    if read_only:
+        resolved_path = path_obj.resolve().as_posix()
+        uri = f"file:{resolved_path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, isolation_level=None)
+    else:
+        conn = sqlite3.connect(str(path_obj), isolation_level=None)
+        conn.execute("PRAGMA journal_mode = WAL;")
+
+    conn.execute("PRAGMA busy_timeout = 30000;")
     conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA foreign_keys = ON;")
-    
+
     register_functions(conn)
     load_sqlite_vec(conn)
     return conn
@@ -194,11 +208,19 @@ def init_history_schema(conn: sqlite3.Connection):
     );
     """)
 
-def get_history_connection(history_db_path: Path) -> sqlite3.Connection:
-    if history_db_path.parent and not history_db_path.parent.exists():
-        history_db_path.parent.mkdir(parents=True, exist_ok=True)
+def get_history_connection(history_db_path: Union[Path, str]) -> sqlite3.Connection:
+    if str(history_db_path) == ":memory:":
+        conn = sqlite3.connect(":memory:", isolation_level=None)
+        conn.execute("PRAGMA busy_timeout = 30000;")
+        init_history_schema(conn)
+        return conn
 
-    conn = sqlite3.connect(str(history_db_path), isolation_level=None)
+    path_obj = Path(history_db_path)
+    if path_obj.parent and not path_obj.parent.exists():
+        path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+    conn = sqlite3.connect(str(path_obj), isolation_level=None)
+    conn.execute("PRAGMA busy_timeout = 30000;")
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA foreign_keys = ON;")

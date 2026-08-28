@@ -190,16 +190,25 @@ class Result:
     match_count: int = 1
 
 class Store:
-    def __init__(self, config: Config, connection: Optional[sqlite3.Connection] = None):
+    def __init__(self, config: Config, connection: Optional[sqlite3.Connection] = None, read_only: bool = False):
         self.config = config
+        self.read_only = read_only
         
         if connection:
             self.conn = connection
             check_db_compatibility(self.conn)
         else:
             db_path = Path(config.db_path) if config.db_path else Path.home() / ".config" / "qmd" / "qmd.db"
-            self.conn = get_connection(db_path)
-            init_schema(self.conn)
+            if read_only:
+                if not db_path.exists():
+                    temp_conn = get_connection(db_path, read_only=False)
+                    init_schema(temp_conn)
+                    temp_conn.close()
+                self.conn = get_connection(db_path, read_only=True)
+                check_db_compatibility(self.conn)
+            else:
+                self.conn = get_connection(db_path, read_only=False)
+                init_schema(self.conn)
         
         history_db_path = Path(config.history_db_path) if config.history_db_path else Path.home() / ".config" / "qmd" / "qmd-history.db"
         self.history_conn = get_history_connection(history_db_path)
@@ -207,11 +216,12 @@ class Store:
 
         register_functions(self.conn)
 
-        try:
-            self.conn.execute("ALTER TABLE chunk_metadata ADD COLUMN headers TEXT")
-            self.conn.commit()
-        except sqlite3.OperationalError:
-            pass
+        if not self.read_only:
+            try:
+                self.conn.execute("ALTER TABLE chunk_metadata ADD COLUMN headers TEXT")
+                self.conn.commit()
+            except sqlite3.OperationalError:
+                pass
 
         self.llm = LLMClient(
             base_url=config.llm_url,
@@ -300,6 +310,8 @@ class Store:
 
     def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False):
         """Scans files, detects changes, chunks, embeds, and updates DB."""
+        if self.read_only:
+            raise RuntimeError("Cannot index collection on a read-only Store instance.")
         base_path = Path(collection_cfg.path).expanduser().resolve()
         if not base_path.exists():
             print(f"Skipping {name}: Path not found {base_path}")
@@ -350,6 +362,8 @@ class Store:
 
     def prune_orphaned_collections(self, active_collections: List[str]):
         """Removes documents, FTS entries, and orphaned vectors/content for collections no longer in config."""
+        if self.read_only:
+            raise RuntimeError("Cannot prune collections on a read-only Store instance.")
         cursor = self.conn.cursor()
         
         if not active_collections:

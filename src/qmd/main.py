@@ -1059,7 +1059,8 @@ def main():
         return
 
     config = load_config(config_path)
-    store = Store(config)
+    is_write = args.command in ["update"]
+    store = Store(config, read_only=not is_write)
 
     try:
         execute_command(args, store)
