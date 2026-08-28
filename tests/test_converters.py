@@ -242,7 +242,7 @@ def test_convert_epub_deduplicates_repeated_headings_and_titles(tmp_path):
     content_opf = """<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="BookId">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:title>Self Discovery</dc:title>
+    <dc:title>Sample Engineering Guide</dc:title>
   </metadata>
   <manifest>
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
@@ -259,11 +259,11 @@ def test_convert_epub_deduplicates_repeated_headings_and_titles(tmp_path):
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
   <navMap>
     <navPoint id="np-1" playOrder="1">
-      <navLabel><text>PART I: THE INWARD JOURNEY</text></navLabel>
+      <navLabel><text>PART I: SYSTEM DESIGN</text></navLabel>
       <content src="part1.xhtml"/>
     </navPoint>
     <navPoint id="np-2" playOrder="2">
-      <navLabel><text>CHAPTER 1: Identifying Your Personality Type</text></navLabel>
+      <navLabel><text>CHAPTER 1: Foundational Architecture</text></navLabel>
       <content src="ch1.xhtml"/>
     </navPoint>
   </navMap>
@@ -272,16 +272,16 @@ def test_convert_epub_deduplicates_repeated_headings_and_titles(tmp_path):
     part1_xhtml = """<!DOCTYPE html>
 <html>
 <body>
-  <p class="part-title">PART I: THE INWARD JOURNEY</p>
+  <p class="part-title">PART I: SYSTEM DESIGN</p>
 </body>
 </html>"""
 
     ch1_xhtml = """<!DOCTYPE html>
 <html>
 <body>
-  <p class="chapter-title">CHAPTER 1: Identifying Your Personality Type</p>
-  <p>CHAPTER 1: Identifying Your Personality Type</p>
-  <p>THE ENNEAGRAM is a geometric figure that maps out the personality types.</p>
+  <p class="chapter-title">CHAPTER 1: Foundational Architecture</p>
+  <p>CHAPTER 1: Foundational Architecture</p>
+  <p>System components are structured to ensure high availability and maintainability.</p>
 </body>
 </html>"""
 
@@ -293,11 +293,64 @@ def test_convert_epub_deduplicates_repeated_headings_and_titles(tmp_path):
         z.writestr("OEBPS/ch1.xhtml", ch1_xhtml)
 
     md = convert_to_markdown(epub_file)
-    assert md.count("PART I: THE INWARD JOURNEY") == 1
-    assert md.count("CHAPTER 1: Identifying Your Personality Type") == 1
-    assert "## PART I: THE INWARD JOURNEY" in md
-    assert "## CHAPTER 1: Identifying Your Personality Type" in md
-    assert "THE ENNEAGRAM is a geometric figure that maps out the personality types." in md
+    assert md.count("PART I: SYSTEM DESIGN") == 1
+    assert md.count("CHAPTER 1: Foundational Architecture") == 1
+    assert "## PART I: SYSTEM DESIGN" in md
+    assert "## CHAPTER 1: Foundational Architecture" in md
+    assert "System components are structured to ensure high availability and maintainability." in md
+
+def test_convert_epub_promotes_all_caps_subheadings_and_preserves_quote_attributions(tmp_path):
+    import zipfile
+    epub_file = tmp_path / "test_caps_headings.epub"
+
+    container_xml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+
+    content_opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Modular Software Patterns</dc:title>
+  </metadata>
+  <manifest>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="ch1"/>
+  </spine>
+</package>"""
+
+    ch1_xhtml = """<!DOCTYPE html>
+<html>
+<body>
+  <h2>Chapter 1: Principles</h2>
+  <p>Understanding modular patterns helps organize large applications.</p>
+  <p>“Simplicity is prerequisite for reliability.”</p>
+  <p>EDSGER W. DIJKSTRA</p>
+  <p>As software systems scale, clarity becomes more critical than cleverness.</p>
+  <p>CORE SYSTEM CONSTRAINTS</p>
+  <p>The primary constraint in distributed design is network latency and partition tolerance.</p>
+</body>
+</html>"""
+
+    with zipfile.ZipFile(epub_file, 'w') as z:
+        z.writestr("META-INF/container.xml", container_xml)
+        z.writestr("OEBPS/content.opf", content_opf)
+        z.writestr("OEBPS/ch1.xhtml", ch1_xhtml)
+
+    md = convert_to_markdown(epub_file)
+    # Quote attribution should remain plain body text
+    assert "EDSGER W. DIJKSTRA" in md
+    assert "# EDSGER W. DIJKSTRA" not in md
+    assert "## EDSGER W. DIJKSTRA" not in md
+    assert "### EDSGER W. DIJKSTRA" not in md
+
+    # Standalone uppercase section line should be promoted to a heading
+    assert "### CORE SYSTEM CONSTRAINTS" in md or "## CORE SYSTEM CONSTRAINTS" in md
+    assert "The primary constraint in distributed design" in md
 
 def test_convert_text_file(tmp_path):
     txt_file = tmp_path / "test.txt"

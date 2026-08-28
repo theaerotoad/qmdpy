@@ -250,6 +250,76 @@ def extract_epub_toc(z: zipfile.ZipFile, opf_root: ET.Element, opf_dir: str) -> 
     return []
 
 
+def _is_quote_block(block: str) -> bool:
+    """Checks if a markdown block appears to be a quote or blockquote."""
+    s = block.strip()
+    if not s:
+        return False
+    if s.startswith('>'):
+        return True
+    # Strip leading bullet/list/quote markers and whitespace/ellipsis
+    clean = re.sub(r'^[….\s\-–—*]+', '', s)
+    quote_chars = ('"', '“', '‘', '«', '”', '’', "'")
+    if clean.startswith(quote_chars) or s.endswith(quote_chars):
+        return True
+    return False
+
+
+def _is_all_caps_heading_candidate(block: str) -> bool:
+    """Checks if a block is a standalone ALL CAPS heading candidate."""
+    s = block.strip()
+    if not s or '\n' in s:
+        return False
+    if s.startswith(('#', '-', '*', '>', '|', '`', '!', '<')):
+        return False
+    # Must contain uppercase letters
+    letters = re.findall(r'[a-zA-Z]', s)
+    if len(letters) < 3:
+        return False
+    if not s.isupper():
+        return False
+    # Should not end with terminating punctuation of a sentence
+    if s.endswith(('.', '?', '!', ',', ';', ':')):
+        return False
+    # Heading shouldn't be too long
+    words = s.split()
+    if len(words) > 14 or len(s) > 100:
+        return False
+    return True
+
+
+def promote_all_caps_headings(markdown_text: str, default_level: int = 3) -> str:
+    """
+    Promotes standalone ALL CAPS lines to Markdown headings (default level 3),
+    unless the immediately preceding block is a quote (where ALL CAPS indicates attribution).
+    """
+    blocks = re.split(r'\n{2,}', markdown_text.strip())
+    if not blocks or blocks == ['']:
+        return markdown_text.strip()
+
+    processed_blocks = []
+    prev_block = None
+
+    for block in blocks:
+        stripped = block.strip()
+        if not stripped:
+            continue
+
+        if _is_all_caps_heading_candidate(stripped):
+            if prev_block and _is_quote_block(prev_block):
+                # Quote attribution: keep as body text
+                processed_blocks.append(stripped)
+            else:
+                # Standalone section subheading
+                processed_blocks.append(f"{'#' * default_level} {stripped}")
+        else:
+            processed_blocks.append(stripped)
+
+        prev_block = stripped
+
+    return "\n\n".join(processed_blocks).strip()
+
+
 def _normalize_title_for_match(t: str) -> str:
     """Normalizes title string for relaxed text matching."""
     t = re.sub(r'<[^>]+>', '', t)
@@ -757,7 +827,8 @@ def convert_epub_to_markdown(
     epub_path: Union[str, Path],
     image_mode: str = 'refer',
     export_dir: Optional[Union[str, Path]] = None,
-    output_md_dir: Optional[Union[str, Path]] = None
+    output_md_dir: Optional[Union[str, Path]] = None,
+    promote_caps_headings: bool = True
 ) -> str:
     """Converts an EPUB file into Markdown string content using TOC metadata."""
     epub_path = Path(epub_path)
@@ -830,6 +901,8 @@ def convert_epub_to_markdown(
 
         final_markdown = "\n\n---\n\n".join(md_chapters)
         final_markdown = re.sub(r'\n{3,}', '\n\n', final_markdown)
+        if promote_caps_headings:
+            final_markdown = promote_all_caps_headings(final_markdown, default_level=3)
         final_markdown = normalize_headings(final_markdown, epub_title=epub_title)
         final_markdown = re.sub(r'\n{3,}', '\n\n', final_markdown)
         return final_markdown
