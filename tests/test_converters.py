@@ -352,6 +352,65 @@ def test_convert_epub_promotes_all_caps_subheadings_and_preserves_quote_attribut
     assert "### CORE SYSTEM CONSTRAINTS" in md or "## CORE SYSTEM CONSTRAINTS" in md
     assert "The primary constraint in distributed design" in md
 
+def test_convert_epub_heading_gap_compression(tmp_path):
+    import zipfile
+    epub_file = tmp_path / "test_gap_compression.epub"
+
+    container_xml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+
+    content_opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Negotiation Strategy Guide</dc:title>
+  </metadata>
+  <manifest>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch2" href="ch2.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="ch1"/>
+    <itemref idref="ch2"/>
+  </spine>
+</package>"""
+
+    ch1_xhtml = """<!DOCTYPE html>
+<html>
+<body>
+  <h2>1. Thinking Differently</h2>
+  <h4>HOW THIS BOOK IS DIFFERENT</h4>
+  <p>First approach details.</p>
+  <h4>INVISIBILITY</h4>
+  <p>Second approach details.</p>
+</body>
+</html>"""
+
+    ch2_xhtml = """<!DOCTYPE html>
+<html>
+<body>
+  <h2>2. People Are Everything</h2>
+  <p>Focus on relationships.</p>
+</body>
+</html>"""
+
+    with zipfile.ZipFile(epub_file, 'w') as z:
+        z.writestr("META-INF/container.xml", container_xml)
+        z.writestr("OEBPS/content.opf", content_opf)
+        z.writestr("OEBPS/ch1.xhtml", ch1_xhtml)
+        z.writestr("OEBPS/ch2.xhtml", ch2_xhtml)
+
+    md = convert_to_markdown(epub_file)
+    assert "# Negotiation Strategy Guide" in md
+    assert "## 1. Thinking Differently" in md
+    assert "### HOW THIS BOOK IS DIFFERENT" in md
+    assert "### INVISIBILITY" in md
+    assert "#### HOW THIS BOOK IS DIFFERENT" not in md
+    assert "## 2. People Are Everything" in md
+
 def test_convert_epub_merges_broken_title_lines_and_connector_headings(tmp_path):
     import zipfile
     epub_file = tmp_path / "test_merged_headings.epub"

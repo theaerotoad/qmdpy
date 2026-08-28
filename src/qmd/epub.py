@@ -876,8 +876,8 @@ def deduplicate_headings_and_titles(markdown_text: str) -> str:
 def normalize_headings(markdown_text: str, epub_title: Optional[str] = None) -> str:
     """
     Ensures the document has a single L1 heading (#) at the top.
-    Normalizes body heading levels so that the highest-level body headings
-    start at L2 (##), preserving relative hierarchy and eliminating duplicates.
+    Normalizes body heading levels step-by-step using a hierarchy stack so that
+    there are no level gaps (e.g. jumping from ## directly to ####), preserving relative hierarchy.
     """
     markdown_text = clean_broken_paragraphs(markdown_text)
     markdown_text = merge_consecutive_headings(markdown_text)
@@ -913,41 +913,43 @@ def normalize_headings(markdown_text: str, epub_title: Optional[str] = None) -> 
             if first_heading_idx == 0 or all(not l.strip() for l in lines[:first_heading_idx]):
                 has_top_l1 = True
 
-    body_heading_levels = []
-    for idx, line in enumerate(lines):
-        if has_top_l1 and idx == first_heading_idx:
-            continue
-        match = re.match(r'^(#{1,6})\s+', line)
-        if match:
-            body_heading_levels.append(len(match.group(1)))
+    stack = [(0, 1)] if (has_top_l1 or epub_title) else [(0, 0)]
+    final_lines = []
 
-    has_l1_target = has_top_l1 or bool(epub_title)
-    target_min_body_level = 2 if has_l1_target else 1
-
-    shift = 0
-    if body_heading_levels:
-        min_body_level = min(body_heading_levels)
-        shift = target_min_body_level - min_body_level
-
-    new_lines = []
     if not has_top_l1 and epub_title:
-        new_lines.append(f"# {epub_title}")
-        new_lines.append("")
+        final_lines.append(f"# {epub_title}")
+        final_lines.append("")
 
     for idx, line in enumerate(lines):
         if has_top_l1 and idx == first_heading_idx:
-            new_lines.append(line)
-        else:
-            match = re.match(r'^(#{1,6})\s+(.*)$', line)
-            if match:
-                hashes, rest = match.groups()
-                old_level = len(hashes)
-                new_level = max(target_min_body_level, min(6, old_level + shift))
-                new_lines.append(f"{'#' * new_level} {rest.strip()}")
-            else:
-                new_lines.append(line)
+            final_lines.append(f"# {first_heading_text}")
+            continue
 
-    result = "\n".join(new_lines).strip()
+        match = re.match(r'^(#{1,6})\s+(.*)$', line)
+        if not match:
+            final_lines.append(line)
+            continue
+
+        hashes, heading_content = match.groups()
+        raw_lvl = len(hashes)
+
+        if raw_lvl > stack[-1][0]:
+            new_assigned = min(6, stack[-1][1] + 1)
+            stack.append((raw_lvl, new_assigned))
+        elif raw_lvl == stack[-1][0]:
+            new_assigned = stack[-1][1]
+        else:
+            while len(stack) > 1 and stack[-1][0] > raw_lvl:
+                stack.pop()
+            if stack[-1][0] == raw_lvl:
+                new_assigned = stack[-1][1]
+            else:
+                new_assigned = min(6, stack[-1][1] + 1)
+                stack.append((raw_lvl, new_assigned))
+
+        final_lines.append(f"{'#' * new_assigned} {heading_content.strip()}")
+
+    result = "\n".join(final_lines).strip()
     result = re.sub(r'\n{3,}', '\n\n', result)
     return deduplicate_headings_and_titles(result)
 
