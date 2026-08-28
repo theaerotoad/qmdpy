@@ -432,27 +432,36 @@ def get_document():
     collection = request.args.get('collection')
     path = request.args.get('path')
     should_redact = request.args.get('redact_pii') == 'true' or request.args.get('redact') == 'true'
-    if not collection or not path:
-        return jsonify({"error": "Missing params"}), 400
+    if not path:
+        return jsonify({"error": "Missing 'path' parameter"}), 400
 
     store = get_store()
-    target_store = getattr(store, "collection_store_map", {}).get(collection, store) if collection else store
-    cursor = target_store.conn.cursor()
-    cursor.execute('''
-        SELECT c.body, d.title
-        FROM documents d
-        JOIN content c ON d.hash = c.hash
-        WHERE d.collection = ? AND d.path = ?
-    ''', (collection, path))
-    row = cursor.fetchone()
+    target_stores = store._get_target_stores_for_collection(collection)
+    for target_store in target_stores:
+        cursor = target_store.conn.cursor()
+        if collection:
+            cursor.execute('''
+                SELECT c.body, d.title, d.collection
+                FROM documents d
+                JOIN content c ON d.hash = c.hash
+                WHERE (d.collection = ? OR d.collection LIKE ?) AND (d.path = ? OR d.path LIKE ?)
+            ''', (collection, f"%{collection}%", path, f"%{path}%"))
+        else:
+            cursor.execute('''
+                SELECT c.body, d.title, d.collection
+                FROM documents d
+                JOIN content c ON d.hash = c.hash
+                WHERE d.path = ? OR d.path LIKE ?
+            ''', (path, f"%{path}%"))
+        row = cursor.fetchone()
 
-    if row:
-        title = row[1]
-        content = decompress_text(row[0])
-        if should_redact:
-            title = redact_pii(title)
-            content = redact_pii(content)
-        return jsonify({"title": title, "content": content})
+        if row:
+            title = row[1]
+            content = decompress_text(row[0])
+            if should_redact:
+                title = redact_pii(title)
+                content = redact_pii(content)
+            return jsonify({"title": title, "content": content, "collection": row[2]})
     return jsonify({"error": "Not found"}), 404
 
 @app.route('/api/session/<session_id>', methods=['GET'])

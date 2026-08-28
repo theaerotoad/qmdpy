@@ -348,3 +348,71 @@ collections:
 """)
     cfg = load_config(master_yaml)
     assert cfg.included_configs[0].llm_url == "http://master-server:8888"
+
+
+def test_store_target_store_resolution_partial_and_wildcards(tmp_path):
+    from qmd.db import get_connection, init_schema
+    from qmd.store import Store
+
+    db_m = tmp_path / "master.db"
+    db_c1 = tmp_path / "docs_v1.db"
+    db_c2 = tmp_path / "notes_archive.db"
+
+    for p in (db_m, db_c1, db_c2):
+        conn = get_connection(p)
+        init_schema(conn)
+        conn.close()
+
+    c1_yaml = tmp_path / "c1.yml"
+    c1_yaml.write_text(f"""
+db_path: "{db_c1}"
+embed_model: "EmbeddingGemma 300m"
+collections:
+  docs_v1:
+    path: "{tmp_path}"
+""")
+
+    c2_yaml = tmp_path / "c2.yml"
+    c2_yaml.write_text(f"""
+db_path: "{db_c2}"
+embed_model: "EmbeddingGemma 300m"
+collections:
+  notes_archive:
+    path: "{tmp_path}"
+""")
+
+    master_yaml = tmp_path / "master.yml"
+    master_yaml.write_text(f"""
+db_path: "{db_m}"
+embed_model: "EmbeddingGemma 300m"
+include:
+  - "{c1_yaml.name}"
+  - "{c2_yaml.name}"
+collections:
+  master_docs:
+    path: "{tmp_path}"
+""")
+
+    cfg = load_config(master_yaml)
+    store = Store(cfg, read_only=True)
+
+    # All stores when no filter specified
+    all_stores = store._get_target_stores_for_collection(None)
+    assert len(all_stores) == 3
+
+    # Partial substring 'docs' matches 'master_docs' (self) and 'docs_v1' (child 0)
+    docs_stores = store._get_target_stores_for_collection("docs")
+    assert len(docs_stores) == 2
+    assert store in docs_stores
+    assert store.child_stores[0] in docs_stores
+
+    # Wildcard '*archive' matches only notes_archive
+    arch_stores = store._get_target_stores_for_collection("*archive")
+    assert len(arch_stores) == 1
+    assert arch_stores[0] is store.child_stores[1]
+
+    # Comma-separated query across multiple includes
+    multi_stores = store._get_target_stores_for_collection("docs_v1, notes_archive")
+    assert len(multi_stores) == 2
+    assert store.child_stores[0] in multi_stores
+    assert store.child_stores[1] in multi_stores

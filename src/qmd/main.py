@@ -778,8 +778,10 @@ def handle_update(args, store: Store):
     
     # 1. Update existing collections
     for name, coll_cfg in config.collections.items():
-        if args.collection and name != args.collection:
-            continue
+        if args.collection:
+            c_filter = args.collection.lower()
+            if name.lower() != c_filter and c_filter not in name.lower():
+                continue
 
         if args.pull:
             repo_path = Path(coll_cfg.path).expanduser().resolve()
