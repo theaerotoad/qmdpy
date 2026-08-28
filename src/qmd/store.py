@@ -124,6 +124,7 @@ def _results_to_json(results: List['Result']) -> str:
             "rrf_score": getattr(r, "rrf_score", None),
             "rrf_rank": getattr(r, "rrf_rank", None),
             "match_count": getattr(r, "match_count", 1),
+            "rowid": getattr(r, "rowid", None),
         })
     return json.dumps(data)
 
@@ -150,6 +151,7 @@ def _json_to_results(json_str: str) -> List['Result']:
             rrf_score=item.get("rrf_score"),
             rrf_rank=item.get("rrf_rank"),
             match_count=item.get("match_count", 1),
+            rowid=item.get("rowid"),
         ))
     return results
 
@@ -188,6 +190,7 @@ class Result:
     rrf_score: Optional[float] = None
     rrf_rank: Optional[int] = None
     match_count: int = 1
+    rowid: Optional[int] = None
 
 class Store:
     def __init__(self, config: Config, connection: Optional[sqlite3.Connection] = None, read_only: bool = False):
@@ -235,6 +238,45 @@ class Store:
             generate_model=config.generate_model,
             timeout=getattr(config, "request_timeout", 120.0)
         )
+
+    def _hydrate_results_text(self, results: List[Result]):
+        """
+        Hydrates missing or deferred text in Result objects by batch-fetching
+        and decompressing chunk_text from chunk_metadata.
+        """
+        needed = [r for r in results if not r.text]
+        if not needed:
+            return
+
+        cursor = self.conn.cursor()
+        with_rowids = [r for r in needed if r.rowid is not None]
+        without_rowids = [r for r in needed if r.rowid is None]
+
+        if with_rowids:
+            unique_rowids = list({r.rowid for r in with_rowids})
+            placeholders = ','.join(['?'] * len(unique_rowids))
+            cursor.execute(
+                f"SELECT rowid, chunk_text FROM chunk_metadata WHERE rowid IN ({placeholders})",
+                tuple(unique_rowids)
+            )
+            text_map = {row[0]: decompress_text(row[1]) for row in cursor.fetchall()}
+            for r in with_rowids:
+                if r.rowid in text_map:
+                    r.text = text_map[r.rowid]
+
+        if without_rowids:
+            for r in without_rowids:
+                cursor.execute("""
+                    SELECT m.chunk_text, m.rowid
+                    FROM chunk_metadata m
+                    JOIN documents d ON m.doc_hash = d.hash
+                    WHERE d.collection = ? AND d.path = ? AND m.seq_id = ?
+                """, (r.collection, r.path, r.seq_id))
+                row = cursor.fetchone()
+                if row:
+                    r.text = decompress_text(row[0])
+                    if r.rowid is None and row[1] is not None:
+                        r.rowid = row[1]
 
     def _build_search_cache_key(
         self,
@@ -654,7 +696,7 @@ class Store:
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (vector_rowid, collection_name, rel_path, title, chunk_text, context_str))
 
-    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None) -> List[Result]:
+    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False) -> List[Result]:
         """Lexical search directly on chunks using chunks_fts."""
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
         # Allow pre-formatted FTS query expressions (quotes, AND, OR, NOT) to pass through directly
@@ -695,8 +737,9 @@ class Store:
         elif isinstance(path, (list, tuple, set)):
             paths = [str(p).strip() for p in path if str(p).strip()]
         
-        base_sql = """
-            SELECT f.filepath, f.title, f.body, f.rank, f.collection, f.rowid, m.seq_id, COALESCE(f.headers, '')
+        body_col = "'' AS body" if defer_text else "f.body"
+        base_sql = f"""
+            SELECT f.filepath, f.title, {body_col}, f.rank, f.collection, f.rowid, m.seq_id, COALESCE(f.headers, '')
             FROM chunks_fts f
             JOIN chunk_metadata m ON f.rowid = m.rowid
             WHERE chunks_fts MATCH ?
@@ -752,14 +795,15 @@ class Store:
             results.append(Result(
                 path=doc_path,
                 title=doc_title,
-                text=chunk_text,
+                text=chunk_text if not defer_text else "",
                 score=calculated_fts_score,
                 source="fts",
                 collection=coll or "",
                 seq_id=seq_id,
                 headers=headers,
                 fts_score=calculated_fts_score,
-                fts_rank=calculated_fts_rank
+                fts_rank=calculated_fts_rank,
+                rowid=rowid
             ))
             if len(results) >= limit:
                 break
@@ -778,7 +822,7 @@ class Store:
             return vecs[0]
         return []
 
-    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None) -> List[Result]:
+    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
         if query_vec is None:
             query_text = self.llm.format_query_for_embedding(query)
@@ -804,8 +848,9 @@ class Store:
                 extra_seen = (len(exclude_seen_set) * 2) if exclude_seen_set else 0
                 k_val = (limit * 5 + extra_seen) if (collection or title or paths or exclude_seen_set) else limit
 
-                query_sql = """
-                    SELECT v.rowid, v.distance, m.chunk_text, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, '')
+                chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
+                query_sql = f"""
+                    SELECT v.rowid, v.distance, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, '')
                     FROM vectors v
                     JOIN chunk_metadata m ON v.rowid = m.rowid
                     JOIN documents d ON m.doc_hash = d.hash
@@ -838,23 +883,26 @@ class Store:
                     else:
                         score = max(0.0, 1.0 - float(dist))
 
-                    raw_candidates.append((score, doc_path, doc_title, text_blob, coll, seq_id, hdrs))
+                    raw_candidates.append((score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, rowid))
 
                 raw_candidates.sort(key=lambda x: x[0], reverse=True)
                 candidates = []
-                for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs) in enumerate(raw_candidates[:limit]):
+                for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id) in enumerate(raw_candidates[:limit]):
+                    chunk_str = decompress_text(text_blob) if (not defer_text and text_blob is not None) else ""
                     candidates.append(Result(
-                        path=doc_path, title=doc_title, text=decompress_text(text_blob), score=score,
+                        path=doc_path, title=doc_title, text=chunk_str, score=score,
                         source="vec", collection=coll, seq_id=seq_id, headers=hdrs,
-                        vec_score=score, vec_rank=vec_idx + 1
+                        vec_score=score, vec_rank=vec_idx + 1,
+                        rowid=r_id
                     ))
                 return candidates
             except sqlite3.OperationalError:
                 pass
 
         # Fallback: Python vector comparison
-        query_sql = """
-            SELECT v.embedding, m.chunk_text, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, '')
+        chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
+        query_sql = f"""
+            SELECT v.embedding, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''), v.rowid
             FROM vectors v
             JOIN chunk_metadata m ON v.rowid = m.rowid
             JOIN documents d ON m.doc_hash = d.hash
@@ -879,7 +927,7 @@ class Store:
         
         dim = len(query_vec)
         raw_candidates = []
-        for emb_blob, text_blob, doc_path, doc_title, coll, seq_id, hdrs in cursor.fetchall():
+        for emb_blob, text_blob, doc_path, doc_title, coll, seq_id, hdrs, r_id in cursor.fetchall():
             key = (coll or "", doc_path, seq_id)
             if exclude_seen_set and key in exclude_seen_set:
                 if excluded_chunks_tracker is not None:
@@ -892,15 +940,17 @@ class Store:
             mag_v = math.sqrt(sum(a * a for a in vec))
             sim = dot_prod / (mag_q * mag_v) if mag_q and mag_v else 0
             
-            raw_candidates.append((sim, doc_path, doc_title, text_blob, coll, seq_id, hdrs))
+            raw_candidates.append((sim, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id))
         
         raw_candidates.sort(key=lambda x: x[0], reverse=True)
         candidates = []
-        for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs) in enumerate(raw_candidates[:limit]):
+        for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id) in enumerate(raw_candidates[:limit]):
+            chunk_str = decompress_text(text_blob) if (not defer_text and text_blob is not None) else ""
             candidates.append(Result(
-                path=doc_path, title=doc_title, text=decompress_text(text_blob), score=score, 
+                path=doc_path, title=doc_title, text=chunk_str, score=score, 
                 source="vec", collection=coll, seq_id=seq_id, headers=hdrs,
-                vec_score=score, vec_rank=vec_idx + 1
+                vec_score=score, vec_rank=vec_idx + 1,
+                rowid=r_id
             ))
         return candidates
 
@@ -919,7 +969,8 @@ class Store:
         vec_limit: Optional[int] = None,
         rerank_candidates: Optional[int] = None,
         exclude_seen_set: Optional[set] = None,
-        use_cache: Optional[bool] = None
+        use_cache: Optional[bool] = None,
+        defer_text: bool = False
     ) -> List[Result]:
         t_total_start = time.perf_counter()
         excluded_chunks_tracker: set = set()
@@ -966,7 +1017,7 @@ class Store:
         t_fts_start = time.perf_counter()
         # Gated FTS Execution: Run strict conjunctions first; stop if quorum reached
         for q_idx, lq in enumerate(lex_queries):
-            tier_results = self.search_fts(lq, limit=fts_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker)
+            tier_results = self.search_fts(lq, limit=fts_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=True)
             
             for r in tier_results:
                 key = (r.collection, r.path, r.seq_id)
@@ -996,7 +1047,7 @@ class Store:
             terms = [t for t in clean_q.split() if t not in stop_words and len(t) > 1]
             if len(terms) > 1:
                 or_query = " OR ".join([f'"{t}"' for t in terms])
-                or_results = self.search_fts(or_query, limit=fts_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker)
+                or_results = self.search_fts(or_query, limit=fts_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=True)
                 for r in or_results:
                     key = (r.collection, r.path, r.seq_id)
                     if key not in seen_fts_keys:
@@ -1022,7 +1073,7 @@ class Store:
         for vq in vec_queries:
             q_vec = vec_query_embeddings.get(vq)
             if q_vec:
-                vec_results.extend(self.search_vec(vq, limit=vec_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=q_vec))
+                vec_results.extend(self.search_vec(vq, limit=vec_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=q_vec, defer_text=True))
         t_vec_knn = (time.perf_counter() - t_vec_start) * 1000
 
         self.last_exclusion_stats = {
@@ -1104,6 +1155,7 @@ class Store:
                 final_results.append(res)
         else:
             t_rerank_start = time.perf_counter()
+            self._hydrate_results_text(top_candidates)
             rerank_docs = [f"File: {c.path}\nContent: {c.text}" for c in top_candidates]
             rerank_results = self.llm.rerank(query, rerank_docs)
             
@@ -1153,9 +1205,14 @@ class Store:
         unique_results = []
         seen_content = set()
         
+        if not defer_text and not (rerank or reranker_only):
+            self._hydrate_results_text(final_results)
+
         for res in final_results:
-            # Create a signature for the content to detect exact duplicates
-            content_sig = res.text.strip()
+            if res.text:
+                content_sig = res.text.strip()
+            else:
+                content_sig = f"{res.collection}:{res.path}:{res.seq_id}"
             if content_sig not in seen_content:
                 unique_results.append(res)
                 seen_content.add(content_sig)
@@ -1165,7 +1222,10 @@ class Store:
             res.rank = i + 1
 
         ret_results = unique_results[:limit]
+        if not defer_text:
+            self._hydrate_results_text(ret_results)
         if should_cache and not exclude_seen_set:
+            self._hydrate_results_text(ret_results)
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(ret_results))
         t_dedup = (time.perf_counter() - t_dedup_start) * 1000
         t_total = (time.perf_counter() - t_total_start) * 1000
@@ -1206,7 +1266,8 @@ class Store:
         vec_limit: Optional[int] = None,
         rerank_candidates: Optional[int] = None,
         exclude_seen_set: Optional[set] = None,
-        use_cache: Optional[bool] = None
+        use_cache: Optional[bool] = None,
+        defer_text: bool = False
     ) -> List[Result]:
         """
         Hierarchical Wide-to-Narrow (W2N) Search:
@@ -1254,7 +1315,8 @@ class Store:
             vec_limit=vec_limit,
             rerank_candidates=rerank_candidates,
             exclude_seen_set=exclude_seen_set,
-            use_cache=False
+            use_cache=False,
+            defer_text=True
         )
         t_wide = (time.perf_counter() - t_wide_start) * 1000
 
@@ -1295,9 +1357,9 @@ class Store:
 
         # Fall back to wide results if container filtering was overly restrictive
         if len(boosted_results) < limit:
-            seen_signatures = {r.path + r.text[:50] for r in boosted_results}
+            seen_signatures = {(r.collection, r.path, r.seq_id) for r in boosted_results}
             for res in wide_results:
-                sig = res.path + res.text[:50]
+                sig = (res.collection, res.path, res.seq_id)
                 if sig not in seen_signatures:
                     boosted_results.append(res)
                     seen_signatures.add(sig)
@@ -1310,6 +1372,7 @@ class Store:
         t_rerank = 0.0
         if rerank or reranker_only:
             t_rerank_start = time.perf_counter()
+            self._hydrate_results_text(candidate_pool)
             rerank_docs = [f"File: {c.path}\nContent: {c.text}" for c in candidate_pool]
             rerank_results = self.llm.rerank(query, rerank_docs)
             
@@ -1343,7 +1406,10 @@ class Store:
             res.rank = i + 1
 
         ret_results = candidate_pool[:limit]
+        if not defer_text:
+            self._hydrate_results_text(ret_results)
         if should_cache and not exclude_seen_set:
+            self._hydrate_results_text(ret_results)
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(ret_results))
         t_dedup = (time.perf_counter() - t_dedup_start) * 1000
         t_total = (time.perf_counter() - t_total_start) * 1000
@@ -1428,7 +1494,8 @@ class Store:
                 vec_limit=vec_limit,
                 rerank_candidates=rerank_candidates,
                 exclude_seen_set=exclude_seen_set,
-                use_cache=False
+                use_cache=False,
+                defer_text=True
             )
         else:
             candidates = self.hybrid_search(
@@ -1445,7 +1512,8 @@ class Store:
                 vec_limit=vec_limit,
                 rerank_candidates=rerank_candidates,
                 exclude_seen_set=exclude_seen_set,
-                use_cache=False
+                use_cache=False,
+                defer_text=True
             )
         t_cand = (time.perf_counter() - t_cand_start) * 1000
 
@@ -1489,6 +1557,7 @@ class Store:
             res.rank = i + 1
 
         final_results = discover_results[:limit]
+        self._hydrate_results_text(final_results)
 
         if should_cache and not exclude_seen_set:
             save_cached_search_results(self.history_conn, cache_key, query, _results_to_json(final_results))
