@@ -352,6 +352,64 @@ def test_convert_epub_promotes_all_caps_subheadings_and_preserves_quote_attribut
     assert "### CORE SYSTEM CONSTRAINTS" in md or "## CORE SYSTEM CONSTRAINTS" in md
     assert "The primary constraint in distributed design" in md
 
+def test_convert_epub_merges_broken_title_lines_and_connector_headings(tmp_path):
+    import zipfile
+    epub_file = tmp_path / "test_merged_headings.epub"
+
+    container_xml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+
+    content_opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="[http://www.idpf.org/2007/opf](http://www.idpf.org/2007/opf)" version="2.0">
+  <metadata xmlns:dc="[http://purl.org/dc/elements/1.1/](http://purl.org/dc/elements/1.1/)">
+    <dc:title>Principles of Modern Systems</dc:title>
+  </metadata>
+  <manifest>
+    <item id="title" href="title.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="title"/>
+    <itemref idref="ch1"/>
+  </spine>
+</package>"""
+
+    title_xhtml = """<!DOCTYPE html>
+<html>
+<body>
+  <p>Growth for the</p>
+  <p>Nine System Patterns</p>
+  <h2>ALICE W. THURSTON</h2>
+  <h2>and</h2>
+  <h2>BOB M. CARPENTER</h2>
+</body>
+</html>"""
+
+    ch1_xhtml = """<!DOCTYPE html>
+<html>
+<body>
+  <h4>EACH PATTERN HAS UNIQUE ADVANTAGES—</h4>
+  <h4>AND PREDICTABLE TRADEOFFS</h4>
+  <p>System components should be decomposed according to domain boundaries.</p>
+</body>
+</html>"""
+
+    with zipfile.ZipFile(epub_file, 'w') as z:
+        z.writestr("META-INF/container.xml", container_xml)
+        z.writestr("OEBPS/content.opf", content_opf)
+        z.writestr("OEBPS/title.xhtml", title_xhtml)
+        z.writestr("OEBPS/ch1.xhtml", ch1_xhtml)
+
+    md = convert_to_markdown(epub_file)
+    assert "Growth for the Nine System Patterns" in md
+    assert "## ALICE W. THURSTON and BOB M. CARPENTER" in md
+    assert "## and\n" not in md
+    assert "EACH PATTERN HAS UNIQUE ADVANTAGES— AND PREDICTABLE TRADEOFFS" in md
+
 def test_convert_text_file(tmp_path):
     txt_file = tmp_path / "test.txt"
     txt_file.write_text("Simple text file line 1\nLine 2\n", encoding="utf-8")

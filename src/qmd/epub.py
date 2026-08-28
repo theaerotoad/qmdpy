@@ -250,6 +250,133 @@ def extract_epub_toc(z: zipfile.ZipFile, opf_root: ET.Element, opf_dir: str) -> 
     return []
 
 
+DANGLING_PREP_PATTERN = re.compile(
+    r'\b(?:for\s+the|of\s+the|in\s+the|to\s+the|with\s+the|by\s+the|on\s+the|at\s+the|from\s+the|'
+    r'and|or|for|of|in|to|with|by|on|at|from|a|an|the|as|into|through|about|under|over)\s*$',
+    re.IGNORECASE
+)
+
+CONNECTOR_WORDS = {
+    'and', '&', 'with', 'by', 'or', 'plus', 'feat', 'feat.', 'featuring',
+    'in', 'on', 'of', 'for', 'to', 'the', 'a', 'an', 'v.', 'vs.', 'versus'
+}
+
+
+def clean_broken_paragraphs(markdown_text: str) -> str:
+    """
+    Merges consecutive broken paragraph blocks where a line ends with a dangling
+    preposition/article/conjunction or hyphen, or the next line starts with lowercase.
+    """
+    blocks = re.split(r'\n{2,}', markdown_text.strip())
+    if not blocks or blocks == ['']:
+        return markdown_text.strip()
+
+    cleaned: List[str] = []
+
+    def is_regular_paragraph(b: str) -> bool:
+        s = b.strip()
+        if not s or s == '---':
+            return False
+        if s.startswith(('#', '>', '|', '```', '![', '<')):
+            return False
+        if re.match(r'^\s*([-*]|\d+\.)\s+', s):
+            return False
+        return True
+
+    for block in blocks:
+        stripped = block.strip()
+        if not stripped:
+            continue
+
+        if cleaned and is_regular_paragraph(cleaned[-1]) and is_regular_paragraph(stripped):
+            prev = cleaned[-1]
+            should_merge = False
+
+            if DANGLING_PREP_PATTERN.search(prev):
+                should_merge = True
+            elif re.search(r'[-–—,:]\s*$', prev) and not re.search(r'[.!?]\s*$', prev):
+                should_merge = True
+            elif stripped and stripped[0].islower():
+                should_merge = True
+            elif (len(prev.split()) <= 7 and len(stripped.split()) <= 7
+                  and not prev.endswith(('.', '!', '?')) and not stripped.endswith(('.', '!', '?'))
+                  and len(cleaned) <= 3):
+                should_merge = True
+
+            if should_merge:
+                if prev.endswith(('-', '—', '–')) and not prev.endswith((' -', ' —', ' –')):
+                    combined = f"{prev} {stripped}"
+                else:
+                    combined = f"{prev} {stripped}"
+                combined = re.sub(r'[ \t]+', ' ', combined).strip()
+                cleaned[-1] = combined
+                continue
+
+        cleaned.append(stripped)
+
+    return "\n\n".join(cleaned).strip()
+
+
+def merge_consecutive_headings(markdown_text: str) -> str:
+    """
+    Merges consecutive split headings (e.g. '## Author \\n\\n ## and \\n\\n ## Co-Author'
+    or '#### PART 1— \\n\\n #### SUBTITLE') into a single unified heading.
+    """
+    blocks = re.split(r'\n{2,}', markdown_text.strip())
+    if not blocks or blocks == ['']:
+        return markdown_text.strip()
+
+    merged_blocks: List[str] = []
+
+    for block in blocks:
+        stripped = block.strip()
+        if not stripped:
+            continue
+
+        m = re.match(r'^(#{1,6})\s+(.*)$', stripped, re.DOTALL)
+        if not m:
+            merged_blocks.append(stripped)
+            continue
+
+        hashes, h_text = m.groups()
+        h_level = len(hashes)
+        h_text = h_text.strip()
+
+        if merged_blocks:
+            prev = merged_blocks[-1]
+            prev_m = re.match(r'^(#{1,6})\s+(.*)$', prev, re.DOTALL)
+            if prev_m:
+                prev_hashes, prev_text = prev_m.groups()
+                prev_level = len(prev_hashes)
+                prev_text = prev_text.strip()
+
+                should_merge = False
+
+                if prev_text.lower() in CONNECTOR_WORDS or h_text.lower() in CONNECTOR_WORDS:
+                    should_merge = True
+                elif prev_level == h_level or abs(prev_level - h_level) <= 1:
+                    if re.search(r'[—–\-:,…]\s*$|\.\.\.\s*$', prev_text) or DANGLING_PREP_PATTERN.search(prev_text):
+                        should_merge = True
+                    elif re.match(r'^(?:and|or|&|with|by|plus|but|for|of|in|on|to|a|an|the|—|–|\-)\b', h_text, re.IGNORECASE) or (h_text and h_text[0].islower()):
+                        should_merge = True
+                    elif (not re.match(r'^(?:\d+\.?|[IVXLCDM]+\.?|Chapter|Part|Section|Book|Appendix)\b', prev_text, re.IGNORECASE)
+                          and not re.match(r'^(?:\d+\.?|[IVXLCDM]+\.?|Chapter|Part|Section|Book|Appendix)\b', h_text, re.IGNORECASE)
+                          and len(prev_text.split()) + len(h_text.split()) <= 16
+                          and not prev_text.endswith(('.', '!', '?'))):
+                        should_merge = True
+
+                if should_merge:
+                    target_level = min(prev_level, h_level)
+                    combined_text = f"{prev_text} {h_text}"
+                    combined_text = re.sub(r'[ \t]+', ' ', combined_text).strip()
+                    merged_blocks[-1] = f"{'#' * target_level} {combined_text}"
+                    continue
+
+        merged_blocks.append(stripped)
+
+    return "\n\n".join(merged_blocks).strip()
+
+
 def _is_quote_block(block: str) -> bool:
     """Checks if a markdown block appears to be a quote or blockquote."""
     s = block.strip()
@@ -752,6 +879,8 @@ def normalize_headings(markdown_text: str, epub_title: Optional[str] = None) -> 
     Normalizes body heading levels so that the highest-level body headings
     start at L2 (##), preserving relative hierarchy and eliminating duplicates.
     """
+    markdown_text = clean_broken_paragraphs(markdown_text)
+    markdown_text = merge_consecutive_headings(markdown_text)
     markdown_text = deduplicate_headings_and_titles(markdown_text)
     lines = markdown_text.splitlines()
 
@@ -901,9 +1030,12 @@ def convert_epub_to_markdown(
 
         final_markdown = "\n\n---\n\n".join(md_chapters)
         final_markdown = re.sub(r'\n{3,}', '\n\n', final_markdown)
+        final_markdown = clean_broken_paragraphs(final_markdown)
         if promote_caps_headings:
             final_markdown = promote_all_caps_headings(final_markdown, default_level=3)
+        final_markdown = merge_consecutive_headings(final_markdown)
         final_markdown = normalize_headings(final_markdown, epub_title=epub_title)
+        final_markdown = merge_consecutive_headings(final_markdown)
         final_markdown = re.sub(r'\n{3,}', '\n\n', final_markdown)
         return final_markdown
 
