@@ -80,6 +80,154 @@ def test_convert_epub(tmp_path):
     assert "Test Book Title" in md or "Chapter 1" in md
     assert "This is a test paragraph in the EPUB." in md
 
+def test_convert_epub_with_ncx_toc(tmp_path):
+    import zipfile
+    epub_file = tmp_path / "test_ncx.epub"
+
+    container_xml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+
+    content_opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="BookId">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Sample NCX Book</dc:title>
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch2" href="ch2.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="ch1"/>
+    <itemref idref="ch2"/>
+  </spine>
+</package>"""
+
+    toc_ncx = """<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>
+    <navPoint id="np-1" playOrder="1">
+      <navLabel><text>Chapter 1: The Beginning</text></navLabel>
+      <content src="ch1.xhtml"/>
+      <navPoint id="np-2" playOrder="2">
+        <navLabel><text>Section 1.1: Foundations</text></navLabel>
+        <content src="ch1.xhtml#sec1_1"/>
+      </navPoint>
+    </navPoint>
+    <navPoint id="np-3" playOrder="3">
+      <navLabel><text>Chapter 2: The Next Step</text></navLabel>
+      <content src="ch2.xhtml"/>
+    </navPoint>
+  </navMap>
+</ncx>"""
+
+    ch1_xhtml = """<!DOCTYPE html>
+<html>
+<body>
+  <p class="title">Chapter 1: The Beginning</p>
+  <p>Introductory text for chapter one.</p>
+  <div id="sec1_1">
+    <p class="subtitle">Section 1.1: Foundations</p>
+    <p>Foundation details.</p>
+  </div>
+</body>
+</html>"""
+
+    ch2_xhtml = """<!DOCTYPE html>
+<html>
+<body>
+  <p>Chapter 2: The Next Step</p>
+  <p>Next step details.</p>
+</body>
+</html>"""
+
+    with zipfile.ZipFile(epub_file, 'w') as z:
+        z.writestr("META-INF/container.xml", container_xml)
+        z.writestr("OEBPS/content.opf", content_opf)
+        z.writestr("OEBPS/toc.ncx", toc_ncx)
+        z.writestr("OEBPS/ch1.xhtml", ch1_xhtml)
+        z.writestr("OEBPS/ch2.xhtml", ch2_xhtml)
+
+    md = convert_to_markdown(epub_file)
+    assert "# Sample NCX Book" in md
+    assert "## Chapter 1: The Beginning" in md
+    assert "### Section 1.1: Foundations" in md
+    assert "## Chapter 2: The Next Step" in md
+    assert "Introductory text for chapter one." in md
+    assert "Foundation details." in md
+
+def test_convert_epub_with_nav_xhtml_toc(tmp_path):
+    import zipfile
+    epub_file = tmp_path / "test_nav.epub"
+
+    container_xml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/package.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+
+    package_opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>EPUB 3 Guide</dc:title>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="c1" href="content.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="c1"/>
+  </spine>
+</package>"""
+
+    nav_xhtml = """<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<body>
+  <nav epub:type="toc" id="toc">
+    <h1>Table of Contents</h1>
+    <ol>
+      <li>
+        <a href="content.xhtml#p1">Part 1: Overview</a>
+        <ol>
+          <li><a href="content.xhtml#sec1">Chapter 1: Getting Started</a></li>
+        </ol>
+      </li>
+    </ol>
+  </nav>
+</body>
+</html>"""
+
+    content_xhtml = """<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<body>
+  <section id="p1">
+    <h1>Part 1: Overview</h1>
+    <p>Part 1 text.</p>
+    <section id="sec1">
+      <h1>Chapter 1: Getting Started</h1>
+      <p>Getting started body text.</p>
+    </section>
+  </section>
+</body>
+</html>"""
+
+    with zipfile.ZipFile(epub_file, 'w') as z:
+        z.writestr("META-INF/container.xml", container_xml)
+        z.writestr("OEBPS/package.opf", package_opf)
+        z.writestr("OEBPS/nav.xhtml", nav_xhtml)
+        z.writestr("OEBPS/content.xhtml", content_xhtml)
+
+    md = convert_to_markdown(epub_file)
+    assert "# EPUB 3 Guide" in md
+    assert "## Part 1: Overview" in md
+    assert "### Chapter 1: Getting Started" in md
+    assert "Getting started body text." in md
+
 def test_convert_text_file(tmp_path):
     txt_file = tmp_path / "test.txt"
     txt_file.write_text("Simple text file line 1\nLine 2\n", encoding="utf-8")

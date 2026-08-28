@@ -2,7 +2,8 @@
 """
 Lightweight EPUB to single Markdown file converter.
 Extracts HTML/XHTML spine items from an EPUB archive, converts HTML elements
-to ATX-style Markdown, and handles images via export, reference, or base64 encoding.
+to ATX-style Markdown, preserves Table of Contents (NCX / EPUB3 Nav) heading hierarchies,
+and handles images via export, reference, or base64 encoding.
 """
 
 import argparse
@@ -11,22 +12,299 @@ from html.parser import HTMLParser
 import os
 import posixpath
 import re
+import urllib.parse
 from pathlib import Path
-from typing import Union, Optional
+from typing import Union, Optional, List, Dict, Tuple, Set
 import xml.etree.ElementTree as ET
 import zipfile
 
 
-class EPUBHTMLToMarkdown(HTMLParser):
-    """HTML to ATX Markdown converter using standard library HTMLParser."""
+class TOCEntry:
+    """Represents an entry in the EPUB Table of Contents."""
 
-    def __init__(self, epub_zip, current_html_path, image_mode, export_dir, output_md_dir):
+    def __init__(
+        self,
+        title: str,
+        level: int,
+        file_path: str,
+        anchor: Optional[str] = None,
+        order: int = 0
+    ):
+        self.title = title.strip()
+        self.level = max(1, int(level))
+        self.file_path = file_path
+        self.anchor = anchor.strip() if anchor else None
+        self.order = order
+
+    def __repr__(self):
+        return f"TOCEntry(title={self.title!r}, level={self.level}, file={self.file_path!r}, anchor={self.anchor!r})"
+
+
+def _resolve_toc_href(href: str, base_dir: str) -> Tuple[str, Optional[str]]:
+    """Resolves relative TOC href into a normalized zip file path and optional anchor ID."""
+    unquoted = urllib.parse.unquote(href.strip())
+    if '#' in unquoted:
+        file_part, anchor_part = unquoted.split('#', 1)
+        anchor = anchor_part.strip() or None
+    else:
+        file_part = unquoted
+        anchor = None
+
+    if file_part:
+        norm_file = posixpath.normpath(posixpath.join(base_dir, file_part)) if base_dir else posixpath.normpath(file_part)
+    else:
+        norm_file = ""
+
+    norm_file = norm_file.lstrip('/')
+    return norm_file, anchor
+
+
+def _parse_ncx(ncx_bytes: bytes, ncx_path: str) -> List[TOCEntry]:
+    """Parses EPUB 2 NCX XML table of contents."""
+    entries: List[TOCEntry] = []
+    ncx_dir = posixpath.dirname(ncx_path)
+
+    def _local_tag(elem):
+        return elem.tag.split('}')[-1].lower() if isinstance(elem.tag, str) else ""
+
+    order = 0
+
+    def traverse(elem, current_level):
+        nonlocal order
+        for child in elem:
+            if _local_tag(child) == 'navpoint':
+                title = ""
+                src = ""
+                for sub in child:
+                    ltag = _local_tag(sub)
+                    if ltag == 'navlabel':
+                        for t in sub:
+                            if _local_tag(t) == 'text' and t.text:
+                                title = t.text.strip()
+                    elif ltag == 'content':
+                        src = sub.attrib.get('src', '').strip()
+
+                if title and src:
+                    fpath, anchor = _resolve_toc_href(src, ncx_dir)
+                    order += 1
+                    entries.append(TOCEntry(title, current_level, fpath, anchor, order=order))
+
+                traverse(child, current_level + 1)
+
+    try:
+        root = ET.fromstring(ncx_bytes)
+        for child in root:
+            if _local_tag(child) == 'navmap':
+                traverse(child, 1)
+                break
+        if not entries:
+            for elem in root.iter():
+                if _local_tag(elem) == 'navmap':
+                    traverse(elem, 1)
+                    break
+    except Exception:
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(ncx_bytes, 'html.parser')
+            order = 0
+
+            def traverse_bs4(nav_point, current_level):
+                nonlocal order
+                label_elem = nav_point.find('navlabel')
+                text = ""
+                if label_elem and label_elem.find('text'):
+                    text = label_elem.find('text').get_text(strip=True)
+                content_elem = nav_point.find('content')
+                src = content_elem.get('src', '') if content_elem else ''
+                if text and src:
+                    fpath, anchor = _resolve_toc_href(src, ncx_dir)
+                    order += 1
+                    entries.append(TOCEntry(text, current_level, fpath, anchor, order=order))
+                for child in nav_point.find_all('navpoint', recursive=False):
+                    traverse_bs4(child, current_level + 1)
+
+            navmap = soup.find('navmap')
+            if navmap:
+                for np in navmap.find_all('navpoint', recursive=False):
+                    traverse_bs4(np, 1)
+        except Exception:
+            pass
+
+    return entries
+
+
+def _parse_nav_doc(nav_bytes: bytes, nav_path: str) -> List[TOCEntry]:
+    """Parses EPUB 3 Navigation Document (nav.xhtml)."""
+    entries: List[TOCEntry] = []
+    nav_dir = posixpath.dirname(nav_path)
+
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(nav_bytes, 'html.parser')
+
+        toc_nav = None
+        for nav in soup.find_all('nav'):
+            etype = (nav.get('epub:type') or nav.get('type') or '').lower()
+            role = (nav.get('role') or '').lower()
+            nav_id = (nav.get('id') or '').lower()
+            if 'toc' in etype or 'doc-toc' in role or 'toc' in nav_id:
+                toc_nav = nav
+                break
+        if toc_nav is None:
+            toc_nav = soup.find('nav')
+        if toc_nav is None:
+            return []
+
+        order = 0
+
+        def parse_list(list_elem, current_level):
+            nonlocal order
+            for li in list_elem.find_all('li', recursive=False):
+                a_tag = li.find('a', recursive=False) or li.find('a')
+                if a_tag:
+                    title = a_tag.get_text(strip=True)
+                    href = a_tag.get('href', '')
+                    if title and href:
+                        fpath, anchor = _resolve_toc_href(href, nav_dir)
+                        order += 1
+                        entries.append(TOCEntry(title, current_level, fpath, anchor, order=order))
+                nested_list = li.find(['ol', 'ul'], recursive=False) or li.find(['ol', 'ul'])
+                if nested_list:
+                    parse_list(nested_list, current_level + 1)
+
+        top_list = toc_nav.find(['ol', 'ul'])
+        if top_list:
+            parse_list(top_list, 1)
+    except Exception:
+        pass
+
+    return entries
+
+
+def extract_epub_toc(z: zipfile.ZipFile, opf_root: ET.Element, opf_dir: str) -> List[TOCEntry]:
+    """Extracts Table of Contents entries from an EPUB package."""
+    manifest = {}
+    properties_map = {}
+    media_types = {}
+
+    for item in opf_root.findall('.//{*}manifest/{*}item'):
+        item_id = item.attrib.get('id')
+        href = item.attrib.get('href')
+        props = item.attrib.get('properties', '')
+        media_type = item.attrib.get('media-type', '')
+        if item_id and href:
+            full_href = posixpath.normpath(posixpath.join(opf_dir, href)) if opf_dir else href
+            full_href = full_href.lstrip('/')
+            manifest[item_id] = full_href
+            properties_map[item_id] = props.split()
+            media_types[item_id] = media_type
+
+    # 1. Try EPUB 3 Navigation Document
+    for item_id, props in properties_map.items():
+        if 'nav' in props and item_id in manifest:
+            try:
+                nav_bytes = z.read(manifest[item_id])
+                entries = _parse_nav_doc(nav_bytes, manifest[item_id])
+                if entries:
+                    return entries
+            except Exception:
+                pass
+
+    # 2. Try EPUB 2 NCX Document
+    spine_elem = opf_root.find('.//{*}spine')
+    ncx_id = spine_elem.attrib.get('toc') if spine_elem is not None else None
+    if ncx_id and ncx_id in manifest:
+        try:
+            ncx_bytes = z.read(manifest[ncx_id])
+            entries = _parse_ncx(ncx_bytes, manifest[ncx_id])
+            if entries:
+                return entries
+        except Exception:
+            pass
+
+    for item_id, mtype in media_types.items():
+        if mtype == 'application/x-dtbncx+xml' or item_id.lower() in ('ncx', 'toc.ncx') or manifest[item_id].endswith('.ncx'):
+            try:
+                ncx_bytes = z.read(manifest[item_id])
+                entries = _parse_ncx(ncx_bytes, manifest[item_id])
+                if entries:
+                    return entries
+            except Exception:
+                pass
+
+    # 3. Try Guide references or items named toc
+    for ref in opf_root.findall('.//{*}guide/{*}reference'):
+        ref_type = ref.attrib.get('type', '').lower()
+        ref_href = ref.attrib.get('href', '')
+        if 'toc' in ref_type and ref_href:
+            full_href = posixpath.normpath(posixpath.join(opf_dir, ref_href)) if opf_dir else ref_href
+            full_href = full_href.split('#')[0].lstrip('/')
+            try:
+                toc_bytes = z.read(full_href)
+                entries = _parse_nav_doc(toc_bytes, full_href)
+                if entries:
+                    return entries
+            except Exception:
+                pass
+
+    return []
+
+
+def _normalize_title_for_match(t: str) -> str:
+    """Normalizes title string for relaxed text matching."""
+    t = re.sub(r'<[^>]+>', '', t)
+    t = re.sub(r'[*_`~#]', '', t)
+    t = re.sub(r'[^\w\s]', '', t.lower())
+    return re.sub(r'\s+', ' ', t).strip()
+
+
+def _titles_match(t1: str, t2: str) -> bool:
+    """Checks if two titles match closely enough to represent the same heading."""
+    n1 = _normalize_title_for_match(t1)
+    n2 = _normalize_title_for_match(t2)
+    if not n1 or not n2:
+        return False
+    if n1 == n2:
+        return True
+    if n1 in n2 or n2 in n1:
+        return True
+    return False
+
+
+class EPUBHTMLToMarkdown(HTMLParser):
+    """HTML to ATX Markdown converter with Table of Contents awareness."""
+
+    def __init__(
+        self,
+        epub_zip,
+        current_html_path: str,
+        image_mode: str = 'refer',
+        export_dir: Optional[Union[str, Path]] = None,
+        output_md_dir: Optional[Union[str, Path]] = None,
+        toc_entries: Optional[List[TOCEntry]] = None
+    ):
         super().__init__()
         self.epub_zip = epub_zip
         self.current_html_path = current_html_path
         self.image_mode = image_mode  # 'exportdir', 'refer', or 'base64'
         self.export_dir = export_dir
         self.output_md_dir = output_md_dir
+        self.toc_entries = toc_entries or []
+
+        self.anchor_to_toc: Dict[str, TOCEntry] = {}
+        self.file_level_toc: Optional[TOCEntry] = None
+
+        for entry in self.toc_entries:
+            if entry.anchor:
+                self.anchor_to_toc[entry.anchor] = entry
+                self.anchor_to_toc[entry.anchor.lower()] = entry
+            else:
+                if self.file_level_toc is None:
+                    self.file_level_toc = entry
+
+        self.used_toc_entries: Set[int] = set()
+        self.pending_toc_entry: Optional[TOCEntry] = None
+        self.has_emitted_any_heading = False
 
         self.output = []
         self.list_stack = []
@@ -54,9 +332,55 @@ class EPUBHTMLToMarkdown(HTMLParser):
         if self.skip_depth > 0:
             return
 
-        if tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
-            level = int(tag[1])
-            self.header_stack.append({'level': level, 'buf': []})
+        anchor_id = attrs_dict.get('id', '').strip() or attrs_dict.get('name', '').strip()
+        if anchor_id:
+            if anchor_id in self.anchor_to_toc:
+                entry = self.anchor_to_toc[anchor_id]
+                if id(entry) not in self.used_toc_entries:
+                    self.pending_toc_entry = entry
+            elif anchor_id.lower() in self.anchor_to_toc:
+                entry = self.anchor_to_toc[anchor_id.lower()]
+                if id(entry) not in self.used_toc_entries:
+                    self.pending_toc_entry = entry
+
+        role = attrs_dict.get('role', '').lower()
+        aria_level = attrs_dict.get('aria-level', '')
+        is_aria_heading = (role == 'heading' and aria_level.isdigit())
+        cls = attrs_dict.get('class', '').lower()
+        is_heading_class = bool(re.search(r'\b(chapter[-_]?(title|num|number)?|heading[-_]?[1-6]|h[1-6]|section[-_]?title)\b', cls))
+
+        if tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or is_aria_heading:
+            if is_aria_heading:
+                raw_level = max(1, min(6, int(aria_level)))
+            else:
+                raw_level = int(tag[1])
+
+            assigned_level = raw_level
+            matched_toc = None
+
+            if self.pending_toc_entry:
+                assigned_level = self.pending_toc_entry.level
+                matched_toc = self.pending_toc_entry
+                self.used_toc_entries.add(id(self.pending_toc_entry))
+                self.pending_toc_entry = None
+            elif not self.has_emitted_any_heading and self.file_level_toc and id(self.file_level_toc) not in self.used_toc_entries:
+                assigned_level = self.file_level_toc.level
+                matched_toc = self.file_level_toc
+                self.used_toc_entries.add(id(self.file_level_toc))
+
+            self.header_stack.append({'level': assigned_level, 'raw_level': raw_level, 'buf': [], 'toc_entry': matched_toc})
+        elif (tag in ('p', 'div', 'section') and (self.pending_toc_entry or (not self.has_emitted_any_heading and self.file_level_toc and is_heading_class))) and not self.header_stack:
+            toc_target = self.pending_toc_entry or self.file_level_toc
+            if toc_target and id(toc_target) not in self.used_toc_entries:
+                self.header_stack.append({
+                    'level': toc_target.level,
+                    'raw_level': toc_target.level,
+                    'buf': [],
+                    'toc_entry': toc_target,
+                    'is_pseudo': True
+                })
+                self.used_toc_entries.add(id(toc_target))
+                self.pending_toc_entry = None
         elif tag == 'p':
             if not self.header_stack:
                 self.emit("\n\n")
@@ -84,8 +408,8 @@ class EPUBHTMLToMarkdown(HTMLParser):
                 self.emit("\n\n> ")
         elif tag == 'a':
             href = attrs_dict.get('href', '').strip()
-            anchor_id = attrs_dict.get('id', '').strip() or attrs_dict.get('name', '').strip()
-            self.link_stack.append({'href': href, 'id': anchor_id, 'buf': []})
+            anchor_id_a = attrs_dict.get('id', '').strip() or attrs_dict.get('name', '').strip()
+            self.link_stack.append({'href': href, 'id': anchor_id_a, 'buf': []})
         elif tag in ('sup', 'sub'):
             self.emit(f"<{tag}>")
         elif tag in ('ul', 'ol'):
@@ -120,15 +444,42 @@ class EPUBHTMLToMarkdown(HTMLParser):
         if self.skip_depth > 0:
             return
 
-        if tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
-            if self.header_stack:
-                header_info = self.header_stack.pop()
-                raw_text = "".join(header_info['buf'])
-                clean_text = re.sub(r'[*_`]', '', raw_text)
-                clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-                if clean_text:
-                    level = header_info['level']
+        if (tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'section')) and self.header_stack:
+            header_info = self.header_stack.pop()
+            raw_text = "".join(header_info['buf'])
+            clean_text = re.sub(r'[*_`]', '', raw_text)
+            clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+
+            level = header_info['level']
+            toc_entry = header_info.get('toc_entry')
+            is_pseudo = header_info.get('is_pseudo', False)
+
+            if not toc_entry:
+                for entry in self.toc_entries:
+                    if id(entry) not in self.used_toc_entries and _titles_match(clean_text, entry.title):
+                        level = entry.level
+                        toc_entry = entry
+                        self.used_toc_entries.add(id(entry))
+                        break
+
+            if is_pseudo:
+                if toc_entry and _titles_match(clean_text, toc_entry.title):
+                    title_to_render = clean_text if clean_text else toc_entry.title
+                    self.output.append(f"\n\n{'#' * level} {title_to_render}\n\n")
+                    self.has_emitted_any_heading = True
+                elif clean_text and len(clean_text) < 120 and not clean_text.endswith(('.', '?', '!')):
                     self.output.append(f"\n\n{'#' * level} {clean_text}\n\n")
+                    self.has_emitted_any_heading = True
+                else:
+                    if toc_entry:
+                        self.output.append(f"\n\n{'#' * level} {toc_entry.title}\n\n{raw_text}\n\n")
+                        self.has_emitted_any_heading = True
+                    else:
+                        self.output.append(f"\n\n{raw_text}\n\n")
+            else:
+                if clean_text:
+                    self.output.append(f"\n\n{'#' * level} {clean_text}\n\n")
+                    self.has_emitted_any_heading = True
         elif tag == 'p':
             if not self.header_stack:
                 self.emit("\n\n")
@@ -175,6 +526,7 @@ class EPUBHTMLToMarkdown(HTMLParser):
     def process_image(self, src, alt):
         html_dir = posixpath.dirname(self.current_html_path)
         img_zip_path = posixpath.normpath(posixpath.join(html_dir, src)) if html_dir else src
+        img_zip_path = img_zip_path.lstrip('/')
         filename = posixpath.basename(img_zip_path)
 
         if self.image_mode == 'refer':
@@ -210,6 +562,12 @@ class EPUBHTMLToMarkdown(HTMLParser):
 
     def get_markdown(self):
         raw = "".join(self.output)
+
+        if not self.has_emitted_any_heading and self.file_level_toc and id(self.file_level_toc) not in self.used_toc_entries:
+            if raw.strip():
+                raw = f"\n\n{'#' * self.file_level_toc.level} {self.file_level_toc.title}\n\n" + raw
+                self.used_toc_entries.add(id(self.file_level_toc))
+
         lines = raw.splitlines()
         cleaned_lines = []
 
@@ -309,9 +667,7 @@ def convert_epub_to_markdown(
     export_dir: Optional[Union[str, Path]] = None,
     output_md_dir: Optional[Union[str, Path]] = None
 ) -> str:
-    """
-    Converts an EPUB file into Markdown string content.
-    """
+    """Converts an EPUB file into Markdown string content using TOC metadata."""
     epub_path = Path(epub_path)
     output_md_dir = Path(output_md_dir) if output_md_dir else None
 
@@ -343,26 +699,35 @@ def convert_epub_to_markdown(
             href = item.attrib.get('href')
             if item_id and href:
                 full_href = posixpath.normpath(posixpath.join(opf_dir, href)) if opf_dir else href
-                manifest[item_id] = full_href
+                manifest[item_id] = full_href.lstrip('/')
 
-        # Step 3: Parse spine for chronological reading order
+        # Step 3: Extract Table of Contents entries
+        toc_entries = extract_epub_toc(z, opf_root, opf_dir)
+        toc_by_file: Dict[str, List[TOCEntry]] = {}
+        for entry in toc_entries:
+            clean_file = entry.file_path.lstrip('/')
+            toc_by_file.setdefault(clean_file, []).append(entry)
+
+        # Step 4: Parse spine for chronological reading order
         spine_items = []
         for itemref in opf_root.findall('.//{*}spine/{*}itemref'):
             idref = itemref.attrib.get('idref')
             if idref in manifest:
                 spine_items.append(manifest[idref])
 
-        # Step 4: Convert HTML contents in spine sequence
+        # Step 5: Convert HTML contents in spine sequence
         md_chapters = []
         for html_path in spine_items:
             try:
                 content = z.read(html_path).decode('utf-8', errors='ignore')
+                file_toc = toc_by_file.get(html_path, [])
                 parser = EPUBHTMLToMarkdown(
                     epub_zip=z,
                     current_html_path=html_path,
                     image_mode=image_mode,
                     export_dir=export_dir,
-                    output_md_dir=output_md_dir
+                    output_md_dir=output_md_dir,
+                    toc_entries=file_toc
                 )
                 parser.feed(content)
                 chapter_md = parser.get_markdown()
