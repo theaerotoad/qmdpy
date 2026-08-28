@@ -1613,12 +1613,32 @@ class Store:
                 "char_count": section_chars
             })
 
-        if isinstance(max_depth, int):
+        max_level_present = max((h["level"] for h in structured_headings), default=1) if structured_headings else 1
+
+        effective_depth = None
+        if isinstance(max_depth, int) and max_depth > 0:
+            effective_depth = max_depth
             structured_headings = [h for h in structured_headings if h["level"] <= max_depth]
+        elif max_depth is None:
+            # Automatically pick the maximum depth that displays <= 500 lines/headings
+            if len(structured_headings) <= 500:
+                effective_depth = max_level_present
+            else:
+                chosen_depth = 1
+                for d in range(1, max_level_present + 1):
+                    count_at_d = sum(1 for h in structured_headings if h["level"] <= d)
+                    if count_at_d <= 500:
+                        chosen_depth = d
+                    else:
+                        break
+                effective_depth = chosen_depth
+                structured_headings = [h for h in structured_headings if h["level"] <= effective_depth]
 
         if isinstance(pattern, str) and pattern:
             p_lower = pattern.lower()
             structured_headings = [h for h in structured_headings if p_lower in h["text"].lower()]
+
+        has_more_depth = (effective_depth is not None and effective_depth < max_level_present)
 
         return {
             "collection": coll_name,
@@ -1626,6 +1646,9 @@ class Store:
             "title": title,
             "total_chunks": total_chunks,
             "total_chars": total_chars,
+            "depth": effective_depth,
+            "max_depth": max_level_present,
+            "has_more_depth": has_more_depth,
             "headings": structured_headings
         }
 

@@ -410,13 +410,28 @@ def format_outline_cli(outline: Dict):
 
     path_str = f"qmd://{outline['collection']}/{outline['path']}" if outline.get('collection') else outline['path']
     print(f"\n{BOLD}{outline['title']}{RESET} {DIM}({path_str}){RESET}")
-    print(f"{DIM}Total Chunks: {outline['total_chunks']} | Total Chars: {outline['total_chars']}{RESET}\n")
+    
+    depth_info = ""
+    if outline.get('depth') is not None and outline.get('max_depth') is not None:
+        depth = outline['depth']
+        max_d = outline['max_depth']
+        if outline.get('has_more_depth'):
+            depth_info = f" | Depth: {depth}/{max_d} (use -d to expand)"
+        else:
+            depth_info = f" | Depth: {depth}"
+
+    print(f"{DIM}Total Chunks: {outline['total_chunks']} | Total Chars: {outline['total_chars']}{depth_info}{RESET}\n")
 
     for h in outline.get('headings', []):
         indent = "  " * (h['level'] - 1)
         level_hashes = "#" * h['level']
         seq_str = f"[seq: {h['start_seq']}-{h['end_seq']}]" if h['start_seq'] != h['end_seq'] else f"[seq: {h['start_seq']}]"
         print(f"{indent}{CYAN}{level_hashes}{RESET} {BOLD}{h['text']}{RESET} {YELLOW}{seq_str}{RESET} {DIM}({h['char_count']} chars){RESET}")
+
+    if outline.get('has_more_depth'):
+        next_d = (outline.get('depth') or 1) + 1
+        print(f"\n{DIM}[... Deeper headings omitted (showing depth {outline.get('depth')} of {outline.get('max_depth')}). Use -d {next_d} or -d {outline.get('max_depth')} to expand ...]{RESET}")
+
     print()
 
 def format_results_xml(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, seen_chunks: Optional[int] = None, truncation_info: Optional[Dict] = None, print_output: bool = True):
@@ -708,14 +723,28 @@ def format_outline_xml(outline: Dict, print_output: bool = True) -> str:
     coll_attr = f' collection="{escape_xml_attr(coll)}"' if coll else ""
     path_attr = f' path="{escape_xml_attr(path)}"' if path else ""
 
+    depth = outline.get('depth')
+    max_depth = outline.get('max_depth')
+    has_more_depth = outline.get('has_more_depth', False)
+    if depth is not None and max_depth is not None and depth < max_depth:
+        has_more_depth = True
+
+    depth_attr = f' depth="{depth}"' if depth is not None else ""
+    max_depth_attr = f' max_depth="{max_depth}"' if max_depth is not None else ""
+    more_attr = ' more_levels_available="true"' if has_more_depth else ""
+
     lines = [
-        f'<outline uri="{escape_xml_attr(uri)}"{coll_attr}{path_attr} title="{title}" total_chunks="{total_chunks}" total_chars="{total_chars}">'
+        f'<outline uri="{escape_xml_attr(uri)}"{coll_attr}{path_attr} title="{title}" total_chunks="{total_chunks}" total_chars="{total_chars}"{depth_attr}{max_depth_attr}{more_attr}>'
     ]
 
     headings = outline.get('headings', [])
     tree_nodes = _build_heading_tree(headings)
     for node in tree_nodes:
         _render_heading_node_xml(node, 1, lines)
+
+    if has_more_depth:
+        next_depth = (depth + 1) if isinstance(depth, int) else 2
+        lines.append(f'  <more_levels current_depth="{depth}" max_depth="{max_depth}" hint="Use --depth {next_depth} or higher to view deeper headings" />')
 
     lines.append('</outline>')
     output = "\n".join(lines)

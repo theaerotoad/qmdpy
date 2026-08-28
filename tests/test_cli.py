@@ -129,6 +129,28 @@ def test_xml_formatting_flat_and_doc(capsys):
     assert 'read="qmd read \'main:doc.md:10\'"' in doc_out
     assert 'outline="qmd outline \'main:doc.md\'"' in doc_out
 
+    # Test outline auto-depth and more_levels XML indicator
+    outline_with_more = {
+        "collection": "main",
+        "path": "deep_doc.md",
+        "title": "Deep Doc",
+        "total_chunks": 100,
+        "total_chars": 50000,
+        "depth": 2,
+        "max_depth": 4,
+        "has_more_depth": True,
+        "headings": [
+            {"level": 1, "start_seq": 0, "end_seq": 50, "char_count": 25000, "text": "Chapter 1"},
+            {"level": 2, "start_seq": 0, "end_seq": 25, "char_count": 12000, "text": "Section 1.1"}
+        ]
+    }
+    format_outline_xml(outline_with_more)
+    deep_out = capsys.readouterr().out
+    assert 'depth="2"' in deep_out
+    assert 'max_depth="4"' in deep_out
+    assert 'more_levels_available="true"' in deep_out
+    assert '<more_levels current_depth="2" max_depth="4" hint="Use --depth 3 or higher to view deeper headings" />' in deep_out
+
     # Chunks XML
     format_chunks_xml([r1, r2])
     chunk_out = capsys.readouterr().out
