@@ -487,11 +487,17 @@ def handle_outline(args, store: Store):
     coll = spec["collection"] or getattr(args, "collection", None)
     target_path = spec["path"] if spec["path"] is not None else args.path
 
+    depth = getattr(args, "depth", None)
+    max_depth = depth if isinstance(depth, int) else None
+
+    pattern = getattr(args, "pattern", None)
+    pattern_val = pattern if isinstance(pattern, str) else None
+
     outline = store.get_document_outline(
         collection=coll,
         path=target_path,
-        max_depth=getattr(args, "depth", None),
-        pattern=getattr(args, "pattern", None)
+        max_depth=max_depth,
+        pattern=pattern_val
     )
     if not outline:
         if args.json:

@@ -1613,10 +1613,10 @@ class Store:
                 "char_count": section_chars
             })
 
-        if max_depth is not None:
+        if isinstance(max_depth, int):
             structured_headings = [h for h in structured_headings if h["level"] <= max_depth]
 
-        if pattern:
+        if isinstance(pattern, str) and pattern:
             p_lower = pattern.lower()
             structured_headings = [h for h in structured_headings if p_lower in h["text"].lower()]
 
