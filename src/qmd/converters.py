@@ -448,14 +448,23 @@ def _convert_text(path: Path) -> str:
 
 
 def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = None) -> str:
+    import os, sys
+    verbose = os.environ.get("QMD_VERBOSE") == "1"
+    
     try:
         import pymupdf
         import pymupdf4llm
     except ImportError:
         raise ImportError("pymupdf and pymupdf4llm are required for converting .pdf files. Install with `pip install pymupdf pymupdf4llm`.")
 
+    if verbose:
+        print(f"[Verbose PDF] Attempting to open {path} with pymupdf...", flush=True)
+
     doc = pymupdf.open(str(path))
     
+    if verbose:
+        print(f"[Verbose PDF] Successfully opened {path}. Parsing headers...", flush=True)
+        
     # 1. Build header detector
     def build_header_detector(doc, max_levels=5):
         toc = doc.get_toc()
@@ -517,6 +526,9 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     if hasattr(pymupdf, "TOOLS"):
         pymupdf.TOOLS.mupdf_display_errors(False)
 
+    if verbose:
+        print(f"[Verbose PDF] Executing pymupdf4llm.to_markdown on {path}...", flush=True)
+
     f = io.StringIO()
     try:
         with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
@@ -543,6 +555,9 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     except Exception as e:
         doc.close()
         raise ValueError(f"Failed to parse PDF with pymupdf4llm: {e}")
+        
+    if verbose:
+        print(f"[Verbose PDF] Successfully parsed PDF {path} to markdown.", flush=True)
     
     seen_xrefs = set()
     

@@ -54,7 +54,7 @@ class IndexingMixin:
                     unique_files.append(f)
             return unique_files
 
-    def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False):
+    def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False, verbose: bool = False):
         """Scans files, detects changes, chunks, embeds, and updates DB."""
         if self.read_only or getattr(self.config, "is_federated", False):
             raise RuntimeError("Cannot index collection in read-only or federated include mode.")
@@ -75,7 +75,7 @@ class IndexingMixin:
             disp_path = rel_path if len(rel_path) <= 30 else "..." + rel_path[-27:]
             file_pbar.set_postfix_str(disp_path)
             try:
-                if self._process_file(name, base_path, file_path, found_rel_paths, force=force):
+                if self._process_file(name, base_path, file_path, found_rel_paths, force=force, verbose=verbose):
                     count_processed += 1
                 else:
                     count_skipped += 1
@@ -216,8 +216,12 @@ class IndexingMixin:
                 all_errors.extend(store.get_indexing_errors(collection=collection, path=path))
         return all_errors
 
-    def _process_file(self, collection_name: str, base_path: Path, file_path: Path, current_paths: set, force: bool = False) -> bool:
+    def _process_file(self, collection_name: str, base_path: Path, file_path: Path, current_paths: set, force: bool = False, verbose: bool = False) -> bool:
         rel_path = str(file_path.relative_to(base_path))
+        if verbose:
+            tqdm.write(f"\n[Verbose] Processing file: {file_path}")
+            sys.stdout.flush()
+
         try:
             raw_bytes = file_path.read_bytes()
         except Exception as e:
@@ -312,6 +316,9 @@ class IndexingMixin:
                 markdown_body = decompress_text(content_row[0])
             else:
                 content_exists = False
+                if verbose:
+                    tqdm.write(f"[Verbose] Converting to markdown: {file_path}")
+                    sys.stdout.flush()
                 markdown_body = conv_fn(file_path, config=self.config, errors_out=conversion_errors)
                 cursor.execute("""
                     INSERT INTO content (hash, body, created_at) VALUES (?, ?, ?)

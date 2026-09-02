@@ -771,6 +771,9 @@ def handle_collections_list(args, store: Store):
             print(f"{GREEN}{name}{RESET}: {cfg.path} ({cfg.glob})")
 
 def handle_update(args, store: Store):
+    if getattr(args, "verbose", False):
+        os.environ["QMD_VERBOSE"] = "1"
+
     config = store.config
     if getattr(config, "is_federated", False):
         print(f"{RED}Error: Updating/indexing is disabled in federated include mode. Update individual collection configurations directly.{RESET}")
@@ -805,7 +808,7 @@ def handle_update(args, store: Store):
             else:
                 print(f"Skipping git pull: {name} is not a git repository.")
         
-        store.index_collection(name, coll_cfg, force=args.force)
+        store.index_collection(name, coll_cfg, force=args.force, verbose=getattr(args, "verbose", False))
 
     # 2. Prune removed collections
     active_collections = list(config.collections.keys())
@@ -1007,6 +1010,7 @@ def build_parser():
     update_parser.add_argument("-c", "--collection", type=str, help="Only update a specific collection")
     update_parser.add_argument("--build-ann", action="store_true", help="Build a usearch HNSW approximate nearest neighbor index from the existing vector table")
     update_parser.add_argument("--no-ann", action="store_true", help="Skip automatic HNSW ANN index build/update")
+    update_parser.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info during update")
 
     coll_parser = subparsers.add_parser("collection", help="Manage collections", parents=[parent_parser])
     coll_sub = coll_parser.add_subparsers(dest="subcommand", required=True)
