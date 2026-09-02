@@ -778,6 +778,8 @@ class Store:
 
         if count_processed > 0 or stale_paths:
             update_db_last_updated(self.conn)
+            if getattr(self, 'usearch_index', None) and not self.read_only:
+                self.usearch_index.save(self.usearch_path)
 
         print(f"Done. Processed: {count_processed}, Skipped/Unchanged: {count_skipped}")
 
@@ -816,11 +818,24 @@ class Store:
         self.conn.commit()
         self._cleanup_orphaned_data()
         update_db_last_updated(self.conn)
+        if getattr(self, 'usearch_index', None) and not self.read_only:
+            self.usearch_index.save(self.usearch_path)
         print(f"Pruned {len(orphans)} collection(s).")
 
     def _cleanup_orphaned_data(self):
         """Removes content, chunk metadata, vectors, and errors no longer referenced by any active document."""
         cursor = self.conn.cursor()
+        
+        # Identify orphans and remove them from usearch index before DB deletion
+        cursor.execute("SELECT rowid FROM chunk_metadata WHERE doc_hash NOT IN (SELECT DISTINCT hash FROM documents)")
+        orphan_rowids = [row[0] for row in cursor.fetchall()]
+        if orphan_rowids and getattr(self, 'usearch_index', None) and not self.read_only:
+            for rid in orphan_rowids:
+                try:
+                    self.usearch_index.remove(rid)
+                except Exception:
+                    pass
+
         cursor.execute("""
             DELETE FROM chunks_fts WHERE rowid IN (
                 SELECT rowid FROM chunk_metadata WHERE doc_hash NOT IN (SELECT DISTINCT hash FROM documents)
@@ -1067,13 +1082,30 @@ class Store:
         ensure_vector_table(self.conn, dim=dim, quant_type=quant_type)
         
         # 5. Store in Vector Table and Chunk-Level FTS
+        cursor.execute("SELECT rowid FROM chunk_metadata WHERE doc_hash = ?", (doc_hash,))
+        old_rowids = [r[0] for r in cursor.fetchall()]
+
         cursor.execute("DELETE FROM chunks_fts WHERE rowid IN (SELECT rowid FROM chunk_metadata WHERE doc_hash = ?)", (doc_hash,))
         cursor.execute("DELETE FROM chunk_metadata WHERE doc_hash = ?", (doc_hash,))
+        if old_rowids:
+            placeholders = ','.join(['?'] * len(old_rowids))
+            cursor.execute(f"DELETE FROM vectors WHERE rowid IN ({placeholders})", tuple(old_rowids))
+            if getattr(self, 'usearch_index', None) and not self.read_only:
+                for rid in old_rowids:
+                    try:
+                        self.usearch_index.remove(rid)
+                    except Exception:
+                        pass
         
         for i, (chunk_text, embedding, context_str) in enumerate(zip(final_chunk_texts, embeddings, chunk_headers)):
             emb_blob = encode_vector(embedding, quant_type=quant_type)
             cursor.execute("INSERT INTO vectors(embedding) VALUES (?)", (emb_blob,))
             vector_rowid = cursor.lastrowid
+            
+            if getattr(self, 'usearch_index', None) and not self.read_only:
+                import numpy as np
+                self.usearch_index.add(vector_rowid, np.array(embedding, dtype=np.float32))
+
             cursor.execute("""
                 INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers)
                 VALUES (?, ?, ?, ?, ?)
@@ -1246,6 +1278,75 @@ class Store:
                 paths = [p.strip() for p in path.split(',') if p.strip()]
         elif isinstance(path, (list, tuple, set)):
             paths = [str(p).strip() for p in path if str(p).strip()]
+
+        if getattr(self, 'usearch_index', None) is not None:
+            try:
+                import numpy as np
+                extra_seen = (len(exclude_seen_set) * 2) if exclude_seen_set else 0
+                k_val = max(limit * 8 + extra_seen, 500) if (collection or title or paths or exclude_seen_set) else limit
+                
+                query_arr = np.array(query_vec, dtype=np.float32)
+                matches = self.usearch_index.search(query_arr, k_val)
+                
+                if len(matches) > 0:
+                    match_keys = matches.keys.tolist() if hasattr(matches.keys, 'tolist') else list(matches.keys)
+                    match_distances = matches.distances.tolist() if hasattr(matches.distances, 'tolist') else list(matches.distances)
+                    dist_map = dict(zip(match_keys, match_distances))
+                    
+                    placeholders = ','.join(['?'] * len(match_keys))
+                    chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
+                    
+                    query_sql = f"""
+                        SELECT m.rowid, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, '')
+                        FROM chunk_metadata m
+                        JOIN documents d ON m.doc_hash = d.hash
+                        WHERE m.rowid IN ({placeholders})
+                    """
+                    params = list(match_keys)
+                    
+                    coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
+                    query_sql += coll_sql
+                    params.extend(coll_params)
+                    
+                    if title:
+                        query_sql += " AND d.title LIKE ?"
+                        params.append(f"%{title}%")
+                    if paths:
+                        path_clauses = " OR ".join(["d.path LIKE ?" for _ in paths])
+                        query_sql += f" AND ({path_clauses})"
+                        for p_val in paths:
+                            params.append(f"%{p_val}%")
+                            
+                    cursor.execute(query_sql, tuple(params))
+                    raw_candidates = []
+                    for r_id, text_blob, doc_path, doc_title, coll, seq_id, hdrs in cursor.fetchall():
+                        key = (coll or "", doc_path, seq_id)
+                        if exclude_seen_set and key in exclude_seen_set:
+                            if excluded_chunks_tracker is not None:
+                                excluded_chunks_tracker.add(key)
+                            continue
+                            
+                        dist = dist_map.get(r_id, 1.0)
+                        if quant_type in ("bit", "binary"):
+                            score = 1.0 / (1.0 + float(dist))
+                        else:
+                            score = max(0.0, 1.0 - float(dist))
+                            
+                        raw_candidates.append((score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id))
+                        
+                    raw_candidates.sort(key=lambda x: x[0], reverse=True)
+                    candidates = []
+                    for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id) in enumerate(raw_candidates[:limit]):
+                        chunk_str = decompress_text(text_blob) if (not defer_text and text_blob is not None) else ""
+                        candidates.append(Result(
+                            path=doc_path, title=doc_title, text=chunk_str, score=score,
+                            source="vec", collection=coll, seq_id=seq_id, headers=hdrs,
+                            vec_score=score, vec_rank=vec_idx + 1,
+                            rowid=r_id
+                        ))
+                    return candidates
+            except Exception as e:
+                print(f"{YELLOW}Warning: usearch ANN query failed ({e}), using fallback scanner.{RESET}")
 
         if is_sqlite_vec_active(self.conn):
             try:
