@@ -4,6 +4,7 @@ import json
 import time
 import secrets
 import argparse
+import mimetypes
 from typing import Union, List
 from flask import Flask, request, jsonify, render_template, g
 
@@ -16,11 +17,16 @@ from qmd.utils import decompress_text, redact_pii, parse_query_directives
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+# Ensure correct MIME types are registered for static assets
+mimetypes.add_type('text/css', '.css')
+mimetypes.add_type('application/javascript', '.js')
+mimetypes.add_type('application/javascript', '.mjs')
+
 class ReverseProxyPrefixMiddleware:
     """WSGI middleware to support serving QMD under a subpath prefix (e.g. /upstream/qmd/).
 
-    Reads SCRIPT_NAME from X-Forwarded-Prefix or X-Script-Name headers and adjusts
-    PATH_INFO accordingly when requests are routed through reverse proxies.
+    Reads SCRIPT_NAME from X-Forwarded-Prefix, X-Script-Name, X-Original-URI, or X-Forwarded-Uri
+    headers and adjusts PATH_INFO accordingly when requests are routed through reverse proxies.
     """
     def __init__(self, wsgi_app):
         self.wsgi_app = wsgi_app
@@ -37,6 +43,18 @@ class ReverseProxyPrefixMiddleware:
                 environ['SCRIPT_NAME'] = prefix
         elif script_name:
             prefix = script_name.rstrip('/')
+        else:
+            orig_uri = environ.get('HTTP_X_FORWARDED_URI') or environ.get('HTTP_X_ORIGINAL_URI')
+            if orig_uri:
+                orig_path = orig_uri.split('?')[0].rstrip('/')
+                path_info = environ.get('PATH_INFO', '').rstrip('/')
+                if path_info and orig_path.endswith(path_info):
+                    candidate = orig_path[:-len(path_info)].rstrip('/')
+                else:
+                    candidate = orig_path
+                if candidate and candidate.startswith('/'):
+                    prefix = candidate
+                    environ['SCRIPT_NAME'] = prefix
 
         if prefix:
             path_info = environ.get('PATH_INFO', '')

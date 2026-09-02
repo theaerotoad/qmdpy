@@ -11,14 +11,17 @@
             theme: { extend: {} }
         }
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
     <script>
+        if (!window.location.pathname.endsWith('/') && !window.location.pathname.split('/').pop().includes('.')) {
+            window.location.replace(window.location.pathname + '/' + window.location.search + window.location.hash);
+        }
         window.QMD_BASE_URL = {{ request.script_root|tojson }} || (function() {
             const p = window.location.pathname;
             return p.endsWith('/') ? p.slice(0, -1) : p;
         })();
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') if request.script_root else 'static/css/app.css' }}">
 </head>
 <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-full font-sans antialiased selection:bg-blue-600 selection:text-white transition-colors duration-150">
     <div id="app-container" class="state-hero min-h-screen flex flex-col">
@@ -36,9 +39,9 @@
     {% include 'partials/drawers.html' %}
 
     <!-- Scripts & Client Logic -->
-    <script src="{{ url_for('static', filename='js/state.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/modals.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/search.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/state.js') if request.script_root else 'static/js/state.js' }}"></script>
+    <script src="{{ url_for('static', filename='js/modals.js') if request.script_root else 'static/js/modals.js' }}"></script>
+    <script src="{{ url_for('static', filename='js/search.js') if request.script_root else 'static/js/search.js' }}"></script>
     <datalist id="past-queries-list"></datalist>
 </body>
 </html>
