@@ -778,7 +778,7 @@ class Store:
 
         if count_processed > 0 or stale_paths:
             update_db_last_updated(self.conn)
-            if getattr(self, 'usearch_index', None) and not self.read_only:
+            if getattr(self, 'usearch_index', None) is not None and not self.read_only:
                 self.usearch_index.save(self.usearch_path)
 
         print(f"Done. Processed: {count_processed}, Skipped/Unchanged: {count_skipped}")
@@ -818,7 +818,7 @@ class Store:
         self.conn.commit()
         self._cleanup_orphaned_data()
         update_db_last_updated(self.conn)
-        if getattr(self, 'usearch_index', None) and not self.read_only:
+        if getattr(self, 'usearch_index', None) is not None and not self.read_only:
             self.usearch_index.save(self.usearch_path)
         print(f"Pruned {len(orphans)} collection(s).")
 
@@ -829,7 +829,7 @@ class Store:
         # Identify orphans and remove them from usearch index before DB deletion
         cursor.execute("SELECT rowid FROM chunk_metadata WHERE doc_hash NOT IN (SELECT DISTINCT hash FROM documents)")
         orphan_rowids = [row[0] for row in cursor.fetchall()]
-        if orphan_rowids and getattr(self, 'usearch_index', None) and not self.read_only:
+        if orphan_rowids and getattr(self, 'usearch_index', None) is not None and not self.read_only:
             for rid in orphan_rowids:
                 try:
                     self.usearch_index.remove(rid)
@@ -1090,7 +1090,7 @@ class Store:
         if old_rowids:
             placeholders = ','.join(['?'] * len(old_rowids))
             cursor.execute(f"DELETE FROM vectors WHERE rowid IN ({placeholders})", tuple(old_rowids))
-            if getattr(self, 'usearch_index', None) and not self.read_only:
+            if getattr(self, 'usearch_index', None) is not None and not self.read_only:
                 for rid in old_rowids:
                     try:
                         self.usearch_index.remove(rid)
@@ -1102,7 +1102,7 @@ class Store:
             cursor.execute("INSERT INTO vectors(embedding) VALUES (?)", (emb_blob,))
             vector_rowid = cursor.lastrowid
             
-            if getattr(self, 'usearch_index', None) and not self.read_only:
+            if getattr(self, 'usearch_index', None) is not None and not self.read_only:
                 import numpy as np
                 self.usearch_index.add(vector_rowid, np.array(embedding, dtype=np.float32))
 
