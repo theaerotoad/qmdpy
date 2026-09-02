@@ -24,7 +24,7 @@ from qmd.db import (
 from qmd.config import Config, CollectionConfig
 from qmd.llm import LLMClient
 from qmd.utils import compute_hash, build_spacy_fts_queries, compress_text, decompress_text
-from qmd.formatting import DIM, YELLOW, CYAN, RESET, MAGENTA
+from qmd.formatting import DIM, YELLOW, CYAN, RESET, MAGENTA, GREEN
 from qmd.converters import convert_to_markdown, SUPPORTED_EXTENSIONS
 
 # Docparse integration
