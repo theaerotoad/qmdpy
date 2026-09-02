@@ -1,3 +1,10 @@
+import sys
+# Prevent onnxruntime segfault on Linux caused by OpenMP/static TLS conflicts with spaCy
+if "onnxruntime" not in sys.modules:
+    sys.modules["onnxruntime"] = None
+    sys.modules["onnxruntime.capi"] = None
+    sys.modules["onnxruntime.capi._pybind_state"] = None
+
 import pytest
 from pathlib import Path
 from qmd.converters import convert_to_markdown, _format_matrix_to_md_table, is_supported_file

@@ -448,6 +448,13 @@ def _convert_text(path: Path) -> str:
 
 
 def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = None) -> str:
+    import sys
+    # Prevent onnxruntime segfault on Linux caused by OpenMP/static TLS conflicts with spaCy
+    if "onnxruntime" not in sys.modules:
+        sys.modules["onnxruntime"] = None
+        sys.modules["onnxruntime.capi"] = None
+        sys.modules["onnxruntime.capi._pybind_state"] = None
+
     try:
         import pymupdf
         import pymupdf4llm
