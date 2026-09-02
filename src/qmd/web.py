@@ -26,18 +26,24 @@ class ReverseProxyPrefixMiddleware:
         self.wsgi_app = wsgi_app
 
     def __call__(self, environ, start_response):
+        script_name = environ.get('SCRIPT_NAME', '')
         raw_prefix = environ.get('HTTP_X_FORWARDED_PREFIX') or environ.get('HTTP_X_SCRIPT_NAME')
+        prefix = ''
         if raw_prefix:
             prefix = raw_prefix.split(',')[-1].strip().rstrip('/')
             if prefix and not prefix.startswith('/'):
                 prefix = '/' + prefix
             if prefix:
                 environ['SCRIPT_NAME'] = prefix
-                path_info = environ.get('PATH_INFO', '')
-                if path_info == prefix:
-                    environ['PATH_INFO'] = '/'
-                elif path_info.startswith(prefix + '/'):
-                    environ['PATH_INFO'] = path_info[len(prefix):]
+        elif script_name:
+            prefix = script_name.rstrip('/')
+
+        if prefix:
+            path_info = environ.get('PATH_INFO', '')
+            if path_info == prefix:
+                environ['PATH_INFO'] = '/'
+            elif path_info.startswith(prefix + '/'):
+                environ['PATH_INFO'] = path_info[len(prefix):]
         return self.wsgi_app(environ, start_response)
 
 app = Flask(__name__)

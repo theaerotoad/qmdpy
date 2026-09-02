@@ -102,7 +102,7 @@ def test_web_subpath_x_forwarded_prefix(web_client):
 
 def test_web_subpath_script_name(web_client):
     # Verify behavior when SCRIPT_NAME is supplied directly by WSGI environment
-    res = web_client.get('/', environ_base={'SCRIPT_NAME': '/upstream/qmd'})
+    res = web_client.get('/', base_url='http://localhost/upstream/qmd')
     assert res.status_code == 200
     html = res.get_data(as_text=True)
     assert 'href="/upstream/qmd/static/css/app.css"' in html
