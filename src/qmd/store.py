@@ -1130,14 +1130,14 @@ class Store:
                     except Exception:
                         pass
         
+        new_rowids = []
+        new_vectors = []
         for i, (chunk_text, embedding, context_str) in enumerate(zip(final_chunk_texts, embeddings, chunk_headers)):
             emb_blob = encode_vector(embedding, quant_type=quant_type)
             cursor.execute("INSERT INTO vectors(embedding) VALUES (?)", (emb_blob,))
             vector_rowid = cursor.lastrowid
-            
-            if getattr(self, 'usearch_index', None) is not None and not self.read_only:
-                import numpy as np
-                self.usearch_index.add(vector_rowid, np.array(embedding, dtype=np.float32))
+            new_rowids.append(vector_rowid)
+            new_vectors.append(embedding)
 
             cursor.execute("""
                 INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers)
@@ -1147,6 +1147,19 @@ class Store:
                 INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (vector_rowid, collection_name, rel_path, title, chunk_text, context_str))
+
+        if getattr(self, 'usearch_index', None) is not None and not self.read_only:
+            import numpy as np
+            valid_rids = []
+            valid_vecs = []
+            for rid, vec in zip(new_rowids, new_vectors):
+                if rid is not None:
+                    valid_rids.append(rid)
+                    valid_vecs.append(vec)
+            if valid_rids:
+                keys = np.array(valid_rids, dtype=np.uint64)
+                vectors_arr = np.array(valid_vecs, dtype=np.float32)
+                self.usearch_index.add(keys, vectors_arr)
 
     def _search_fts_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
