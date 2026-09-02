@@ -4,29 +4,29 @@ QMD(py) is a quick (markdown-based) local search system.  It's intended to be li
 
 This project tries to solve two main problems:
 
-1) **Faking much-more-effective-RAG when you're stuck with an arbitrary LLM web frontend**: QMD has Python CLI interface (qmd search "how do I get widget A to work with sprocket XYZ?") and optional self-serving flask-based web interface (see pictures below).  By default, it allows you to search across arbitrary "collections" that you can define, which are indexed with full-text search (Keyword-based type searching via `sqlite`'s FTS5 BM25 type search) and also your-choice of semantic embedding, with the RRF hybrid results optionall reranked by a reranker.
+1) **Faking much-more-effective-RAG when you're stuck with an arbitrary LLM web frontend**: QMD has Python CLI interface (`qmd search "how do I get widget A to work with sprocket XYZ?"`) and optional self-serving Flask-based web interface (see pictures below).  By default, it allows you to search across arbitrary "collections" that you can define, which are indexed with full-text search (keyword-based search via SQLite's FTS5 BM25) alongside semantic embeddings, with the reciprocal rank fusion (RRF) hybrid results optionally reranked by a cross-encoder reranker. Queries work best when framed as natural language questions rather than keyword lists.
 
 2) **The above, but exposed as an MCP tool**: So your agent can easily search collections of documents you have.  Results are returned with previous results-aware, nicely chunked and annotated XML snippets.  When you don't want to rely on your agent grepping large file directories of content you DON'T want all of exposed, or with possible **rw** access!
 
-See below for the web-based.  You'll see this was clearly a [directed-vibe-coding](https://github.com/theaerotoad/devtool) experience:
+See below for the web-based interface.  You'll see this was clearly a [directed-vibe-coding](https://github.com/theaerotoad/devtool) experience:
 
 **Main web interface, for folks who like GUIs**
 
 ![Main web interface, for folks who like GUIs](images/qmd_1.png)
 
-**Search results for a given query.  Note the "Copy XML and Prompt for LLM, which lets you easily take your most relevant data--and just it! to an arbitrary LLM**
+**Search results for a given query.  Note the "Copy XML and Prompt for LLM", which lets you easily take your most relevant data—and just it!—to an arbitrary LLM**
 
-![Search results for a given query.  Note the "Copy XML and Prompt for LLM, which lets you easily take your most relevant data--and just it! to an arbitrary LLM](images/qmd_2.png)
+![Search results for a given query.  Note the "Copy XML and Prompt for LLM", which lets you easily take your most relevant data--and just it! to an arbitrary LLM](images/qmd_2.png)
 
 **Results of said output, passed into llama.cpp, with a small model's interpretation.**
 
 ![Results of said output, passed into llama.cpp, with a small model's interpretation.](images/qmd_3.png)
 
-I highly recommend running your own local embedding (turns chunks of text into meaning-vectors, allows for natural language matching) and reranking (orders which chunks of text best match a result all at once) instance locally.  For QMD, I currently use [EmbeddingGemma](https://huggingface.co/google/embeddinggemma-300m) and [Ettin 150M](https://huggingface.co/jhu-clsp/ettin-encoder-150m).  You can find a super-lightweight OpenAI API comptitlble driver for both at [good_ettin_here](https://github.com/theaerotoad/good_ettin_here), which drop in works with this application
+I highly recommend running your own local embedding (turns chunks of text into meaning-vectors, allows for natural language matching) and reranking (orders which chunks of text best match a result all at once) instance locally.  For QMD, I currently use [EmbeddingGemma](https://huggingface.co/google/embeddinggemma-300m) and [Ettin 150M](https://huggingface.co/jhu-clsp/ettin-encoder-150m).  You can find a super-lightweight OpenAI API compatible driver for both at [good_ettin_here](https://github.com/theaerotoad/good_ettin_here), which works drop-in with this application.
 
 ## Limitations
 
-As the name implies, this is mostly about searching documents that are Markdown files.  But it happily ingests a few other common filetypes, such as `docx`, `pdf`, `csv`, `xlsx`, `pptx`, and `epub`.  In these cases, it attempts to store a as-structured-as-possible markdown version of the file, in chunks, to search through.
+As the name implies, this is mostly about searching documents that are Markdown files.  But it happily ingests a few other common filetypes, such as `docx`, `pdf`, `csv`, `xlsx`, `pptx`, and `epub`.  In these cases, it attempts to store an as-structured-as-possible markdown version of the file, in chunks, to search through.
 
 This means that the system inherently misses images, and sometimes tables (depending on how they're formatted).  An un-OCR-ed PDF file (just full page images without text) will flop.
 
@@ -93,6 +93,7 @@ export GENERATE_MODEL="llama-3.2-3b"        # Optional
 export QMD_CONFIG="/path/to/custom_config.yml" # Default config file (overrides ~/.config/qmd/index.yml)
 export QMD_XML="1"                            # Default all command outputs to XML (for LLM agent contexts)
 export QMD_DEEP="1"                           # Default all searches to --deep mode (doc-grouped + reranked)
+
 ```
 
 ### 4. Usage Commands
@@ -103,7 +104,6 @@ export QMD_DEEP="1"                           # Default all searches to --deep m
 # Display quick LLM agent decision matrix & workflow
 qmd guide
 qmd guide --xml
-
 
 ```
 
@@ -119,39 +119,39 @@ qmd update --pull
 # Force Re-index (Ignore content hashes, re-process everything)
 qmd update --force
 
-
 ```
 
-**Searching & Intent Presets:**
+**Searching & Query Formulation:**
+
+> **Query Best Practice:** Frame search queries as clear, natural language questions (e.g. `"how do orbital transfer maneuvers work?"`) rather than keyword lists (`"orbital mechanics transfer"`). Natural language queries maximize semantic embedding recall while SQLite FTS5 extracts lexical stems.
 
 ```bash
 # Fast Local Search (Hybrid, FTS + Semantic Vector, No LLM)
-qmd search "self improvement"
+qmd search "how do I build consistent daily habits?"
 
-# Deep Search: Document Grouping + Cross-Encoder Reranking (Recommended)
-qmd search "architecture patterns" --deep
+# Deep Search: Document Grouping + Cross-Encoder Reranking
+qmd search "what are the main software architecture patterns?" --deep
 
 # Broad Search: Hierarchical Wide-to-Narrow Search
-qmd search "space exploration" --broad
+qmd search "what were the key discoveries of space exploration?" --broad
 
 # LLM-Agent Context Search (Plain XML with copy-pasteable read attributes)
-qmd search "helios 1 mission" --llm
+qmd search "what was the primary mission of helios 1?" --llm
 
-# Multi-Turn Session Search (Automatically deduplicates previously seen chunks)
-qmd search "distributed systems" --session 8f3a1b9c
+# Multi-Turn Session Search (Deduplicates previously seen chunks across turns)
+qmd search "how do consensus protocols handle network partitions?" --session 8f3a1b9c
 
 # Re-include previously seen chunks in session
-qmd search "distributed systems" --session 8f3a1b9c --include-seen
+qmd search "how do consensus protocols handle network partitions?" --session 8f3a1b9c --include-seen
 
 # Filtered Search (By Collection, Title, or Path)
-qmd search "docker" -c work -t "networking" -p "src/"
+qmd search "how does container bridge networking work?" -c work -t "networking" -p "src/"
 
-# Lexical Override (Force BM25 match)
-qmd search "error codes" --lex "ERR_CONNECTION_REFUSED"
+# Lexical Override (Force BM25 match if exact identifiers or error codes are needed)
+qmd search "why does the system fail with connection refused?" --lex "ERR_CONNECTION_REFUSED"
 
-# Start Web UI (Features interactive File Tree drawer, Grep Mode, & XML prompt export)
+# Start Web UI (Features interactive File Tree drawer, Grep Mode, Batch runner, & XML export)
 qmd serve --port 5000
-
 
 ```
 
@@ -169,7 +169,6 @@ qmd read 22,40,25-37 -w 1
 # Document Outline & Chunk Sequence Map
 qmd outline "work:research/deep_space.md"
 qmd outline "research/deep_space.md" -c work --xml
-
 
 ```
 
@@ -199,6 +198,20 @@ qmd grep "def _[a-z_]+" --regex --case-sensitive -p "src/"
 # Export grep matches in JSON or XML for LLM context
 qmd grep "TODO:" --limit 20 --json
 qmd grep "class \w+Model" --regex --xml
+
+```
+
+**Batch Execution for LLM Agents:**
+
+When prompting an LLM to research questions using QMD, prompt it to emit 1 to 5 commands wrapped in a `<qmd_commands>` XML container using natural language questions. Commands are run sequentially, avoiding unnecessary flags:
+
+```xml
+<qmd_commands>
+  qmd discover "what are the core principles of orbital mechanics?"
+  qmd search "how do orbital transfer maneuvers work?"
+  qmd outline "Books:astrodynamics.epub"
+  qmd read "Books:astrodynamics.epub:10-15"
+</qmd_commands>
 
 ```
 
@@ -364,12 +377,13 @@ qmd_python/
 * **Key Dependencies:** `argparse`, `store.py`.
 * **Core Symbols:**
 * `def main()`: Entry point.
-* `def handle_search(args)`: Logic for `qmd search` (supports `-v`, `-d`, `-r`, `--xml`, `--json`).
-* `def handle_chunk(args)`: Logic for `qmd chunk` (supports ID/seq lists and ranges).
+* `def handle_search(args)`: Logic for `qmd search` (supports natural language questions, `-v`, `-d`, `-r`, `--xml`, `--json`).
+* `def handle_chunk(args)`: Logic for `qmd chunk` / `qmd read` (supports ID/seq lists and ranges).
 * `def handle_outline(args)`: Logic for `qmd outline`.
-* `def handle_collection_tree(args)`: Logic for `qmd collection tree` (supports `-p`, `-r`, `--depth`, `--xml`, `--json`).
+* `def handle_collection_tree(args)`: Logic for `qmd tree` (supports `-p`, `-r`, `--depth`, `--xml`, `--json`).
 * `def handle_grep(args)`: Logic for `qmd grep` (supports `-r`, `-s`, `-p`, `--xml`, `--json`).
 * `def handle_update(args)`: Logic for `qmd update` (supports `--pull`, `--force`).
+* `def handle_guide(args)`: Logic for `qmd guide`.
 
 
 
@@ -431,3 +445,4 @@ hyde: {complete hypothetical document passage from Step 2 on a SINGLE LINE}
 * [ ] Order multi-file listings by original directory order
 * [ ] Implement a poor-man's clipboard-based RAG/MCP loop--first results copied to LLM include instructions of how to pass back xml-formatted queries--let the user paste those into QMD's web, return to LLM as needed.
 * [ ] During indexing, detect if we have duplicate files, especially a .md or .pdf version of the same other file type, and optionally skip indexing
+* [ ] Add search-within-sequence-range
