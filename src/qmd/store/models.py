@@ -26,6 +26,10 @@ def extract_document_date(file_path: Union[str, Path], markdown_body: str = "") 
     """
     Extracts or infers a document date using dplib from file path/filename and front matter/early content.
     """
+    store_module = sys.modules.get("qmd.store")
+    if store_module and getattr(store_module, "extract_document_date", None) is not extract_document_date:
+        return store_module.extract_document_date(file_path, markdown_body)
+
     active_dplib = getattr(sys.modules.get("qmd.store"), "dplib", dplib)
     if active_dplib is None:
         return None

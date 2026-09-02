@@ -19,6 +19,7 @@ from qmd.store.vector_index import VectorIndexMixin
 from qmd.store.inspection import InspectionMixin
 from qmd.store.indexing import IndexingMixin
 from qmd.store.search import SearchMixin
+from qmd.store.retrieval import RetrievalMixin
 from qmd.config import Config
 
 
@@ -49,6 +50,7 @@ def test_store_inherits_all_mixins():
     assert issubclass(Store, VectorIndexMixin)
     assert issubclass(Store, InspectionMixin)
     assert issubclass(Store, IndexingMixin)
+    assert issubclass(Store, RetrievalMixin)
     assert issubclass(Store, SearchMixin)
 
 

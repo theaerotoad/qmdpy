@@ -31,9 +31,10 @@ from .vector_index import VectorIndexMixin
 from .inspection import InspectionMixin
 from .indexing import IndexingMixin
 from .search import SearchMixin
+from .retrieval import RetrievalMixin
 
 
-class Store(VectorIndexMixin, InspectionMixin, IndexingMixin, SearchMixin):
+class Store(VectorIndexMixin, InspectionMixin, IndexingMixin, RetrievalMixin, SearchMixin):
     def __init__(self, config: Config, connection: Optional[sqlite3.Connection] = None, read_only: bool = False):
         self.config = config
         self.read_only = read_only
