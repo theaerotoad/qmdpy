@@ -607,3 +607,102 @@ def test_converter_main_inferred_date_output(tmp_path, capsys, monkeypatch):
     captured = capsys.readouterr()
     assert "Inferred Date:" in captured.out
     assert "2026-03-30" in captured.out
+
+
+def test_convert_pdf_basic(tmp_path):
+    pymupdf = pytest.importorskip("pymupdf")
+    pytest.importorskip("pymupdf4llm")
+
+    doc = pymupdf.open()
+    p1 = doc.new_page()
+    p1.insert_text((72, 72), "Chapter 1: Introductory Topics\nFirst page body text.")
+    p2 = doc.new_page()
+    p2.insert_text((72, 72), "Chapter 2: Advanced Topics\nSecond page body text.")
+    pdf_path = tmp_path / "sample.pdf"
+    doc.save(str(pdf_path))
+    doc.close()
+
+    md = convert_to_markdown(pdf_path)
+    assert "Introductory Topics" in md
+    assert "First page body text." in md
+    assert "Advanced Topics" in md
+    assert "Second page body text." in md
+
+
+def test_convert_pdf_colorspace_page_fallback(tmp_path, monkeypatch):
+    pymupdf = pytest.importorskip("pymupdf")
+    import pymupdf4llm
+
+    doc = pymupdf.open()
+    p1 = doc.new_page()
+    p1.insert_text((72, 72), "Page 1 Content\nClean text here.")
+    p2 = doc.new_page()
+    p2.insert_text((72, 72), "Page 2 Problematic\nFallback text here.")
+    pdf_path = tmp_path / "fallback_sample.pdf"
+    doc.save(str(pdf_path))
+    doc.close()
+
+    orig_to_markdown = pymupdf4llm.to_markdown
+
+    def mock_to_markdown(d, **kwargs):
+        pages = kwargs.get("pages")
+        if pages is None:
+            # Whole document fails with colorspace error
+            raise RuntimeError("code=7: cannot determine colorspace")
+        if pages == [0]:
+            # Page 0 succeeds
+            return [{"text": "## Page 1 Content\nClean text here."}]
+        if pages == [1]:
+            # Page 1 fails with colorspace error
+            raise RuntimeError("code=7: cannot determine colorspace")
+        return orig_to_markdown(d, **kwargs)
+
+    monkeypatch.setattr(pymupdf4llm, "to_markdown", mock_to_markdown)
+
+    errors = []
+    md = convert_to_markdown(pdf_path, errors_out=errors)
+
+    # Check page 1 converted from pymupdf4llm
+    assert "Page 1 Content" in md
+    assert "Clean text here." in md
+
+    # Check page 2 rescued via plain text fallback
+    assert "Page 2 Problematic" in md
+    assert "Fallback text here." in md
+
+    # Check errors_out captured the page 2 issue
+    assert len(errors) == 1
+    assert errors[0]["error_type"] == "pdf_page_conversion_error"
+    assert "page 2" in errors[0]["message"].lower()
+    assert "cannot determine colorspace" in errors[0]["message"]
+
+
+def test_convert_pdf_all_pages_fail_fallback_to_text(tmp_path, monkeypatch):
+    pymupdf = pytest.importorskip("pymupdf")
+    import pymupdf4llm
+
+    doc = pymupdf.open()
+    p1 = doc.new_page()
+    p1.insert_text((72, 72), "System Report Page 1\nCritical metrics recorded.")
+    p2 = doc.new_page()
+    p2.insert_text((72, 72), "System Report Page 2\nSummary and conclusion.")
+    pdf_path = tmp_path / "global_err_sample.pdf"
+    doc.save(str(pdf_path))
+    doc.close()
+
+    def mock_to_markdown_always_fail(d, **kwargs):
+        raise RuntimeError("code=7: cannot determine colorspace")
+
+    monkeypatch.setattr(pymupdf4llm, "to_markdown", mock_to_markdown_always_fail)
+
+    errors = []
+    md = convert_to_markdown(pdf_path, errors_out=errors)
+
+    # Both pages should be recovered via PyMuPDF get_text
+    assert "System Report Page 1" in md
+    assert "Critical metrics recorded." in md
+    assert "System Report Page 2" in md
+    assert "Summary and conclusion." in md
+
+    assert len(errors) == 2
+    assert all(e["error_type"] == "pdf_page_conversion_error" for e in errors)
