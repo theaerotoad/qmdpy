@@ -1,3 +1,10 @@
+// Base API URL Helper for Reverse Proxy / Subpath Support
+function apiUrl(path) {
+    const base = (window.QMD_BASE_URL || '').replace(/\/+$/, '');
+    const cleanPath = path.startsWith('/') ? path : '/' + path;
+    return `${base}${cleanPath}`;
+}
+
 // Application State & Configuration
 let activeMode = 'discover';
 let lastRawJson = null;

@@ -14,8 +14,34 @@ from qmd.formatting import format_results_xml, format_doc_results_xml, format_di
 from qmd.mcp_server import execute_qmd_command
 from qmd.utils import decompress_text, redact_pii, parse_query_directives
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+class ReverseProxyPrefixMiddleware:
+    """WSGI middleware to support serving QMD under a subpath prefix (e.g. /upstream/qmd/).
+
+    Reads SCRIPT_NAME from X-Forwarded-Prefix or X-Script-Name headers and adjusts
+    PATH_INFO accordingly when requests are routed through reverse proxies.
+    """
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        raw_prefix = environ.get('HTTP_X_FORWARDED_PREFIX') or environ.get('HTTP_X_SCRIPT_NAME')
+        if raw_prefix:
+            prefix = raw_prefix.split(',')[-1].strip().rstrip('/')
+            if prefix and not prefix.startswith('/'):
+                prefix = '/' + prefix
+            if prefix:
+                environ['SCRIPT_NAME'] = prefix
+                path_info = environ.get('PATH_INFO', '')
+                if path_info == prefix:
+                    environ['PATH_INFO'] = '/'
+                elif path_info.startswith(prefix + '/'):
+                    environ['PATH_INFO'] = path_info[len(prefix):]
+        return self.wsgi_app(environ, start_response)
 
 app = Flask(__name__)
+app.wsgi_app = ReverseProxyPrefixMiddleware(ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1))
 
 def get_config():
     if 'CONFIG_PATH' in app.config and app.config.get('_current_config_path') != app.config['CONFIG_PATH']:

@@ -79,3 +79,32 @@ def test_web_discover_endpoint(web_client):
     assert len(data['results']) == 1
     assert data['results'][0]['match_count'] >= 1
     assert '<discover_results' in data['xml']
+
+def test_web_subpath_x_forwarded_prefix(web_client):
+    # 1. Verify index template renders static assets and window.QMD_BASE_URL with the prefix
+    res = web_client.get('/', headers={'X-Forwarded-Prefix': '/upstream/qmd'})
+    assert res.status_code == 200
+    html = res.get_data(as_text=True)
+    assert 'href="/upstream/qmd/static/css/app.css"' in html
+    assert 'src="/upstream/qmd/static/js/state.js"' in html
+    assert 'window.QMD_BASE_URL = "/upstream/qmd"' in html
+
+    # 2. Verify API requests routed with the subpath prefix in PATH_INFO are correctly handled
+    res2 = web_client.post('/upstream/qmd/api/search', json={
+        'query': 'document',
+        'limit': 1,
+        'session_id': 'web_prefix_1'
+    }, headers={'X-Forwarded-Prefix': '/upstream/qmd'})
+    assert res2.status_code == 200
+    data2 = res2.get_json()
+    assert data2['session_id'] == 'web_prefix_1'
+    assert len(data2['results']) == 1
+
+def test_web_subpath_script_name(web_client):
+    # Verify behavior when SCRIPT_NAME is supplied directly by WSGI environment
+    res = web_client.get('/', environ_base={'SCRIPT_NAME': '/upstream/qmd'})
+    assert res.status_code == 200
+    html = res.get_data(as_text=True)
+    assert 'href="/upstream/qmd/static/css/app.css"' in html
+    assert 'src="/upstream/qmd/static/js/state.js"' in html
+    assert 'window.QMD_BASE_URL = "/upstream/qmd"' in html

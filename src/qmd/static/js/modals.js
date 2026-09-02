@@ -78,7 +78,8 @@ async function loadScopePickerTree(pattern = '') {
     const container = document.getElementById('scope-picker-tree');
     container.innerHTML = '<div class="text-slate-500 py-6 text-center">Loading directories...</div>';
     try {
-        const res = await fetch(pattern ? `/api/collections/tree?pattern=${encodeURIComponent(pattern)}` : '/api/collections/tree');
+        const url = pattern ? apiUrl(`/api/collections/tree?pattern=${encodeURIComponent(pattern)}`) : apiUrl('/api/collections/tree');
+        const res = await fetch(url);
         const data = await res.json();
         renderScopePickerTree(data);
     } catch(e) {
@@ -162,7 +163,7 @@ function closeSettings() {
 // Collections List & Re-indexing
 async function loadCollections(populateSettings = false) {
     try {
-        const res = await fetch('/api/collections');
+        const res = await fetch(apiUrl('/api/collections'));
         const data = await res.json();
 
         if (populateSettings) {
@@ -210,7 +211,7 @@ async function triggerReindex(name, btn) {
     btn.innerHTML = `<span class="animate-spin mr-1">⟳</span> Indexing...`;
     btn.disabled = true;
     try {
-        const res = await fetch('/api/update', {
+        const res = await fetch(apiUrl('/api/update'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ collection: name, force: false })
@@ -264,7 +265,7 @@ function updateSessionBadges() {
 async function refreshSessionStats(id) {
     if (!id) return;
     try {
-        const res = await fetch(`/api/session/${encodeURIComponent(id)}`);
+        const res = await fetch(apiUrl(`/api/session/${encodeURIComponent(id)}`));
         if (!res.ok) return;
         const d = await res.json();
         const s = document.getElementById('modal-seen-count'), e = document.getElementById('modal-events-count');
@@ -345,7 +346,7 @@ function clearBatchInput() {
 async function copyBatchGuide() {
     const btn = document.getElementById('btn-copy-batch-guide');
     try {
-        const res = await fetch('/api/guide?format=xml');
+        const res = await fetch(apiUrl('/api/guide?format=xml'));
         const data = await res.json();
         const guideText = data.guide || '';
         await navigator.clipboard.writeText(guideText);
@@ -381,7 +382,7 @@ async function runBatchCommands() {
     stepList.innerHTML = `<div class="text-slate-500 py-3 text-center">Parsing and executing commands...</div>`;
 
     try {
-        const res = await fetch('/api/batch', {
+        const res = await fetch(apiUrl('/api/batch'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: rawText, max_commands: 5 })
@@ -495,7 +496,7 @@ async function openDocument(collection, path, targetText) {
     content.innerHTML = '<div class="text-slate-500 py-16 text-center">Loading document...</div>';
 
     try {
-        const res = await fetch(`/api/document?collection=${encodeURIComponent(collection)}&path=${encodeURIComponent(path)}${featureStates.redact_pii ? '&redact_pii=true' : ''}`);
+        const res = await fetch(apiUrl(`/api/document?collection=${encodeURIComponent(collection)}&path=${encodeURIComponent(path)}${featureStates.redact_pii ? '&redact_pii=true' : ''}`));
         const data = await res.json();
         document.getElementById('slide-title').textContent = data.title || path;
         content.innerHTML = marked.parse(data.content || '');
@@ -543,7 +544,8 @@ async function loadCollectionTree(pattern = '') {
     const container = document.getElementById('tree-content');
     container.innerHTML = '<div class="text-slate-500 py-6 text-center">Loading tree...</div>';
     try {
-        const res = await fetch(pattern ? `/api/collections/tree?pattern=${encodeURIComponent(pattern)}` : '/api/collections/tree');
+        const url = pattern ? apiUrl(`/api/collections/tree?pattern=${encodeURIComponent(pattern)}`) : apiUrl('/api/collections/tree');
+        const res = await fetch(url);
         const data = await res.json();
         container.innerHTML = '';
         (Array.isArray(data) ? data : [data]).forEach(item => {
