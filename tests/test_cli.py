@@ -453,6 +453,7 @@ def test_guide_command(monkeypatch, capsys):
         assert "qmd read" in out
         assert "qmd outline" in out
         assert "qmd tree" in out
+        assert "natural language question" in out.lower()
 
     # XML guide
     monkeypatch.setattr(sys, "argv", ["qmd", "guide", "--xml"])
@@ -463,3 +464,7 @@ def test_guide_command(monkeypatch, capsys):
         assert "<workflow>" in out
         assert "<shorthand_targets>" in out
         assert "</qmd_guide>" in out
+        assert "natural language question" in out.lower()
+        # Batch guidance XML drops --deep and session logic
+        assert "--deep" not in out
+        assert "--session" not in out
