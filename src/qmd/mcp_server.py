@@ -106,9 +106,11 @@ def run_mcp_server(config_path: Optional[str] = None):
             """
             Search and inspect local document knowledge bases using QMD.
             
+            Queries should be formulated as natural language questions rather than keyword searches.
+
             Primary Commands:
-              - discover "query" [--deep] : Top matching documents (1 best snippet per document, SERP style).
-              - search "query" [--deep] [--session <id>] : Hybrid search (document-ordered by default).
+              - discover "question" : Top matching documents (1 best snippet per document, SERP style).
+              - search "question" : Hybrid search (document-ordered by default).
               - read "<target>" : Inspect chunk(s) or ranges (e.g. 'Books:doc.epub:10-15', 'qmd://Books/doc.epub:3', or '10-15').
               - outline "<target>" : Heading table of contents and chunk sequence map.
               - tree [collection] [-p pattern] : Directory tree of indexed documents.
@@ -130,7 +132,7 @@ def run_mcp_server(config_path: Optional[str] = None):
             return [
                 types.Tool(
                     name="qmd",
-                    description="Search and inspect local document knowledge bases. Commands: discover, search, read, outline, tree, grep, collections, guide. Automatically outputs XML.",
+                    description="Search and inspect local document knowledge bases using natural language questions. Commands: discover, search, read, outline, tree, grep, collections, guide. Automatically outputs XML.",
                     inputSchema={
                         "type": "object",
                         "properties": {

@@ -119,11 +119,11 @@
                 <div class="flex items-center justify-between">
                     <label for="batch-input" class="font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                         <span>Pasted Commands</span>
-                        <span class="text-slate-400 font-normal">(1-5 commands, markdown fences, or read="..." attributes)</span>
+                        <span class="text-slate-400 font-normal">(1-5 commands using natural language questions, or read="..." attributes)</span>
                     </label>
                     <button type="button" onclick="clearBatchInput()" class="text-slate-400 hover:text-red-500 transition text-[11px]">Clear</button>
                 </div>
-                <textarea id="batch-input" rows="5" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-mono text-xs rounded-xl p-3.5 focus:outline-none focus:border-blue-500 leading-relaxed placeholder-slate-400 dark:placeholder-slate-600 resize-y" placeholder="qmd discover &quot;orbital mechanics&quot;&#10;qmd read 'Books:doc.epub:10-15'&#10;outline=&quot;qmd outline 'Books:doc.epub'&quot;&#10;qmd search &quot;orbital mechanics&quot; --deep"></textarea>
+                <textarea id="batch-input" rows="5" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-mono text-xs rounded-xl p-3.5 focus:outline-none focus:border-blue-500 leading-relaxed placeholder-slate-400 dark:placeholder-slate-600 resize-y" placeholder="qmd discover &quot;what are the principles of orbital mechanics?&quot;&#10;qmd read 'Books:doc.epub:10-15'&#10;outline=&quot;qmd outline 'Books:doc.epub'&quot;&#10;qmd search &quot;how do orbital transfers work?&quot;"></textarea>
             </div>
 
             <!-- Execution Status & Progress -->
@@ -150,7 +150,7 @@
 
         <div class="px-6 py-3.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
             <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                Tip: Copy the guide above to prompt LLMs to emit formatted commands directly.
+                Tip: Copy the guide above to prompt LLMs to emit natural language question commands directly.
             </div>
             <div class="flex items-center gap-2">
                 <button type="button" onclick="closeBatchModal()" class="px-4 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition shadow-sm">Close</button>
@@ -270,7 +270,7 @@
             <div id="tab-content-cheatcodes" class="settings-tab-panel hidden space-y-4">
                 <div>
                     <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Query Cheat Codes</h3>
-                    <p class="text-slate-500 dark:text-slate-400">Embed power directives right into your search box to instantly steer searches.</p>
+                    <p class="text-slate-500 dark:text-slate-400">Embed power directives right into your search box. Standard queries work best as natural language questions rather than keyword searches.</p>
                 </div>
                 <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
                     <table class="w-full text-left font-mono">

@@ -686,20 +686,20 @@ def handle_guide(args, store: Optional[Store] = None):
 
     if is_xml:
         guide_xml = """<qmd_guide>
-  <overview>QMD is a local search, retrieval, and document inspection engine designed for LLM agents.</overview>
+  <overview>QMD is a local search, retrieval, and document inspection engine designed for LLM agents. Formulate queries as natural language questions rather than keyword searches.</overview>
   <batch_execution_format>
-When requested to perform research or retrieve data using QMD, emit 1 to 5 commands wrapped in a <qmd_commands> XML container:
+When requested to perform research or retrieve data using QMD, emit 1 to 5 commands wrapped in a <qmd_commands> XML container. Frame queries as clear natural language questions:
 
 <qmd_commands>
-  qmd discover "query"
-  qmd search "query" --deep
+  qmd discover "what are the main principles of orbital mechanics?"
+  qmd search "how do orbital transfer maneuvers work?"
   qmd outline "coll:path.md"
   qmd read "coll:path.md:10-15"
 </qmd_commands>
   </batch_execution_format>
   <workflow>
-    <step num="1" name="Discovery">Use `qmd discover "query"` for top-level SERP results (1 hit per document), or `qmd collections` / `qmd tree` to explore paths.</step>
-    <step num="2" name="Search">Use `qmd search "query" --deep` for comprehensive document-grouped results with LLM reranking.</step>
+    <step num="1" name="Discovery">Use `qmd discover "natural language question?"` for top-level SERP results (1 hit per document), or `qmd collections` / `qmd tree` to explore paths.</step>
+    <step num="2" name="Search">Use `qmd search "natural language question?"` for comprehensive document-grouped results.</step>
     <step num="3" name="Orient">Use `qmd outline "<target>"` to inspect heading hierarchies and chunk sequence spans.</step>
     <step num="4" name="Read">Use `qmd read "<target>"` to fetch chunks/ranges, or execute exact `read="..."` / `expand="..."` attributes from search results.</step>
   </workflow>
@@ -710,10 +710,9 @@ When requested to perform research or retrieve data using QMD, emit 1 to 5 comma
     <target syntax="row_ids">e.g. `10-15` or `22,40,25-27`</target>
   </shorthand_targets>
   <agent_tips>
-    <tip>Triage first: `qmd discover "query"` gives a fast 1-hit-per-document overview before deep reading.</tip>
+    <tip>Natural language questions: formulate search queries as natural language questions rather than keyword lists for optimal semantic retrieval.</tip>
+    <tip>Triage first: `qmd discover "question?"` gives a fast 1-hit-per-document overview before deep reading.</tip>
     <tip>Batch execution: emit 1 to 5 sequential commands in a <qmd_commands> block for unified batch processing.</tip>
-    <tip>Multi-turn sessions: pass `--session <id>` to automatically exclude previously seen chunks across query turns.</tip>
-    <tip>Presets: `--deep` combines LLM reranking and document grouping; `--broad` runs wide-to-narrow hierarchical search.</tip>
     <tip>Agent hypermedia: copy-paste the `read="..."`, `outline="..."`, and `search="..."` attributes directly into CLI calls.</tip>
     <tip>Safety cap: large reads truncate at max_chunks (default 30) and provide a `resume="..."` command for the next slice.</tip>
   </agent_tips>
@@ -725,15 +724,15 @@ When requested to perform research or retrieve data using QMD, emit 1 to 5 comma
 
 {CYAN}## Workflow & Decision Matrix{RESET}
 1. {BOLD}Triage & Discovery:{RESET}
-   - `qmd discover "query"` - Single top hit per document SERP view (fast discovery)
+   - `qmd discover "question?"` - Single top hit per document SERP view (use natural language questions)
    - `qmd collections` - List indexed collections and paths
    - `qmd tree [collection] [-p pattern]` - Explore document directory trees
 
-2. {BOLD}Retrieval & Deep Search:{RESET}
-   - `qmd search "query"` - Document-ordered search results (default)
-   - `qmd search "query" --deep` - Deep search: doc-grouped + LLM reranked
-   - `qmd search "query" --session <id>` - Session search (auto-deduplicates seen chunks)
-   - `qmd search "query" --broad` - Broad hierarchical search (wide-to-narrow)
+2. {BOLD}Retrieval & Search:{RESET}
+   - `qmd search "question?"` - Document-ordered search results (natural language question)
+   - `qmd search "question?" --deep` - Deep search: doc-grouped + LLM reranked
+   - `qmd search "question?" --session <id>` - Session search (auto-deduplicates seen chunks)
+   - `qmd search "question?" --broad` - Broad hierarchical search (wide-to-narrow)
 
 3. {BOLD}Document Structure & Orientation:{RESET}
    - `qmd outline "<target>"` - Table of contents with chunk sequence mappings
@@ -748,9 +747,10 @@ When requested to perform research or retrieve data using QMD, emit 1 to 5 comma
 - Relative: `<path>[:<seq>]`
 - Chunk Row IDs: `10-15` or `22,40,25-27`
 
-{CYAN}## Multi-Turn Agent Best Practices{RESET}
+{CYAN}## Query Formulation & Agent Best Practices{RESET}
+- Frame queries as clear natural language questions rather than keyword lists for optimal semantic retrieval.
 - Use `qmd discover` to scan across multiple documents without flooding context.
-- Pass `--session <id>` to avoid ingesting duplicate context on follow-up searches.
+- Pass `--session <id>` when conducting multi-turn research to avoid ingesting duplicate context.
 - Follow actionable XML attributes (`read="..."`, `outline="..."`, `search="..."`, `resume="..."`).
 - Large reads truncate at 30 chunks with a resume hint to protect context windows."""
         if getattr(args, "plain", False):
@@ -866,7 +866,7 @@ def build_parser():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     discover_parser = subparsers.add_parser("discover", aliases=["find", "disc"], help="Discover top document matches (1 top hit per document)", parents=[parent_parser])
-    discover_parser.add_argument("query", nargs="+", help="The search terms")
+    discover_parser.add_argument("query", nargs="+", help="The natural language question or search terms")
 
     d_filter_group = discover_parser.add_argument_group("Target & Filters")
     d_filter_group.add_argument("-c", "--collection", type=str, help="Filter results by a specific collection")
@@ -901,7 +901,7 @@ def build_parser():
     d_output_group.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
 
     search_parser = subparsers.add_parser("search", aliases=["query", "q"], help="Hybrid vector + lexical search (document-ordered by default)", parents=[parent_parser])
-    search_parser.add_argument("query", nargs="+", help="The search terms")
+    search_parser.add_argument("query", nargs="+", help="The natural language question or search terms")
 
     filter_group = search_parser.add_argument_group("Target & Filters")
     filter_group.add_argument("-c", "--collection", type=str, help="Filter results by a specific collection")
