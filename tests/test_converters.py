@@ -1,9 +1,14 @@
 import sys
+from unittest.mock import MagicMock
+
 # Prevent onnxruntime segfault on Linux caused by OpenMP/static TLS conflicts with spaCy
-if "onnxruntime" not in sys.modules:
-    sys.modules["onnxruntime"] = None
-    sys.modules["onnxruntime.capi"] = None
-    sys.modules["onnxruntime.capi._pybind_state"] = None
+for mod in ("onnxruntime", "onnxruntime.capi", "onnxruntime.capi._pybind_state"):
+    if mod not in sys.modules or sys.modules[mod] is None:
+        m = MagicMock()
+        m.__name__ = mod
+        m.__file__ = f"{mod}.py"
+        m.__package__ = "onnxruntime"
+        sys.modules[mod] = m
 
 import pytest
 from pathlib import Path
@@ -642,10 +647,11 @@ def test_convert_pdf_colorspace_page_fallback(tmp_path, monkeypatch):
     import pymupdf4llm
 
     doc = pymupdf.open()
+    rect = pymupdf.Rect(72, 100, 500, 500)
     p1 = doc.new_page()
-    p1.insert_text((72, 72), "Page 1 Content\nClean text here.")
+    p1.insert_textbox(rect, "Page 1 Content\n\nClean text here.")
     p2 = doc.new_page()
-    p2.insert_text((72, 72), "Page 2 Problematic\nFallback text here.")
+    p2.insert_textbox(rect, "Page 2 Problematic\n\nFallback text here.")
     pdf_path = tmp_path / "fallback_sample.pdf"
     doc.save(str(pdf_path))
     doc.close()
@@ -690,10 +696,11 @@ def test_convert_pdf_all_pages_fail_fallback_to_text(tmp_path, monkeypatch):
     import pymupdf4llm
 
     doc = pymupdf.open()
+    rect = pymupdf.Rect(72, 100, 500, 500)
     p1 = doc.new_page()
-    p1.insert_text((72, 72), "System Report Page 1\nCritical metrics recorded.")
+    p1.insert_textbox(rect, "System Report Page 1\n\nCritical metrics recorded.")
     p2 = doc.new_page()
-    p2.insert_text((72, 72), "System Report Page 2\nSummary and conclusion.")
+    p2.insert_textbox(rect, "System Report Page 2\n\nSummary and conclusion.")
     pdf_path = tmp_path / "global_err_sample.pdf"
     doc.save(str(pdf_path))
     doc.close()

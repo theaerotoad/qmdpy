@@ -449,11 +449,15 @@ def _convert_text(path: Path) -> str:
 
 def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = None) -> str:
     import sys
+    from unittest.mock import MagicMock
     # Prevent onnxruntime segfault on Linux caused by OpenMP/static TLS conflicts with spaCy
-    if "onnxruntime" not in sys.modules:
-        sys.modules["onnxruntime"] = None
-        sys.modules["onnxruntime.capi"] = None
-        sys.modules["onnxruntime.capi._pybind_state"] = None
+    for mod in ("onnxruntime", "onnxruntime.capi", "onnxruntime.capi._pybind_state"):
+        if mod not in sys.modules or sys.modules[mod] is None:
+            m = MagicMock()
+            m.__name__ = mod
+            m.__file__ = f"{mod}.py"
+            m.__package__ = "onnxruntime"
+            sys.modules[mod] = m
 
     try:
         import pymupdf
