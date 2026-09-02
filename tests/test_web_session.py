@@ -108,3 +108,13 @@ def test_web_subpath_script_name(web_client):
     assert 'href="/upstream/qmd/static/css/app.css"' in html
     assert 'src="/upstream/qmd/static/js/state.js"' in html
     assert 'window.QMD_BASE_URL = "/upstream/qmd"' in html
+
+def test_web_subpath_fallback_relative_assets(web_client):
+    # When no prefix headers or script_root are supplied, verify relative fallback paths
+    res = web_client.get('/')
+    assert res.status_code == 200
+    html = res.get_data(as_text=True)
+    assert 'href="static/css/app.css"' in html
+    assert 'src="static/js/state.js"' in html
+    assert 'src="static/js/modals.js"' in html
+    assert 'src="static/js/search.js"' in html
