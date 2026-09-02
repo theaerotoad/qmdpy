@@ -38,6 +38,17 @@ except ImportError:
     dplib = None
 
 
+def _format_size(size_bytes: int) -> str:
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+
 def extract_document_date(file_path: Union[str, Path], markdown_body: str = "") -> Optional[str]:
     """
     Extracts or infers a document date using dplib from file path/filename and front matter/early content.
@@ -317,6 +328,128 @@ class Store:
                         pass
         except Exception:
             pass
+
+    def _get_local_stats(self, collection: Optional[Union[str, List[str]]] = None) -> Dict[str, Any]:
+        last_updated = get_db_meta(self.conn, "last_updated") or ""
+        cache_key = (last_updated, str(collection) if collection else "")
+        if hasattr(self, "_local_stats_cache") and self._local_stats_cache.get("key") == cache_key:
+            return self._local_stats_cache["data"]
+
+        cursor = self.conn.cursor()
+        coll_sql, coll_params = _build_collection_sql_filter("collection", collection)
+
+        if collection and coll_sql:
+            cursor.execute(f"SELECT COUNT(*), COUNT(DISTINCT collection) FROM documents WHERE 1=1 {coll_sql}", tuple(coll_params))
+            row = cursor.fetchone()
+            docs_count = row[0] or 0
+            colls_count = row[1] or 0
+
+            cursor.execute(f"SELECT path, collection FROM documents WHERE 1=1 {coll_sql}", tuple(coll_params))
+            doc_rows = cursor.fetchall()
+            dirs = {str(Path(p).parent) for p, _ in doc_rows if Path(p).parent != Path(".")}
+            colls = {c for _, c in doc_rows if c}
+
+            cursor.execute(f"""
+                SELECT COUNT(*) 
+                FROM chunk_metadata m
+                JOIN documents d ON m.doc_hash = d.hash
+                WHERE 1=1 {coll_sql}
+            """, tuple(coll_params))
+            chunks_count = cursor.fetchone()[0] or 0
+        else:
+            cursor.execute("SELECT COUNT(*) FROM chunk_metadata")
+            chunks_count = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COUNT(*), COUNT(DISTINCT collection) FROM documents")
+            row = cursor.fetchone()
+            docs_count = row[0] or 0
+            colls_count = row[1] or 0
+
+            cursor.execute("SELECT path, collection FROM documents")
+            doc_rows = cursor.fetchall()
+            dirs = {str(Path(p).parent) for p, _ in doc_rows if Path(p).parent != Path(".")}
+            colls = {c for _, c in doc_rows if c}
+
+        quant_type = get_db_meta(self.conn, "vector_quantization") or getattr(self.config, "vector_quantization", "none") or "none"
+        dim = get_db_meta(self.conn, "vector_dim")
+
+        file_size = 0
+        if getattr(self.config, "db_path", None):
+            try:
+                p = Path(self.config.db_path)
+                if p.exists():
+                    file_size = p.stat().st_size
+            except Exception:
+                pass
+
+        stats_data = {
+            "chunks": chunks_count,
+            "docs": docs_count,
+            "dirs": dirs,
+            "collections": colls,
+            "quant_type": quant_type,
+            "dim": dim,
+            "file_size_bytes": file_size
+        }
+        self._local_stats_cache = {"key": cache_key, "data": stats_data}
+        return stats_data
+
+    def get_stats(self, collection: Optional[Union[str, List[str]]] = None) -> Dict[str, Any]:
+        target_stores = self._get_target_stores_for_collection(collection)
+
+        total_chunks = 0
+        total_docs = 0
+        total_size_bytes = 0
+        all_dirs = set()
+        all_colls = set()
+        quant_types = set()
+        dims = set()
+
+        for store in target_stores:
+            s_stats = store._get_local_stats(collection=collection)
+            total_chunks += s_stats["chunks"]
+            total_docs += s_stats["docs"]
+            total_size_bytes += s_stats["file_size_bytes"]
+            all_dirs.update(s_stats["dirs"])
+            all_colls.update(s_stats["collections"])
+            if s_stats["quant_type"]:
+                quant_types.add(s_stats["quant_type"])
+            if s_stats["dim"]:
+                dims.add(s_stats["dim"])
+
+        return {
+            "chunks": total_chunks,
+            "docs": total_docs,
+            "dirs_count": len(all_dirs),
+            "colls_count": len(all_colls),
+            "collections": sorted(list(all_colls)),
+            "size_bytes": total_size_bytes,
+            "quant_type": "/".join(sorted(quant_types)) if quant_types else "none",
+            "dim": "/".join(sorted(str(d) for d in dims)) if dims else None,
+        }
+
+    def _format_stats_line(self, stats: Dict[str, Any]) -> str:
+        chunks = f"{stats['chunks']:,}"
+        docs = f"{stats['docs']:,}"
+        dirs = f"{stats['dirs_count']:,}"
+        colls = f"{stats['colls_count']:,}"
+        size_str = _format_size(stats['size_bytes']) if stats['size_bytes'] > 0 else ""
+
+        vec_spec = []
+        if stats.get('quant_type'):
+            vec_spec.append(stats['quant_type'])
+        if stats.get('dim'):
+            vec_spec.append(f"{stats['dim']}d")
+        vec_str = f", {', '.join(vec_spec)}" if vec_spec else ""
+
+        size_part = f" ({size_str}{vec_str})" if (size_str or vec_str) else ""
+
+        coll_word = "collection" if stats['colls_count'] == 1 else "collections"
+        file_word = "file" if stats['docs'] == 1 else "files"
+        chunk_word = "chunk" if stats['chunks'] == 1 else "chunks"
+        dir_word = "directory" if stats['dirs_count'] == 1 else "directories"
+
+        return f"{chunks} {chunk_word} across {docs} {file_word} across {dirs} {dir_word} in {colls} {coll_word}{size_part}"
 
     def _get_target_stores_for_collection(self, collection: Optional[Union[str, List[str]]]) -> List['Store']:
         """
@@ -1224,8 +1357,11 @@ class Store:
             if cached_json:
                 self.last_exclusion_stats = {"excluded_chunks": 0, "excluded_docs": 0}
                 if verbose:
+                    corpus_line = self._format_stats_line(self.get_stats(collection=collection))
                     t_total = (time.perf_counter() - t_total_start) * 1000
                     print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
+                    if corpus_line:
+                        print(f"{DIM}Corpus:{RESET} {corpus_line}")
                     print(f"{DIM}Original Query:{RESET} {query}")
                     print(f"{GREEN}[Cache Hit]{RESET} Loaded results from search cache in {t_cache:.2f}ms")
                     print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
@@ -1366,8 +1502,11 @@ class Store:
 
         if not top_candidates:
             if verbose:
+                corpus_line = self._format_stats_line(self.get_stats(collection=collection))
                 t_total = (time.perf_counter() - t_total_start) * 1000
                 print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
+                if corpus_line:
+                    print(f"{DIM}Corpus:{RESET} {corpus_line}")
                 print(f"{DIM}Query:{RESET} {query}")
                 print(f"{YELLOW}Lexical (FTS):{RESET} {lex_queries}")
                 print(f"{MAGENTA}Vector (Semantic):{RESET} {vec_queries}")
@@ -1469,7 +1608,10 @@ class Store:
         t_total = (time.perf_counter() - t_total_start) * 1000
 
         if verbose:
+            corpus_line = self._format_stats_line(self.get_stats(collection=collection))
             print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
+            if corpus_line:
+                print(f"{DIM}Corpus:{RESET} {corpus_line}")
             print(f"{DIM}Query:{RESET} {query}")
             print(f"{YELLOW}Lexical (FTS):{RESET} {lex_queries}")
             print(f"{MAGENTA}Vector (Semantic):{RESET} {vec_queries}")
@@ -1525,8 +1667,11 @@ class Store:
             if cached_json:
                 self.last_exclusion_stats = {"excluded_chunks": 0, "excluded_docs": 0}
                 if verbose:
+                    corpus_line = self._format_stats_line(self.get_stats(collection=collection))
                     t_total = (time.perf_counter() - t_total_start) * 1000
                     print(f"\n{CYAN}--- Wide-to-Narrow Diagnostics ---{RESET}")
+                    if corpus_line:
+                        print(f"{DIM}Corpus:{RESET} {corpus_line}")
                     print(f"{DIM}Original Query:{RESET} {query}")
                     print(f"{GREEN}[Cache Hit]{RESET} Loaded results from search cache in {t_cache:.2f}ms")
                     print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
@@ -1653,7 +1798,10 @@ class Store:
         t_total = (time.perf_counter() - t_total_start) * 1000
 
         if verbose:
+            corpus_line = self._format_stats_line(self.get_stats(collection=collection))
             print(f"\n{CYAN}--- Search Diagnostics (Wide-to-Narrow) ---{RESET}")
+            if corpus_line:
+                print(f"{DIM}Corpus:{RESET} {corpus_line}")
             print(f"{DIM}Query:{RESET} {query}")
             print(f"{YELLOW}Top Documents:{RESET} {list(top_docs)}")
             print(f"{MAGENTA}Top Directories:{RESET} {list(top_dirs)}")
@@ -1704,8 +1852,11 @@ class Store:
             if cached_json:
                 self.last_exclusion_stats = {"excluded_chunks": 0, "excluded_docs": 0}
                 if verbose:
+                    corpus_line = self._format_stats_line(self.get_stats(collection=collection))
                     t_total = (time.perf_counter() - t_total_start) * 1000
                     print(f"\n{CYAN}--- Discover Diagnostics ---{RESET}")
+                    if corpus_line:
+                        print(f"{DIM}Corpus:{RESET} {corpus_line}")
                     print(f"{DIM}Original Query:{RESET} {query}")
                     print(f"{GREEN}[Cache Hit]{RESET} Loaded results from search cache in {t_cache:.2f}ms")
                     print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
@@ -1803,7 +1954,10 @@ class Store:
         t_total = (time.perf_counter() - t_total_start) * 1000
 
         if verbose:
+            corpus_line = self._format_stats_line(self.get_stats(collection=collection))
             print(f"\n{CYAN}--- Search Diagnostics (Discover) ---{RESET}")
+            if corpus_line:
+                print(f"{DIM}Corpus:{RESET} {corpus_line}")
             print(f"{DIM}Query:{RESET} {query}")
             print(f"{DIM}Mode:{RESET} {'Wide-to-Narrow' if w2n else 'Hybrid'} | {DIM}Rerank:{RESET} {rerank or reranker_only}")
             print(f"{DIM}Candidates: {len(candidates)} chunks -> {len(final_results)} top documents{RESET}")
