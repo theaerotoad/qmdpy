@@ -658,8 +658,20 @@ def update():
     
     if collection and collection in cfg.collections:
         try:
-            get_store(read_only=False).index_collection(collection, cfg.collections[collection], force=force)
+            store = get_store(read_only=False)
+            store.index_collection(collection, cfg.collections[collection], force=force)
+            store.build_usearch_index()
             return jsonify({"status": "success", "message": f"Successfully updated collection: {collection}"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+    elif not collection and cfg.collections:
+        try:
+            store = get_store(read_only=False)
+            for name, coll_cfg in cfg.collections.items():
+                store.index_collection(name, coll_cfg, force=force)
+            store.prune_orphaned_collections(list(cfg.collections.keys()))
+            store.build_usearch_index()
+            return jsonify({"status": "success", "message": "Successfully updated all collections"})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
             

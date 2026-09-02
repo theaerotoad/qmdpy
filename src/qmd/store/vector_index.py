@@ -121,6 +121,10 @@ class VectorIndexMixin:
             index.add(np.array(rowids, dtype=np.uint64), np.array(vectors, dtype=np.float32))
             count += len(rowids)
 
+        parent_dir = Path(self.usearch_path).parent
+        if parent_dir and not parent_dir.exists():
+            parent_dir.mkdir(parents=True, exist_ok=True)
+
         index.save(self.usearch_path)
         print(f"{GREEN}✓ Successfully built usearch index with {count} vectors at {self.usearch_path}{RESET}")
         self.usearch_index = index

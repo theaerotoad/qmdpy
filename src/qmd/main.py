@@ -811,7 +811,11 @@ def handle_update(args, store: Store):
     active_collections = list(config.collections.keys())
     store.prune_orphaned_collections(active_collections)
 
-    # 3. Report indexing errors if any remain
+    # 3. Automatically build / update the HNSW ANN index
+    if not getattr(args, "no_ann", False):
+        store.build_usearch_index()
+
+    # 4. Report indexing errors if any remain
     errors = store.get_indexing_errors(collection=args.collection)
     if errors:
         print(f"\n{YELLOW}Notice: {len(errors)} file(s) have unresolved indexing errors/degradations.{RESET}")
@@ -1002,6 +1006,7 @@ def build_parser():
     update_parser.add_argument("-f", "--force", action="store_true", help="Force re-indexing of all files, ignoring hash checks")
     update_parser.add_argument("-c", "--collection", type=str, help="Only update a specific collection")
     update_parser.add_argument("--build-ann", action="store_true", help="Build a usearch HNSW approximate nearest neighbor index from the existing vector table")
+    update_parser.add_argument("--no-ann", action="store_true", help="Skip automatic HNSW ANN index build/update")
 
     coll_parser = subparsers.add_parser("collection", help="Manage collections", parents=[parent_parser])
     coll_sub = coll_parser.add_subparsers(dest="subcommand", required=True)
