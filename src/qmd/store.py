@@ -266,6 +266,7 @@ class Store:
         self.last_exclusion_stats: Dict[str, int] = {"excluded_chunks": 0, "excluded_docs": 0}
 
         register_functions(self.conn)
+        self._init_usearch()
         self._ensure_query_indexes()
 
         if not self.read_only:
@@ -302,6 +303,90 @@ class Store:
         for coll_name in config.collections.keys():
             if coll_name not in self.collection_store_map:
                 self.collection_store_map[coll_name] = self
+
+    def _init_usearch(self):
+        self.usearch_index = None
+        if getattr(self.config, "db_path", None):
+            self.usearch_path = f"{self.config.db_path}.usearch"
+        else:
+            self.usearch_path = str(Path.home() / ".config" / "qmd" / "qmd.db.usearch")
+
+        if os.path.exists(self.usearch_path):
+            try:
+                import usearch.index
+                dim = get_db_meta(self.conn, "vector_dim")
+                if dim:
+                    quant_type = get_db_meta(self.conn, "vector_quantization") or getattr(self.config, "vector_quantization", "none") or "none"
+                    dtype = "f32"
+                    if quant_type == "int8":
+                        dtype = "i8"
+                    elif quant_type in ("bit", "binary"):
+                        dtype = "b1"
+                    
+                    self.usearch_index = usearch.index.Index(ndim=int(dim), metric="cos", dtype=dtype)
+                    if self.read_only:
+                        self.usearch_index.view(self.usearch_path)
+                    else:
+                        self.usearch_index.load(self.usearch_path)
+            except ImportError:
+                print(f"{YELLOW}Warning: .usearch index found but 'usearch' package is not installed. Ignoring.{RESET}")
+            except Exception as e:
+                print(f"{YELLOW}Warning: Failed to load .usearch index: {e}{RESET}")
+
+    def build_usearch_index(self):
+        """Builds a HNSW ANN index using usearch from the existing vectors table."""
+        try:
+            import usearch.index
+            import numpy as np
+        except ImportError:
+            print(f"{RED}Error: 'usearch' and 'numpy' packages are required to build the ANN index.{RESET}")
+            return False
+
+        dim = get_db_meta(self.conn, "vector_dim")
+        if not dim:
+            print(f"{RED}Error: Vector dimension not found in DB meta.{RESET}")
+            return False
+
+        dim = int(dim)
+        quant_type = get_db_meta(self.conn, "vector_quantization") or getattr(self.config, "vector_quantization", "none") or "none"
+        dtype = "f32"
+        if quant_type == "int8":
+            dtype = "i8"
+        elif quant_type in ("bit", "binary"):
+            dtype = "b1"
+
+        print(f"Building usearch ANN index (dim={dim}, dtype={dtype})...")
+        
+        index = usearch.index.Index(ndim=dim, metric="cos", dtype=dtype)
+        
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT rowid, embedding FROM vectors")
+        
+        rowids = []
+        vectors = []
+        batch_size = 10000
+        count = 0
+        
+        for row in cursor.fetchall():
+            r_id, emb_blob = row
+            vec = decode_vector(emb_blob, dim, quant_type)
+            rowids.append(r_id)
+            vectors.append(vec)
+            
+            if len(rowids) >= batch_size:
+                index.add(np.array(rowids, dtype=np.uint64), np.array(vectors, dtype=np.float32))
+                count += len(rowids)
+                rowids = []
+                vectors = []
+                
+        if rowids:
+            index.add(np.array(rowids, dtype=np.uint64), np.array(vectors, dtype=np.float32))
+            count += len(rowids)
+            
+        index.save(self.usearch_path)
+        print(f"{GREEN}✓ Successfully built usearch index with {count} vectors at {self.usearch_path}{RESET}")
+        self.usearch_index = index
+        return True
 
     def _ensure_query_indexes(self):
         """Ensures critical performance indexes exist on documents and chunk_metadata even for legacy databases."""

@@ -775,7 +775,11 @@ def handle_update(args, store: Store):
     if getattr(config, "is_federated", False):
         print(f"{RED}Error: Updating/indexing is disabled in federated include mode. Update individual collection configurations directly.{RESET}")
         sys.exit(1)
-    
+        
+    if getattr(args, "build_ann", False):
+        store.build_usearch_index()
+        return
+
     # 1. Update existing collections
     for name, coll_cfg in config.collections.items():
         if args.collection:
@@ -997,6 +1001,7 @@ def build_parser():
     update_parser.add_argument("--pull", action="store_true", help="Run 'git pull' before indexing")
     update_parser.add_argument("-f", "--force", action="store_true", help="Force re-indexing of all files, ignoring hash checks")
     update_parser.add_argument("-c", "--collection", type=str, help="Only update a specific collection")
+    update_parser.add_argument("--build-ann", action="store_true", help="Build a usearch HNSW approximate nearest neighbor index from the existing vector table")
 
     coll_parser = subparsers.add_parser("collection", help="Manage collections", parents=[parent_parser])
     coll_sub = coll_parser.add_subparsers(dest="subcommand", required=True)
