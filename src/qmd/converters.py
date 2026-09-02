@@ -565,9 +565,18 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
         page_chunks = _call_pymupdf4llm(doc)
         if isinstance(page_chunks, str):
             page_chunks = [{"text": page_chunks}]
-        for chunk in page_chunks:
+        for pno, chunk in enumerate(page_chunks):
             p_text = chunk.get("text", "") if isinstance(chunk, dict) else str(chunk)
-            md_pages.append(_clean_mupdf_page_text(p_text))
+            cleaned = _clean_mupdf_page_text(p_text)
+            # If pymupdf4llm produced empty text for this page, check if raw text extraction has content
+            if not cleaned.strip() and pno < len(doc):
+                try:
+                    raw_text = doc[pno].get_text("text").strip()
+                    if raw_text:
+                        cleaned = raw_text
+                except Exception:
+                    pass
+            md_pages.append(cleaned)
     except Exception as full_err:
         # Resilient fallback: process page-by-page.
         # If an individual page fails (e.g. MuPDF "cannot determine colorspace" or corrupt drawings),
@@ -599,6 +608,16 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                             "error_type": "pdf_page_text_error",
                             "message": f"{path.name} (page {pno + 1}): {text_err}"
                         })
+
+            # If pymupdf4llm returned empty without error, check raw text
+            if not page_text.strip():
+                try:
+                    raw_text = doc[pno].get_text("text").strip()
+                    if raw_text:
+                        page_text = raw_text
+                except Exception:
+                    pass
+
             md_pages.append(page_text)
 
         if not any(p.strip() for p in md_pages) and len(doc) > 0:

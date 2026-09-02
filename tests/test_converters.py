@@ -614,10 +614,11 @@ def test_convert_pdf_basic(tmp_path):
     pytest.importorskip("pymupdf4llm")
 
     doc = pymupdf.open()
+    rect = pymupdf.Rect(72, 100, 500, 500)
     p1 = doc.new_page()
-    p1.insert_text((72, 72), "Chapter 1: Introductory Topics\nFirst page body text.")
+    p1.insert_textbox(rect, "Chapter 1: Introductory Topics\n\nFirst page body text.")
     p2 = doc.new_page()
-    p2.insert_text((72, 72), "Chapter 2: Advanced Topics\nSecond page body text.")
+    p2.insert_textbox(rect, "Chapter 2: Advanced Topics\n\nSecond page body text.")
     pdf_path = tmp_path / "sample.pdf"
     doc.save(str(pdf_path))
     doc.close()
