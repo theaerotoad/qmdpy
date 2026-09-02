@@ -16,6 +16,7 @@ from qmd.db import set_db_meta, ensure_vector_table
 class MockLLM:
     """Mock LLM to return predictable vectors for distance testing."""
     def format_query_for_embedding(self, q): return q
+    def format_doc_for_embedding(self, title, text): return text
     def embed_batch(self, texts):
         res = []
         for t in texts:
