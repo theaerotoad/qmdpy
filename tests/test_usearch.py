@@ -17,7 +17,7 @@ class MockLLM:
     """Mock LLM to return predictable vectors for distance testing."""
     def format_query_for_embedding(self, q): return q
     def format_doc_for_embedding(self, title, text): return text
-    def embed_batch(self, texts):
+    def embed_batch(self, texts, *args, **kwargs):
         res = []
         for t in texts:
             if "match" in t.lower():
