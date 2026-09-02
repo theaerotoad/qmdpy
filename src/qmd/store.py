@@ -315,8 +315,25 @@ class Store:
             try:
                 import usearch.index
                 dim = get_db_meta(self.conn, "vector_dim")
+                quant_type = get_db_meta(self.conn, "vector_quantization") or getattr(self.config, "vector_quantization", "none") or "none"
+
+                if not dim:
+                    cursor = self.conn.cursor()
+                    try:
+                        cursor.execute("SELECT embedding FROM vectors LIMIT 1")
+                        row = cursor.fetchone()
+                        if row and row[0]:
+                            blob_len = len(row[0])
+                            if quant_type == "int8":
+                                dim = blob_len
+                            elif quant_type in ("bit", "binary"):
+                                dim = blob_len * 8
+                            else:
+                                dim = blob_len // 4
+                    except Exception:
+                        pass
+
                 if dim:
-                    quant_type = get_db_meta(self.conn, "vector_quantization") or getattr(self.config, "vector_quantization", "none") or "none"
                     dtype = "f32"
                     if quant_type == "int8":
                         dtype = "i8"
@@ -342,13 +359,29 @@ class Store:
             print(f"{RED}Error: 'usearch' and 'numpy' packages are required to build the ANN index.{RESET}")
             return False
 
+        cursor = self.conn.cursor()
         dim = get_db_meta(self.conn, "vector_dim")
+        quant_type = get_db_meta(self.conn, "vector_quantization") or getattr(self.config, "vector_quantization", "none") or "none"
+
         if not dim:
-            print(f"{RED}Error: Vector dimension not found in DB meta.{RESET}")
-            return False
+            cursor.execute("SELECT embedding FROM vectors LIMIT 1")
+            row = cursor.fetchone()
+            if not row or not row[0]:
+                print(f"{YELLOW}No vectors found in database. Skipping usearch index build.{RESET}")
+                return True
+            
+            blob_len = len(row[0])
+            if quant_type == "int8":
+                dim = blob_len
+            elif quant_type in ("bit", "binary"):
+                dim = blob_len * 8
+            else:
+                dim = blob_len // 4
+                
+            ensure_vector_table(self.conn, dim=dim, quant_type=quant_type)
+            print(f"{YELLOW}Inferred vector dimension {dim} from existing database payload.{RESET}")
 
         dim = int(dim)
-        quant_type = get_db_meta(self.conn, "vector_quantization") or getattr(self.config, "vector_quantization", "none") or "none"
         dtype = "f32"
         if quant_type == "int8":
             dtype = "i8"
