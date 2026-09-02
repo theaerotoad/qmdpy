@@ -520,6 +520,62 @@ def test_indexing_real_dplib_integration(db_conn, temp_db_path, tmp_path, mock_l
     assert "2024-04-10" in rows[1][1]
 
 
+def test_indexing_xlsx_removal_stops_rechecking(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Confirm that removing xlsx files from collection stops re-checking them and clears past errors."""
+    notes_dir = tmp_path / "xlsx_test_notes"
+    notes_dir.mkdir()
+
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir), file_extensions=["md", "xlsx"])},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+
+    valid_md = notes_dir / "valid.md"
+    valid_md.write_text("Valid markdown content.")
+
+    broken_xlsx = notes_dir / "broken.xlsx"
+    broken_xlsx.write_text("Malformed excel workbook content.")
+
+    # 1. Initial index: simulate conversion failure for .xlsx
+    with patch("qmd.store.convert_to_markdown") as mock_convert:
+        def side_effect_convert(path, config=None, errors_out=None):
+            if str(path).endswith(".xlsx"):
+                raise ValueError("Corrupted xlsx structure")
+            return "Converted markdown body"
+        mock_convert.side_effect = side_effect_convert
+
+        store.index_collection("test", config.collections["test"])
+
+    # Error must be tracked for broken.xlsx
+    errors = store.get_indexing_errors(collection="test")
+    assert len(errors) == 1
+    assert errors[0]["path"] == "broken.xlsx"
+    assert "Corrupted xlsx structure" in errors[0]["error_message"]
+
+    # 2. Update config to remove xlsx (only md is now desired)
+    config.collections["test"].file_extensions = ["md"]
+
+    # get_indexing_errors immediately suppresses errors for file types no longer in scope
+    assert len(store.get_indexing_errors(collection="test")) == 0
+
+    # 3. Re-index: confirm broken.xlsx is NOT re-checked or converted
+    with patch("qmd.store.convert_to_markdown") as mock_convert:
+        def side_effect_convert(path, config=None, errors_out=None):
+            if str(path).endswith(".xlsx"):
+                pytest.fail("Removed file type (.xlsx) should not be re-checked during indexing!")
+            return "Converted markdown body"
+        mock_convert.side_effect = side_effect_convert
+
+        store.index_collection("test", config.collections["test"])
+
+    # indexing_errors table in SQLite should be purged of the removed file type
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT count(*) FROM indexing_errors WHERE collection='test'")
+    assert cursor.fetchone()[0] == 0
+    assert len(store.get_indexing_errors(collection="test")) == 0
+
+
 def test_indexing_removes_errors_for_undesired_file_types(db_conn, temp_db_path, tmp_path, mock_llm_client):
     """Test that removing an error-producing file type from collection config purges its errors and prevents re-checking."""
     notes_dir = tmp_path / "typed_notes"
