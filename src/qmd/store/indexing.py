@@ -24,18 +24,20 @@ class IndexingMixin:
     """Handles collection scanning, file conversion, embedding generation, indexing, and orphan pruning."""
 
     def _get_collection_files(self, base_path: Path, collection_cfg: CollectionConfig) -> List[Path]:
-        if collection_cfg.file_extensions:
+        if collection_cfg.file_extensions is not None:
             exts = [
                 e.lower() if e.startswith('.') else f".{e.lower()}"
                 for e in collection_cfg.file_extensions
             ]
             files = []
             for ext in exts:
-                files.extend(base_path.glob(f"**/*{ext}"))
+                for f in base_path.glob(f"**/*{ext}"):
+                    if f.is_file() and f.suffix.lower() in exts:
+                        files.append(f)
             seen = set()
             unique_files = []
             for f in files:
-                if f.is_file() and f not in seen:
+                if f not in seen:
                     seen.add(f)
                     unique_files.append(f)
             return unique_files
@@ -93,10 +95,20 @@ class IndexingMixin:
                     doc_id = row[0]
                     cursor.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
                     cursor.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+                clear_indexing_errors(self.conn, name, sp)
             self.conn.commit()
             self._cleanup_orphaned_data()
 
-        if count_processed > 0 or stale_paths:
+        # Clean up stale indexing errors for files no longer in collection scope
+        cursor.execute("SELECT DISTINCT path FROM indexing_errors WHERE collection = ?", (name,))
+        recorded_error_paths = {row[0] for row in cursor.fetchall()}
+        stale_error_paths = recorded_error_paths - found_rel_paths
+        if stale_error_paths:
+            for sep in stale_error_paths:
+                clear_indexing_errors(self.conn, name, sep)
+            self.conn.commit()
+
+        if count_processed > 0 or stale_paths or stale_error_paths:
             update_db_last_updated(self.conn)
             if getattr(self, 'usearch_index', None) is not None and not self.read_only:
                 self.usearch_index.save(self.usearch_path)
@@ -182,7 +194,24 @@ class IndexingMixin:
         for store in target_stores:
             if store is self:
                 local_errors = db_get_indexing_errors(self.conn, collection=collection, path=path)
-                all_errors.extend(local_errors)
+                filtered_errors = []
+                for err in local_errors:
+                    coll_name = err.get("collection")
+                    coll_cfg = getattr(self.config, "collections", {}).get(coll_name)
+                    if coll_cfg:
+                        err_path = err.get("path", "")
+                        ext = Path(err_path).suffix.lower()
+                        if coll_cfg.file_extensions is not None:
+                            allowed = {
+                                e.lower() if e.startswith('.') else f".{e.lower()}"
+                                for e in coll_cfg.file_extensions
+                            }
+                            if ext not in allowed:
+                                continue
+                        elif not coll_cfg.convert_non_md and ext not in {".md", ".markdown", ".txt"}:
+                            continue
+                    filtered_errors.append(err)
+                all_errors.extend(filtered_errors)
             else:
                 all_errors.extend(store.get_indexing_errors(collection=collection, path=path))
         return all_errors

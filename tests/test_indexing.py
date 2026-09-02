@@ -518,3 +518,73 @@ def test_indexing_real_dplib_integration(db_conn, temp_db_path, tmp_path, mock_l
     assert rows[1][0] == "changelog.md"
     assert rows[1][1] is not None
     assert "2024-04-10" in rows[1][1]
+
+
+def test_indexing_removes_errors_for_undesired_file_types(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that removing an error-producing file type from collection config purges its errors and prevents re-checking."""
+    notes_dir = tmp_path / "typed_notes"
+    notes_dir.mkdir()
+
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir), file_extensions=["md", "xlsx"])},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+
+    md_file = notes_dir / "valid.md"
+    md_file.write_text("Valid markdown document.")
+
+    xlsx_file = notes_dir / "broken.xlsx"
+    xlsx_file.write_text("Dummy spreadsheet content.")
+
+    # 1. Initial indexing: simulate conversion failure on the .xlsx file
+    with patch("qmd.store.convert_to_markdown") as mock_convert:
+        def side_effect_convert(path, config=None, errors_out=None):
+            if str(path).endswith(".xlsx"):
+                raise ValueError("Corrupted excel format")
+            return "Converted markdown"
+        mock_convert.side_effect = side_effect_convert
+
+        store.index_collection("test", config.collections["test"])
+
+    # Error should be recorded for broken.xlsx
+    errors = store.get_indexing_errors(collection="test")
+    assert len(errors) == 1
+    assert errors[0]["path"] == "broken.xlsx"
+    assert "Corrupted excel format" in errors[0]["error_message"]
+
+    # 2. Update collection config to remove xlsx (only desired extension is now md)
+    config.collections["test"].file_extensions = ["md"]
+
+    # get_indexing_errors should immediately filter out the undesired file type
+    assert len(store.get_indexing_errors(collection="test")) == 0
+
+    # 3. Re-index: ensure broken.xlsx is NOT re-checked or processed, and stale error is purged from DB
+    with patch("qmd.store.convert_to_markdown") as mock_convert:
+        def side_effect_convert(path, config=None, errors_out=None):
+            if str(path).endswith(".xlsx"):
+                pytest.fail("Undesired .xlsx file should not be checked!")
+            return "Converted markdown"
+        mock_convert.side_effect = side_effect_convert
+
+        store.index_collection("test", config.collections["test"])
+
+    # Database table indexing_errors should be completely cleared of the stale file
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT count(*) FROM indexing_errors WHERE collection='test'")
+    assert cursor.fetchone()[0] == 0
+    assert len(store.get_indexing_errors(collection="test")) == 0
+
+    # 4. Also verify convert_non_md: False behavior when file_extensions is None
+    config_nomd = Config(
+        collections={"test_nomd": CollectionConfig(path=str(notes_dir), glob="**/*", convert_non_md=False)},
+        db_path=str(temp_db_path)
+    )
+    store_nomd = Store(config_nomd, connection=db_conn)
+    with patch("qmd.store.convert_to_markdown") as mock_convert:
+        def side_effect_convert(path, config=None, errors_out=None):
+            if str(path).endswith(".xlsx"):
+                pytest.fail("Non-md file should not be converted when convert_non_md=False")
+            return "Converted markdown"
+        mock_convert.side_effect = side_effect_convert
+        store_nomd.index_collection("test_nomd", config_nomd.collections["test_nomd"])
