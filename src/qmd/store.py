@@ -4,6 +4,9 @@ import sqlite3
 import struct
 import math
 import re
+import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any, Union
@@ -252,6 +255,7 @@ class Store:
         self.last_exclusion_stats: Dict[str, int] = {"excluded_chunks": 0, "excluded_docs": 0}
 
         register_functions(self.conn)
+        self._ensure_query_indexes()
 
         if not self.read_only:
             try:
@@ -287,6 +291,32 @@ class Store:
         for coll_name in config.collections.keys():
             if coll_name not in self.collection_store_map:
                 self.collection_store_map[coll_name] = self
+
+    def _ensure_query_indexes(self):
+        """Ensures critical performance indexes exist on documents and chunk_metadata even for legacy databases."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_documents_hash'")
+            if cursor.fetchone():
+                return
+
+            if not self.read_only:
+                self.conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(hash);")
+                self.conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_metadata_doc_hash ON chunk_metadata(doc_hash);")
+                self.conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents(collection);")
+            elif getattr(self.config, "db_path", None):
+                db_p = Path(self.config.db_path)
+                if db_p.exists() and os.access(db_p, os.W_OK):
+                    try:
+                        rw_conn = get_connection(db_p, read_only=False)
+                        rw_conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(hash);")
+                        rw_conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_metadata_doc_hash ON chunk_metadata(doc_hash);")
+                        rw_conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents(collection);")
+                        rw_conn.close()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     def _get_target_stores_for_collection(self, collection: Optional[Union[str, List[str]]]) -> List['Store']:
         """
@@ -384,11 +414,22 @@ class Store:
                 target_store = self.collection_store_map.get(r.collection, self)
                 store_batches.setdefault(target_store, []).append(r)
 
-            for target_store, batch in store_batches.items():
-                if target_store is self:
-                    self._hydrate_results_text_local(batch)
-                else:
-                    target_store._hydrate_results_text(batch)
+            if len(store_batches) > 1:
+                def _hydrate_batch(entry):
+                    st, batch = entry
+                    if st is self:
+                        self._hydrate_results_text_local(batch)
+                    else:
+                        st._hydrate_results_text(batch)
+
+                with ThreadPoolExecutor(max_workers=min(len(store_batches), 8)) as executor:
+                    list(executor.map(_hydrate_batch, store_batches.items()))
+            else:
+                for target_store, batch in store_batches.items():
+                    if target_store is self:
+                        self._hydrate_results_text_local(batch)
+                    else:
+                        target_store._hydrate_results_text(batch)
         else:
             self._hydrate_results_text_local(needed)
 
@@ -929,12 +970,30 @@ class Store:
             return self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
 
         all_results = []
-        for store in target_stores:
-            if store is self:
-                res = self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
-            else:
-                res = store.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
-            all_results.extend(res)
+        if len(target_stores) > 1:
+            lock = threading.Lock()
+
+            def _query_store_fts(s: 'Store') -> List[Result]:
+                local_tracker = set() if excluded_chunks_tracker is not None else None
+                if s is self:
+                    res = self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, defer_text=defer_text)
+                else:
+                    res = s.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, defer_text=defer_text)
+                if local_tracker and excluded_chunks_tracker is not None:
+                    with lock:
+                        excluded_chunks_tracker.update(local_tracker)
+                return res
+
+            with ThreadPoolExecutor(max_workers=min(len(target_stores), 8)) as executor:
+                for res_list in executor.map(_query_store_fts, target_stores):
+                    all_results.extend(res_list)
+        else:
+            for store in target_stores:
+                if store is self:
+                    res = self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+                else:
+                    res = store.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+                all_results.extend(res)
 
         all_results.sort(key=lambda r: r.score, reverse=True)
         return all_results[:limit]
@@ -974,15 +1033,21 @@ class Store:
             try:
                 query_blob = encode_vector(query_vec, quant_type)
                 extra_seen = (len(exclude_seen_set) * 2) if exclude_seen_set else 0
-                k_val = (limit * 5 + extra_seen) if (collection or title or paths or exclude_seen_set) else limit
+                k_val = max(limit * 8 + extra_seen, 500) if (collection or title or paths or exclude_seen_set) else limit
 
                 chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
+                # Isolated subquery forces sqlite-vec to execute the KNN scan in C first,
+                # preventing the query planner from reordering the join and corrupting vec0 constraints.
                 query_sql = f"""
                     SELECT v.rowid, v.distance, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, '')
-                    FROM vectors v
+                    FROM (
+                        SELECT rowid, distance
+                        FROM vectors
+                        WHERE embedding MATCH ? AND k = ?
+                    ) v
                     JOIN chunk_metadata m ON v.rowid = m.rowid
                     JOIN documents d ON m.doc_hash = d.hash
-                    WHERE v.embedding MATCH ? AND v.k = ?
+                    WHERE 1=1
                 """
                 params = [query_blob, k_val]
 
@@ -1024,8 +1089,9 @@ class Store:
                         rowid=r_id
                     ))
                 return candidates
-            except sqlite3.OperationalError:
-                pass
+            except sqlite3.OperationalError as e:
+                # If virtual table fails, log warning rather than failing silently into unindexed loop
+                print(f"{YELLOW}Warning: sqlite-vec accelerated query failed ({e}), using fallback scanner.{RESET}")
 
         chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
         query_sql = f"""
@@ -1054,6 +1120,10 @@ class Store:
         cursor.execute(query_sql, tuple(params))
         
         dim = len(query_vec)
+        mag_q = math.sqrt(sum(a * a for a in query_vec))
+        if mag_q == 0:
+            return []
+
         raw_candidates = []
         for emb_blob, text_blob, doc_path, doc_title, coll, seq_id, hdrs, r_id in cursor.fetchall():
             key = (coll or "", doc_path, seq_id)
@@ -1064,9 +1134,8 @@ class Store:
             vec = decode_vector(emb_blob, dim, quant_type)
             
             dot_prod = sum(a * b for a, b in zip(query_vec, vec))
-            mag_q = math.sqrt(sum(a * a for a in query_vec))
             mag_v = math.sqrt(sum(a * a for a in vec))
-            sim = dot_prod / (mag_q * mag_v) if mag_q and mag_v else 0
+            sim = dot_prod / (mag_q * mag_v) if mag_v else 0
             
             raw_candidates.append((sim, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id))
         
@@ -1095,12 +1164,30 @@ class Store:
             return self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
 
         all_results = []
-        for store in target_stores:
-            if store is self:
-                res = self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
-            else:
-                res = store.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
-            all_results.extend(res)
+        if len(target_stores) > 1:
+            lock = threading.Lock()
+
+            def _query_store_vec(s: 'Store') -> List[Result]:
+                local_tracker = set() if excluded_chunks_tracker is not None else None
+                if s is self:
+                    res = self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, query_vec=query_vec, defer_text=defer_text)
+                else:
+                    res = s.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, query_vec=query_vec, defer_text=defer_text)
+                if local_tracker and excluded_chunks_tracker is not None:
+                    with lock:
+                        excluded_chunks_tracker.update(local_tracker)
+                return res
+
+            with ThreadPoolExecutor(max_workers=min(len(target_stores), 8)) as executor:
+                for res_list in executor.map(_query_store_vec, target_stores):
+                    all_results.extend(res_list)
+        else:
+            for store in target_stores:
+                if store is self:
+                    res = self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+                else:
+                    res = store.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+                all_results.extend(res)
 
         all_results.sort(key=lambda r: r.score, reverse=True)
         return all_results[:limit]

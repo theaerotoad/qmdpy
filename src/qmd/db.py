@@ -106,10 +106,17 @@ def get_connection(db_path: Union[Path, str], read_only: bool = False) -> sqlite
     Sets isolation_level=None to disable Python's implicit transaction management.
     Enables WAL mode and busy_timeout for concurrency.
     Supports read_only=True via SQLite URI mode.
+    Configures OS memory-mapped I/O (PRAGMA mmap_size) and page cache for rapid vector scans.
     """
+    import os
+    mmap_raw = os.environ.get("QMD_MMAP_SIZE")
+    mmap_bytes = int(mmap_raw) if mmap_raw else 2147483648  # Default 2GB memory mapping
+
     if str(db_path) == ":memory:":
-        conn = sqlite3.connect(":memory:", isolation_level=None)
+        conn = sqlite3.connect(":memory:", isolation_level=None, check_same_thread=False)
         conn.execute("PRAGMA busy_timeout = 30000;")
+        conn.execute("PRAGMA cache_size = -64000;")
+        conn.execute("PRAGMA temp_store = MEMORY;")
         register_functions(conn)
         load_sqlite_vec(conn)
         return conn
@@ -121,14 +128,17 @@ def get_connection(db_path: Union[Path, str], read_only: bool = False) -> sqlite
     if read_only:
         resolved_path = path_obj.resolve().as_posix()
         uri = f"file:{resolved_path}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, isolation_level=None)
+        conn = sqlite3.connect(uri, uri=True, isolation_level=None, check_same_thread=False)
     else:
-        conn = sqlite3.connect(str(path_obj), isolation_level=None)
+        conn = sqlite3.connect(str(path_obj), isolation_level=None, check_same_thread=False)
         conn.execute("PRAGMA journal_mode = WAL;")
 
     conn.execute("PRAGMA busy_timeout = 30000;")
     conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute(f"PRAGMA mmap_size = {mmap_bytes};")
+    conn.execute("PRAGMA cache_size = -64000;")  # 64MB memory page cache
+    conn.execute("PRAGMA temp_store = MEMORY;")
 
     register_functions(conn)
     load_sqlite_vec(conn)
@@ -210,8 +220,10 @@ def init_history_schema(conn: sqlite3.Connection):
 
 def get_history_connection(history_db_path: Union[Path, str]) -> sqlite3.Connection:
     if str(history_db_path) == ":memory:":
-        conn = sqlite3.connect(":memory:", isolation_level=None)
+        conn = sqlite3.connect(":memory:", isolation_level=None, check_same_thread=False)
         conn.execute("PRAGMA busy_timeout = 30000;")
+        conn.execute("PRAGMA cache_size = -16000;")
+        conn.execute("PRAGMA temp_store = MEMORY;")
         init_history_schema(conn)
         return conn
 
@@ -219,11 +231,14 @@ def get_history_connection(history_db_path: Union[Path, str]) -> sqlite3.Connect
     if path_obj.parent and not path_obj.parent.exists():
         path_obj.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(str(path_obj), isolation_level=None)
+    conn = sqlite3.connect(str(path_obj), isolation_level=None, check_same_thread=False)
     conn.execute("PRAGMA busy_timeout = 30000;")
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA mmap_size = 268435456;")  # 256MB mmap
+    conn.execute("PRAGMA cache_size = -16000;")
+    conn.execute("PRAGMA temp_store = MEMORY;")
 
     init_history_schema(conn)
     return conn
@@ -601,3 +616,8 @@ def init_schema(conn: sqlite3.Connection):
     CREATE INDEX IF NOT EXISTS idx_indexing_errors_lookup 
     ON indexing_errors(collection, path);
     """)
+
+    # 8. Essential Join & Filter Indexes for High-Scale Vector / Metadata Queries
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(hash);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunk_metadata_doc_hash ON chunk_metadata(doc_hash);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents(collection);")
