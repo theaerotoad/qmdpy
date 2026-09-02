@@ -448,17 +448,6 @@ def _convert_text(path: Path) -> str:
 
 
 def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = None) -> str:
-    import sys
-    from unittest.mock import MagicMock
-    # Prevent onnxruntime segfault on Linux caused by OpenMP/static TLS conflicts with spaCy
-    for mod in ("onnxruntime", "onnxruntime.capi", "onnxruntime.capi._pybind_state"):
-        if mod not in sys.modules or sys.modules[mod] is None:
-            m = MagicMock()
-            m.__name__ = mod
-            m.__file__ = f"{mod}.py"
-            m.__package__ = "onnxruntime"
-            sys.modules[mod] = m
-
     try:
         import pymupdf
         import pymupdf4llm
@@ -469,10 +458,7 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     
     # 1. Build header detector
     def build_header_detector(doc, max_levels=5):
-        try:
-            toc = doc.get_toc()
-        except Exception:
-            toc = None
+        toc = doc.get_toc()
         if toc:
             toc_by_page = {}
             for lvl, title, page_num in toc:
@@ -494,20 +480,16 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
             return toc_header_fn
 
         font_sizes = Counter()
-        try:
-            for page in doc:
-                page_dict = page.get_text("dict")
-                for block in page_dict.get("blocks", []):
-                    if block.get("type") == 0:
-                        for line in block.get("lines", []):
-                            for span in line.get("spans", []):
-                                text = span.get("text", "").strip()
-                                if len(text) > 2:
-                                    size = round(span.get("size", 0))
-                                    font_sizes[size] += len(text)
-        except Exception:
-            pass
-
+        for page in doc:
+            page_dict = page.get_text("dict")
+            for block in page_dict.get("blocks", []):
+                if block.get("type") == 0:
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            text = span.get("text", "").strip()
+                            if len(text) > 2:
+                                size = round(span.get("size", 0))
+                                font_sizes[size] += len(text)
         if not font_sizes:
             return None
 
@@ -525,117 +507,65 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
 
         return font_size_header_fn
 
-    try:
-        hdr_fn = build_header_detector(doc, max_levels=5)
-    except Exception:
-        hdr_fn = None
+    hdr_fn = build_header_detector(doc, max_levels=5)
 
     # 2. Extract markdown using pymupdf4llm (suppressing noisy OCR stdout)
     import contextlib
     import io
-
+    
     # Silence PyMuPDF C-level warnings
     if hasattr(pymupdf, "TOOLS"):
         pymupdf.TOOLS.mupdf_display_errors(False)
 
-    def _clean_mupdf_page_text(page_text: str) -> str:
+    f = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
+            try:
+                page_chunks = pymupdf4llm.to_markdown(
+                    doc,
+                    hdr_info=hdr_fn,
+                    header=False,
+                    footer=False,
+                    write_images=False,
+                    page_chunks=True,
+                    show_progress=False
+                )
+            except TypeError:
+                # Fallback for older versions of pymupdf4llm that lack show_progress
+                page_chunks = pymupdf4llm.to_markdown(
+                    doc,
+                    hdr_info=hdr_fn,
+                    header=False,
+                    footer=False,
+                    write_images=False,
+                    page_chunks=True
+                )
+    except Exception as e:
+        doc.close()
+        raise ValueError(f"Failed to parse PDF with pymupdf4llm: {e}")
+    
+    seen_xrefs = set()
+    
+    if isinstance(page_chunks, str):
+        page_chunks = [{"text": page_chunks}]
+
+    md_pages = []
+    for i, chunk in enumerate(page_chunks):
+        page_text = chunk.get("text", "")
+        
+        # Convert pymupdf4llm's native picture text blocks to standard markdown image tags
         def _format_pic_text(match):
             text = match.group(1).strip()
             text = re.sub(r'\s+', ' ', text)
             alt = f"Image with text: {text}" if text else "Image"
             return f"\n![{alt}](pdf_image.png)\n"
-
-        page_text = re.sub(
-            r'<!--\s*Start of picture text\s*-->(.*?)<!--\s*End of picture text\s*-->\n*',
-            _format_pic_text,
-            page_text,
-            flags=re.DOTALL | re.IGNORECASE
-        )
-        return re.sub(r'<!--.*?-->\n*', '', page_text, flags=re.DOTALL)
-
-    def _call_pymupdf4llm(doc, pages=None):
-        f = io.StringIO()
-        with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
-            kwargs = {
-                "hdr_info": hdr_fn,
-                "header": False,
-                "footer": False,
-                "write_images": False,
-                "page_chunks": True,
-            }
-            if pages is not None:
-                kwargs["pages"] = pages
-            try:
-                return pymupdf4llm.to_markdown(doc, show_progress=False, **kwargs)
-            except TypeError:
-                return pymupdf4llm.to_markdown(doc, **kwargs)
-
-    md_pages = []
-    try:
-        # Fast path: process full document in one pass
-        page_chunks = _call_pymupdf4llm(doc)
-        if isinstance(page_chunks, str):
-            page_chunks = [{"text": page_chunks}]
-        for pno, chunk in enumerate(page_chunks):
-            p_text = chunk.get("text", "") if isinstance(chunk, dict) else str(chunk)
-            cleaned = _clean_mupdf_page_text(p_text)
-            # If pymupdf4llm produced empty text for this page, check if raw text extraction has content
-            if not cleaned.strip() and pno < len(doc):
-                try:
-                    raw_text = doc[pno].get_text("text").strip()
-                    if raw_text:
-                        cleaned = raw_text
-                except Exception:
-                    pass
-            md_pages.append(cleaned)
-    except Exception as full_err:
-        # Resilient fallback: process page-by-page.
-        # If an individual page fails (e.g. MuPDF "cannot determine colorspace" or corrupt drawings),
-        # gracefully fall back to PyMuPDF's raw text extraction for that page.
-        md_pages = []
-        for pno in range(len(doc)):
-            page_text = ""
-            try:
-                chunks = _call_pymupdf4llm(doc, pages=[pno])
-                if isinstance(chunks, str):
-                    chunks = [{"text": chunks}]
-                p_text = "".join(
-                    c.get("text", "") if isinstance(c, dict) else str(c)
-                    for c in chunks
-                )
-                page_text = _clean_mupdf_page_text(p_text)
-            except Exception as page_err:
-                if errors_out is not None:
-                    errors_out.append({
-                        "error_type": "pdf_page_conversion_error",
-                        "message": f"{path.name} (page {pno + 1}): {page_err}"
-                    })
-                try:
-                    page_text = doc[pno].get_text("text").strip()
-                except Exception as text_err:
-                    page_text = ""
-                    if errors_out is not None:
-                        errors_out.append({
-                            "error_type": "pdf_page_text_error",
-                            "message": f"{path.name} (page {pno + 1}): {text_err}"
-                        })
-
-            # If pymupdf4llm returned empty without error, check raw text
-            if not page_text.strip():
-                try:
-                    raw_text = doc[pno].get_text("text").strip()
-                    if raw_text:
-                        page_text = raw_text
-                except Exception:
-                    pass
-
-            md_pages.append(page_text)
-
-        if not any(p.strip() for p in md_pages) and len(doc) > 0:
-            doc.close()
-            raise ValueError(f"Failed to parse PDF with pymupdf4llm: {full_err}")
-
-    seen_xrefs = set()
+            
+        page_text = re.sub(r'<!--\s*Start of picture text\s*-->(.*?)<!--\s*End of picture text\s*-->\n*', _format_pic_text, page_text, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Clean up any remaining HTML comments from pymupdf4llm
+        page_text = re.sub(r'<!--.*?-->\n*', '', page_text, flags=re.DOTALL)
+        
+        md_pages.append(page_text)
 
     # Process all embedded PDF images concurrently across pages if configured
     if config and _is_image_processing_enabled(config):
@@ -643,24 +573,15 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
             pdf_images = []
             for i in range(len(doc)):
                 page = doc[i]
-                try:
-                    images = page.get_images()
-                except Exception:
-                    images = []
-                for img in images:
+                for img in page.get_images():
                     xref = img[0]
                     if xref in seen_xrefs:
                         continue
                     seen_xrefs.add(xref)
-                    try:
-                        base_image = doc.extract_image(xref)
-                    except Exception:
-                        continue
+                    base_image = doc.extract_image(xref)
                     if not base_image:
                         continue
-                    image_bytes = base_image.get("image")
-                    if not image_bytes:
-                        continue
+                    image_bytes = base_image["image"]
                     ext = base_image.get("ext", "png")
                     filename = f"page_{i+1}_img_{xref}.{ext}"
                     pdf_images.append((i, image_bytes, filename))
@@ -673,7 +594,7 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                         md_pages[page_idx] += f"\n\n{img_md}\n"
         except Exception:
             pass
-
+        
     raw_md = "\n\n".join(md_pages)
 
     doc.close()
