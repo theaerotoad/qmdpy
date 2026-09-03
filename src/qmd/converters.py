@@ -570,13 +570,47 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
             print(f"[Verbose PDF] Successfully parsed PDF {path} to markdown.", flush=True)
     except Exception as e:
         if verbose:
-            print(f"[Verbose PDF] pymupdf4llm failed ({e}). Falling back to basic text extraction for {path}...", flush=True)
+            print(f"[Verbose PDF] pymupdf4llm failed ({e}). Falling back to layout-aware text extraction for {path}...", flush=True)
         if errors_out is not None:
-            errors_out.append({"error_type": "pymupdf4llm_error", "message": f"{path.name}: {e}"})
+            errors_out.append({"error_type": "pdf_fallback_used", "message": f"{path.name}: {e}"})
         
         page_chunks = []
         for i in range(len(doc)):
-            page_chunks.append({"text": doc[i].get_text("text")})
+            page = doc[i]
+            page_md = []
+            try:
+                # Use native dict extraction to ignore broken images but preserve block grouping
+                page_dict = page.get_text("dict")
+                for block in page_dict.get("blocks", []):
+                    if block.get("type") == 0:  # text block
+                        block_lines = []
+                        header_prefix = ""
+                        for line in block.get("lines", []):
+                            line_text = ""
+                            for span in line.get("spans", []):
+                                text = span.get("text", "")
+                                if text.strip():
+                                    # Reuse our header detector to reconstruct Markdown structure
+                                    prefix = hdr_fn(span, page)
+                                    if prefix and not header_prefix:
+                                        header_prefix = prefix
+                                    line_text += text
+                            if line_text.strip():
+                                block_lines.append(line_text.strip())
+                        
+                        if block_lines:
+                            merged = " ".join(block_lines)
+                            if header_prefix:
+                                page_md.append(f"\n{header_prefix}{merged}\n")
+                            else:
+                                page_md.append(f"{merged}\n")
+                
+                final_page_text = "\n".join(page_md) if page_md else page.get_text("text")
+            except Exception:
+                # Ultimate fallback if dict extraction somehow fails
+                final_page_text = page.get_text("text")
+                
+            page_chunks.append({"text": final_page_text})
     
     seen_xrefs = set()
     

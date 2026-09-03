@@ -498,7 +498,7 @@ def test_pdf_fallback_extraction(tmp_path, monkeypatch):
 
     assert "Fallback text output" in md
     assert len(errors) == 1
-    assert errors[0]["error_type"] == "pymupdf4llm_error"
+    assert errors[0]["error_type"] == "pdf_fallback_used"
     assert "Simulated Colorspace Error" in errors[0]["message"]
 
 
