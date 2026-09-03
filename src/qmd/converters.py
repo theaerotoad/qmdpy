@@ -462,6 +462,18 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
 
     doc = pymupdf.open(str(path))
     
+    # 0. Sanitize the PDF to fix corrupted xrefs/colorspaces before pymupdf4llm chokes
+    try:
+        sanitized_bytes = doc.tobytes(garbage=3, deflate=True)
+        doc.close()
+        doc = pymupdf.open(stream=sanitized_bytes, filetype="pdf")
+        if verbose:
+            print(f"[Verbose PDF] Successfully sanitized {path} in memory.", flush=True)
+    except Exception as e:
+        if verbose:
+            print(f"[Verbose PDF] Pre-sanitization failed ({e}), proceeding with original.", flush=True)
+        doc = pymupdf.open(str(path))
+
     if verbose:
         print(f"[Verbose PDF] Successfully opened {path}. Parsing headers...", flush=True)
         
@@ -552,12 +564,17 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                     write_images=False,
                     page_chunks=True
                 )
+        if verbose:
+            print(f"[Verbose PDF] Successfully parsed PDF {path} to markdown.", flush=True)
     except Exception as e:
-        doc.close()
-        raise ValueError(f"Failed to parse PDF with pymupdf4llm: {e}")
+        if verbose:
+            print(f"[Verbose PDF] pymupdf4llm failed ({e}). Falling back to basic text extraction for {path}...", flush=True)
+        if errors_out is not None:
+            errors_out.append({"error_type": "pymupdf4llm_error", "message": f"{path.name}: {e}"})
         
-    if verbose:
-        print(f"[Verbose PDF] Successfully parsed PDF {path} to markdown.", flush=True)
+        page_chunks = []
+        for i in range(len(doc)):
+            page_chunks.append({"text": doc[i].get_text("text")})
     
     seen_xrefs = set()
     

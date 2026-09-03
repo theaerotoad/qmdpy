@@ -476,6 +476,32 @@ def test_convert_text_file(tmp_path):
     md = convert_to_markdown(txt_file)
     assert "Simple text file line 1" in md
 
+def test_pdf_fallback_extraction(tmp_path, monkeypatch):
+    import pymupdf
+    import pymupdf4llm
+    from qmd.converters import convert_to_markdown
+
+    pdf_path = tmp_path / "fallback_test.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((50, 50), "Fallback text output")
+    doc.save(str(pdf_path))
+    doc.close()
+
+    def mock_to_markdown(*args, **kwargs):
+        raise ValueError("Simulated Colorspace Error")
+
+    monkeypatch.setattr(pymupdf4llm, "to_markdown", mock_to_markdown)
+
+    errors = []
+    md = convert_to_markdown(pdf_path, errors_out=errors)
+
+    assert "Fallback text output" in md
+    assert len(errors) == 1
+    assert errors[0]["error_type"] == "pymupdf4llm_error"
+    assert "Simulated Colorspace Error" in errors[0]["message"]
+
+
 def test_binary_file_rejection(tmp_path):
     bin_file = tmp_path / "test.bin"
     bin_file.write_bytes(b"\x00\x01\x02\x03\x04\x05PDF-binary-junk")
