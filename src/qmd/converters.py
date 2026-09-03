@@ -457,6 +457,10 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     except ImportError:
         raise ImportError("pymupdf and pymupdf4llm are required for converting .pdf files. Install with `pip install pymupdf pymupdf4llm`.")
 
+    # Silence PyMuPDF C-level warnings globally before doing anything
+    if hasattr(pymupdf, "TOOLS"):
+        pymupdf.TOOLS.mupdf_display_errors(False)
+
     if verbose:
         print(f"[Verbose PDF] Attempting to open {path} with pymupdf...", flush=True)
 
@@ -464,7 +468,9 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     
     # 0. Sanitize the PDF to fix corrupted xrefs/colorspaces before pymupdf4llm chokes
     try:
-        sanitized_bytes = doc.tobytes(garbage=3, deflate=True)
+        # garbage=4 removes unreferenced objects, clean=True sanitizes content streams 
+        # (fixes "Line cannot be recognized" and many colorspace issues)
+        sanitized_bytes = doc.tobytes(garbage=4, clean=True, deflate=True)
         doc.close()
         doc = pymupdf.open(stream=sanitized_bytes, filetype="pdf")
         if verbose:
@@ -534,10 +540,6 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     import contextlib
     import io
     
-    # Silence PyMuPDF C-level warnings
-    if hasattr(pymupdf, "TOOLS"):
-        pymupdf.TOOLS.mupdf_display_errors(False)
-
     if verbose:
         print(f"[Verbose PDF] Executing pymupdf4llm.to_markdown on {path}...", flush=True)
 
