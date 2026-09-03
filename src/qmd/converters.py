@@ -571,6 +571,8 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     except Exception as e:
         if verbose:
             print(f"[Verbose PDF] pymupdf4llm failed ({e}). Falling back to layout-aware text extraction for {path}...", flush=True)
+        if errors_out is not None:
+            errors_out.append({"error_type": "pdf_fallback_used", "message": f"{path.name}: {e}"})
         
         page_chunks = []
         for i in range(len(doc)):
