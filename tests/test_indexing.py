@@ -644,3 +644,58 @@ def test_indexing_removes_errors_for_undesired_file_types(db_conn, temp_db_path,
             return "Converted markdown"
         mock_convert.side_effect = side_effect_convert
         store_nomd.index_collection("test_nomd", config_nomd.collections["test_nomd"])
+
+
+def test_pdf_fallback_not_treated_as_indexing_error(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Confirm that successful layout fallback during PDF conversion does not log a blocking indexing error."""
+    notes_dir = tmp_path / "pdf_notes"
+    notes_dir.mkdir()
+
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+
+    with patch("qmd.store.convert_to_markdown") as mock_convert:
+        def convert_pdf_with_fallback(path, config=None, errors_out=None):
+            if errors_out is not None:
+                errors_out.append({"error_type": "pdf_fallback_used", "message": "code=7: cannot determine colorspace"})
+            return "# Recovered Title\n\nRecovered content via layout text extraction."
+        mock_convert.side_effect = convert_pdf_with_fallback
+
+        pdf_file = notes_dir / "sample.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy binary content")
+
+        store.index_collection("test", config.collections["test"])
+
+    # Verify no indexing error was recorded
+    errors = store.get_indexing_errors(collection="test")
+    assert len(errors) == 0
+
+    # Verify document was indexed properly
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT path, title FROM documents WHERE collection='test'")
+    row = cursor.fetchone()
+    assert row is not None
+    assert row[0] == "sample.pdf"
+
+
+def test_legacy_pdf_fallback_errors_filtered_and_purged(db_conn, temp_db_path, tmp_path):
+    """Verify that existing legacy pdf_fallback_used records are ignored and purged from database."""
+    from qmd.db import get_indexing_errors, init_schema
+
+    cursor = db_conn.cursor()
+    cursor.execute("""
+        INSERT INTO indexing_errors (collection, path, doc_hash, error_type, error_message, created_at)
+        VALUES ('test', 'legacy.pdf', 'h123', 'pdf_fallback_used', 'code=7: cannot determine colorspace', '2025-01-01T00:00:00Z')
+    """)
+
+    # get_indexing_errors must filter it out
+    active_errors = get_indexing_errors(db_conn, collection="test")
+    assert len(active_errors) == 0
+
+    # init_schema must purge it from the database table
+    init_schema(db_conn)
+    cursor.execute("SELECT count(*) FROM indexing_errors WHERE error_type='pdf_fallback_used'")
+    assert cursor.fetchone()[0] == 0

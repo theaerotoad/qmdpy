@@ -571,8 +571,6 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     except Exception as e:
         if verbose:
             print(f"[Verbose PDF] pymupdf4llm failed ({e}). Falling back to layout-aware text extraction for {path}...", flush=True)
-        if errors_out is not None:
-            errors_out.append({"error_type": "pdf_fallback_used", "message": f"{path.name}: {e}"})
         
         page_chunks = []
         for i in range(len(doc)):
@@ -611,6 +609,13 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                 final_page_text = page.get_text("text")
                 
             page_chunks.append({"text": final_page_text})
+
+        # Only record an error if layout-aware fallback also failed to extract any text
+        if errors_out is not None and not any(chunk.get("text", "").strip() for chunk in page_chunks):
+            errors_out.append({
+                "error_type": "pdf_extraction_failed",
+                "message": f"{path.name}: pymupdf4llm failed ({e}) and layout fallback extraction yielded no text"
+            })
     
     seen_xrefs = set()
     
@@ -646,10 +651,20 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                     if xref in seen_xrefs:
                         continue
                     seen_xrefs.add(xref)
-                    base_image = doc.extract_image(xref)
+                    try:
+                        base_image = doc.extract_image(xref)
+                    except Exception:
+                        continue
                     if not base_image:
                         continue
-                    image_bytes = base_image["image"]
+                    image_bytes = base_image.get("image")
+                    if not image_bytes:
+                        continue
+                    width = base_image.get("width", 0)
+                    height = base_image.get("height", 0)
+                    # Skip spacer/divider lines (<= 2px) that trigger MuPDF colorspace or scale errors
+                    if width > 0 and height > 0 and (width <= 2 or height <= 2):
+                        continue
                     ext = base_image.get("ext", "png")
                     filename = f"page_{i+1}_img_{xref}.{ext}"
                     pdf_images.append((i, image_bytes, filename))

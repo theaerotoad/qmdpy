@@ -378,6 +378,8 @@ def get_seen_chunks_for_session(conn: sqlite3.Connection, session_id: str) -> se
     """, (session_id,))
     return {(row[0], row[1], row[2]) for row in cursor.fetchall()}
 
+NON_FATAL_INDEXING_ERROR_TYPES = {"pdf_fallback_used"}
+
 def record_indexing_error(
     conn: sqlite3.Connection,
     collection: str,
@@ -386,6 +388,9 @@ def record_indexing_error(
     error_type: str,
     error_message: str
 ):
+    # Non-fatal degradation fallbacks are successful conversions and must not trigger retry loops
+    if error_type in NON_FATAL_INDEXING_ERROR_TYPES:
+        return
     try:
         now = datetime.utcnow().isoformat() + "Z"
         conn.execute("""
@@ -413,7 +418,7 @@ def get_indexing_errors(conn: sqlite3.Connection, collection: Optional[str] = No
         cursor = conn.cursor()
         query = "SELECT id, collection, path, doc_hash, error_type, error_message, created_at FROM indexing_errors"
         params = []
-        where = []
+        where = ["error_type NOT IN ('pdf_fallback_used')"]
         if collection:
             where.append("collection = ?")
             params.append(collection)
@@ -616,6 +621,12 @@ def init_schema(conn: sqlite3.Connection):
     CREATE INDEX IF NOT EXISTS idx_indexing_errors_lookup 
     ON indexing_errors(collection, path);
     """)
+
+    # Purge legacy non-fatal fallback notices so existing databases don't trigger retry loops
+    try:
+        cursor.execute("DELETE FROM indexing_errors WHERE error_type = 'pdf_fallback_used';")
+    except Exception:
+        pass
 
     # 8. Essential Join & Filter Indexes for High-Scale Vector / Metadata Queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(hash);")
