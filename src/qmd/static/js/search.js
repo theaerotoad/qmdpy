@@ -210,22 +210,46 @@ function renderResults(results, type, query) {
             : '';
 
         let contentHtml = '';
-        if (type === 'doc' && item.snippets && item.snippets.length > 0) {
+        if (type === 'doc' && (item.chunks || item.snippets)) {
+            const chunkList = item.chunks && item.chunks.length > 0 
+                ? item.chunks 
+                : (item.snippets || []).map((s, idx) => ({ text: s, seq_id: idx, headers: '' }));
+            
+            let prevSeq = null;
             contentHtml = `
                 <div class="border-l-2 border-gray-200 dark:border-gray-700 pl-4 space-y-3 mt-2">
-                    ${item.snippets.map((snip, sIdx) => {
-                        const skipNotice = sIdx > 0 
-                            ? `<div class="py-0.5 skipped-wrapper">
-                                 <button type="button" onclick="toggleSkipped(this)" data-original-text="... preceding chunks skipped ..." class="text-xs text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 font-mono flex items-center gap-1.5">
-                                   <svg class="w-3 h-3 transform rotate-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                   <span class="skipped-text">... preceding chunks skipped ...</span>
-                                 </button>
-                               </div>` 
+                    ${chunkList.map((chunk, cIdx) => {
+                        const seq = typeof chunk.seq_id === 'number' ? chunk.seq_id : cIdx;
+                        let skipNotice = '';
+                        if (cIdx === 0 && seq > 0) {
+                            skipNotice = `
+                                <div class="py-0.5 skipped-wrapper">
+                                  <button type="button" onclick="toggleSkipped(this)" data-original-text="... ${seq} preceding chunks skipped ..." class="text-xs text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 font-mono flex items-center gap-1.5">
+                                    <svg class="w-3 h-3 transform rotate-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    <span class="skipped-text">&gt; ... ${seq} preceding chunks skipped ...</span>
+                                  </button>
+                                </div>`;
+                        } else if (prevSeq !== null && seq > prevSeq + 1) {
+                            const gap = seq - prevSeq - 1;
+                            skipNotice = `
+                                <div class="py-0.5 skipped-wrapper">
+                                  <button type="button" onclick="toggleSkipped(this)" data-original-text="... ${gap} chunks skipped ..." class="text-xs text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 font-mono flex items-center gap-1.5">
+                                    <svg class="w-3 h-3 transform rotate-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    <span class="skipped-text">&gt; ... ${gap} chunks skipped ...</span>
+                                  </button>
+                                </div>`;
+                        }
+                        prevSeq = seq;
+
+                        const headerHtml = chunk.headers 
+                            ? `<h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">${escapeHtml(chunk.headers)}</h3>` 
                             : '';
+
                         return `
                             ${skipNotice}
                             <div>
-                                <div class="g-snippet">${marked.parse(snip)}</div>
+                                ${headerHtml}
+                                <div class="g-snippet">${marked.parse(chunk.text || '')}</div>
                             </div>
                         `;
                     }).join('')}
