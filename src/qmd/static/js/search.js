@@ -258,9 +258,15 @@ function renderResults(results, type, query) {
             `;
         }
 
+        const targetChunkText = (type === 'doc' && item.chunks && item.chunks.length > 0)
+            ? (item.chunks[0].text || '')
+            : (item.text || (item.snippets ? item.snippets[0] : ''));
+
         article.innerHTML = `
             <div class="flex items-center gap-2 text-xs">
-                <span class="g-url font-mono truncate max-w-xl">${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}</span>
+                <a href="javascript:void(0)" class="uri-link g-url font-mono truncate max-w-3xl block cursor-pointer" title="${escapeXmlAttr(uri)}">
+                    ${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}
+                </a>
                 ${matchesBadge}
             </div>
 
@@ -287,8 +293,10 @@ function renderResults(results, type, query) {
             </div>
         `;
 
-        article.querySelector('.doc-link').onclick = () => openDocument(item.collection, item.path, item.text || (item.snippets ? item.snippets[0] : ''));
-        article.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, item.text || (item.snippets ? item.snippets[0] : ''));
+        const uriLink = article.querySelector('.uri-link');
+        if (uriLink) uriLink.onclick = () => openDocument(item.collection, item.path, targetChunkText);
+        article.querySelector('.doc-link').onclick = () => openDocument(item.collection, item.path, targetChunkText);
+        article.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, targetChunkText);
         article.querySelector('.btn-deep-search').onclick = () => deepSearchSnippet(item.title || item.path, item.path, item.collection);
         article.querySelector('.btn-copy-chunk').onclick = (e) => copySingleExcerpt(index, e.currentTarget);
         article.querySelector('.btn-copy-xml').onclick = (e) => copySingleXml(index, e.currentTarget);
