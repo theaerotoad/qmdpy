@@ -92,13 +92,6 @@
 #app-container.state-serp #hero-section { display: none; }
 #app-container.state-serp #results-wrapper { display: block; }
 
-/* Floating Quick Dock */
-.floating-dock {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-}
-
 /* Custom Minimalist Scrollbars */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }

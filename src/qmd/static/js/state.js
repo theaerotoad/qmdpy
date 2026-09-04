@@ -7,7 +7,7 @@ function apiUrl(path) {
 
 // Application State & Configuration
 let activeMode = 'discover';
-let activeTab = 'all'; // 'all' | 'passages' | 'documents' | 'llm-context'
+let activeTab = 'all'; // 'all' | 'passages' | 'documents'
 let toolsOpen = false;
 let lastRawJson = null;
 let lastRawXml = '';
@@ -202,7 +202,7 @@ function returnToHero() {
 // Navigation Tabs
 function setSearchTab(tabName) {
     activeTab = tabName;
-    ['all', 'passages', 'documents', 'llm-context'].forEach(tab => {
+    ['all', 'passages', 'documents'].forEach(tab => {
         const btn = document.getElementById(`tab-${tab}`);
         if (!btn) return;
         if (tab === tabName) {

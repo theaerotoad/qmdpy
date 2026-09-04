@@ -74,7 +74,6 @@ async function handleFormSubmit(e, source) {
     try {
         const isDiscoverMode = activeTab === 'documents' || (activeTab === 'all' && activeMode === 'discover');
         const isPassagesMode = activeTab === 'passages';
-        const isLLMContextMode = activeTab === 'llm-context';
 
         if (isDiscoverMode) {
             const payload = {
@@ -131,12 +130,7 @@ async function handleFormSubmit(e, source) {
             updateSessionBadges();
 
             statsEl.innerHTML = `About <strong class="text-gray-700 dark:text-gray-200">${data.results.length} ${data.type === 'doc' ? 'documents' : 'passages'}</strong> across indexed repositories (<span class="font-mono">${data.time_taken || 0} seconds</span>)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
-            
-            if (isLLMContextMode) {
-                renderLLMContextView(data.results, data.type, parsed.cleanQuery || rawVal);
-            } else {
-                renderResults(data.results, data.type, parsed.cleanQuery || rawVal);
-            }
+            renderResults(data.results, data.type, parsed.cleanQuery || rawVal);
         }
         if (footerEl) footerEl.classList.remove('hidden');
     } catch(e) {
@@ -301,23 +295,6 @@ function renderResults(results, type, query) {
 
         container.appendChild(article);
     });
-}
-
-// Render LLM Context Tab View
-function renderLLMContextView(results, type, query) {
-    const container = document.getElementById('results');
-    container.innerHTML = `
-        <div class="space-y-4">
-            <div class="p-4 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-xl text-xs space-y-2">
-                <div class="font-semibold text-purple-900 dark:text-purple-300 flex items-center gap-1.5">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
-                    <span>LLM Context Bundle Ready</span>
-                </div>
-                <p class="text-purple-800 dark:text-purple-400">Below is the canonical formatted XML context generated for AI agents, including chunk sequence metadata and action attributes.</p>
-            </div>
-            <pre class="bg-gray-900 text-gray-100 p-4 rounded-xl font-mono text-xs overflow-x-auto max-h-[600px] border border-gray-800 leading-relaxed">${escapeHtml(lastRawXml || '')}</pre>
-        </div>
-    `;
 }
 
 // Copy XML and Prompt Context Event Listeners
