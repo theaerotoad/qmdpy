@@ -451,6 +451,60 @@ function copyBatchOutputXml() {
 }
 
 // Document Slide-Over Viewer & Target Scroll Helper
+let currentDocCollection = '';
+let currentDocPath = '';
+
+function downloadCurrentOriginalFile() {
+    if (!currentDocPath) {
+        showToast("No document selected");
+        return;
+    }
+    const url = apiUrl(`/api/document/download?collection=${encodeURIComponent(currentDocCollection)}&path=${encodeURIComponent(currentDocPath)}`);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = currentDocPath.split('/').pop() || 'document';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast("Starting download...");
+}
+
+async function openCurrentOriginalFile() {
+    if (!currentDocPath) {
+        showToast("No document selected");
+        return;
+    }
+    const btn = document.getElementById('btn-open-original');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="animate-spin inline-block">⏳</span> Opening...`;
+    }
+    try {
+        const res = await fetch(apiUrl('/api/document/open'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                collection: currentDocCollection,
+                path: currentDocPath
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+            showToast(data.message || "Opened file in system viewer ✓");
+        } else {
+            showToast(data.error || data.message || "Failed to open file in system viewer");
+        }
+    } catch (e) {
+        showToast(`Error opening file: ${e.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}
+
 function copyCurrentDocumentContent() {
     const content = document.getElementById('slide-content');
     if (!content) return;
@@ -497,6 +551,8 @@ function findTargetElement(container, targetText) {
 }
 
 async function openDocument(collection, path, targetText) {
+    currentDocCollection = collection || '';
+    currentDocPath = path || '';
     const drawer = document.getElementById('slide-over');
     drawer.classList.remove('hidden');
     void drawer.offsetWidth;
@@ -510,6 +566,7 @@ async function openDocument(collection, path, targetText) {
         const res = await fetch(apiUrl(`/api/document?collection=${encodeURIComponent(collection)}&path=${encodeURIComponent(path)}${featureStates.redact_pii ? '&redact_pii=true' : ''}`));
         const data = await res.json();
         document.getElementById('slide-title').textContent = data.title || path;
+        if (data.collection) currentDocCollection = data.collection;
         content.innerHTML = marked.parse(data.content || '');
 
         if (targetText && targetText.trim()) {

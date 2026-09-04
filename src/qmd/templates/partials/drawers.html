@@ -34,14 +34,30 @@
                         <span id="slide-uri" class="text-xs font-mono text-gray-500 dark:text-gray-400 truncate mt-0.5"></span>
                         <h2 id="slide-title" class="text-base font-semibold text-gray-900 dark:text-white truncate">Document Preview</h2>
                     </div>
-                    <button type="button" onclick="closeDocument()" class="p-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 transition focus:outline-none flex-shrink-0">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+                    <div class="flex items-center gap-1 flex-shrink-0">
+                        <button type="button" onclick="openCurrentOriginalFile()" title="Open original file in default system application" class="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition focus:outline-none">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                        </button>
+                        <button type="button" onclick="downloadCurrentOriginalFile()" title="Download original file" class="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition focus:outline-none">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        </button>
+                        <button type="button" onclick="closeDocument()" class="p-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 transition focus:outline-none ml-1">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
                 </div>
                 <div id="slide-content" class="flex-1 overflow-y-auto p-6 prose dark:prose-invert max-w-none text-sm text-gray-700 dark:text-gray-300 font-sans leading-relaxed"></div>
                 <div class="p-4 border-t border-google-border dark:border-google-borderDark bg-[#f8f9fa] dark:bg-[#282a2d] flex items-center justify-between">
                     <span class="text-xs text-gray-400 font-mono">QMD Inspector</span>
                     <div class="flex items-center gap-2">
+                        <button type="button" id="btn-open-original" onclick="openCurrentOriginalFile()" title="Open original file in default system application" class="px-3 py-1.5 text-xs bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 rounded text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3c4043] font-medium transition flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                            Open File
+                        </button>
+                        <button type="button" id="btn-download-original" onclick="downloadCurrentOriginalFile()" title="Download original file" class="px-3 py-1.5 text-xs bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 rounded text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3c4043] font-medium transition flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                            Download
+                        </button>
                         <button type="button" onclick="copyCurrentDocumentContent()" class="px-3 py-1.5 text-xs bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 rounded text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3c4043] font-medium transition">
                             Copy Text
                         </button>

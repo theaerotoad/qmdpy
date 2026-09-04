@@ -1,12 +1,15 @@
 import os
 import re
+import sys
 import json
 import time
 import secrets
 import argparse
 import mimetypes
-from typing import Union, List
-from flask import Flask, request, jsonify, render_template, g
+import subprocess
+from pathlib import Path
+from typing import Union, List, Optional
+from flask import Flask, request, jsonify, render_template, g, send_file
 
 from qmd.config import load_config
 from qmd.store import Store
@@ -477,6 +480,79 @@ def get_chunk():
         })
     return jsonify({"chunks": out, "total": len(out)})
 
+def _resolve_document_file_path(collection: Optional[str], path: Optional[str]) -> Optional[Path]:
+    if not path:
+        return None
+    cfg = get_config()
+
+    # 1. If collection is specified, check against collection base path
+    if collection and collection in cfg.collections:
+        base_dir = Path(cfg.collections[collection].path).expanduser().resolve()
+        candidate = (base_dir / path).resolve()
+        try:
+            candidate.relative_to(base_dir)
+            if candidate.exists() and candidate.is_file():
+                return candidate
+        except ValueError:
+            pass
+
+    # 2. Check across all configured collections
+    for coll_name, coll_cfg in cfg.collections.items():
+        if collection and coll_name != collection:
+            continue
+        base_dir = Path(coll_cfg.path).expanduser().resolve()
+        candidate = (base_dir / path).resolve()
+        try:
+            candidate.relative_to(base_dir)
+            if candidate.exists() and candidate.is_file():
+                return candidate
+        except ValueError:
+            continue
+
+    # 3. Query documents table in database to resolve canonical collection and path
+    try:
+        store = get_store()
+        target_stores = store._get_target_stores_for_collection(collection)
+        for ts in target_stores:
+            cursor = ts.conn.cursor()
+            if collection:
+                cursor.execute(
+                    "SELECT collection, path FROM documents WHERE (collection = ? OR collection LIKE ?) AND (path = ? OR path LIKE ?) LIMIT 1",
+                    (collection, f"%{collection}%", path, f"%{path}%")
+                )
+            else:
+                cursor.execute(
+                    "SELECT collection, path FROM documents WHERE path = ? OR path LIKE ? LIMIT 1",
+                    (path, f"%{path}%")
+                )
+            row = cursor.fetchone()
+            if row:
+                doc_coll, doc_path = row
+                if doc_coll in cfg.collections:
+                    base_dir = Path(cfg.collections[doc_coll].path).expanduser().resolve()
+                    candidate = (base_dir / doc_path).resolve()
+                    try:
+                        candidate.relative_to(base_dir)
+                        if candidate.exists() and candidate.is_file():
+                            return candidate
+                    except ValueError:
+                        pass
+    except Exception:
+        pass
+
+    # 4. If path is an absolute path on disk, ensure it is within one of the collections
+    p = Path(path).expanduser().resolve()
+    if p.exists() and p.is_file():
+        for coll_cfg in cfg.collections.values():
+            base_dir = Path(coll_cfg.path).expanduser().resolve()
+            try:
+                p.relative_to(base_dir)
+                return p
+            except ValueError:
+                continue
+
+    return None
+
 @app.route('/api/document', methods=['GET'])
 def get_document():
     collection = request.args.get('collection')
@@ -513,6 +589,49 @@ def get_document():
                 content = redact_pii(content)
             return jsonify({"title": title, "content": content, "collection": row[2]})
     return jsonify({"error": "Not found"}), 404
+
+@app.route('/api/document/download', methods=['GET'])
+def download_document():
+    collection = request.args.get('collection')
+    path = request.args.get('path')
+    if not path:
+        return jsonify({"error": "Missing 'path' parameter"}), 400
+
+    target_path = _resolve_document_file_path(collection, path)
+    if not target_path:
+        return jsonify({"error": "File not found"}), 404
+
+    return send_file(
+        str(target_path),
+        as_attachment=True,
+        download_name=target_path.name
+    )
+
+@app.route('/api/document/open', methods=['GET', 'POST'])
+def open_document_system():
+    if request.method == 'POST':
+        data = request.json or {}
+    else:
+        data = {}
+    collection = data.get('collection') or request.args.get('collection')
+    path = data.get('path') or request.args.get('path')
+    if not path:
+        return jsonify({"error": "Missing 'path' parameter"}), 400
+
+    target_path = _resolve_document_file_path(collection, path)
+    if not target_path:
+        return jsonify({"error": "File not found"}), 404
+
+    try:
+        if hasattr(os, 'startfile'):
+            os.startfile(str(target_path))
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', str(target_path)])
+        else:
+            subprocess.Popen(['xdg-open', str(target_path)])
+        return jsonify({"status": "success", "message": f"Opened {target_path.name}"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/session/<session_id>', methods=['GET'])
 def get_session_info(session_id):
