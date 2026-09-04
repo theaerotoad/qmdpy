@@ -118,3 +118,58 @@ def test_web_subpath_fallback_relative_assets(web_client):
     assert 'src="static/js/state.js"' in html
     assert 'src="static/js/modals.js"' in html
     assert 'src="static/js/search.js"' in html
+
+
+def test_web_document_download(web_client):
+    # 1. Download existing document file
+    res = web_client.get('/api/document/download?collection=test&path=doc1.md')
+    assert res.status_code == 200
+    assert b"First chunk of document 1" in res.data
+    disp = res.headers.get("Content-Disposition", "")
+    assert "attachment" in disp
+    assert "doc1.md" in disp
+
+    # 2. Missing path parameter
+    res_missing = web_client.get('/api/document/download')
+    assert res_missing.status_code == 400
+
+    # 3. Path traversal rejection or missing file
+    res_traversal = web_client.get('/api/document/download?collection=test&path=../../outside.txt')
+    assert res_traversal.status_code == 404
+
+    res_not_found = web_client.get('/api/document/download?collection=test&path=nonexistent.md')
+    assert res_not_found.status_code == 404
+
+
+def test_web_document_open_system(web_client):
+    with patch("subprocess.Popen") as mock_popen, patch("os.startfile", create=True) as mock_startfile:
+        # 1. Successful open via POST
+        res = web_client.post('/api/document/open', json={'collection': 'test', 'path': 'doc1.md'})
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data['status'] == 'success'
+        assert 'doc1.md' in data['message']
+
+        # 2. Successful open via GET query params
+        res_get = web_client.get('/api/document/open?collection=test&path=doc1.md')
+        assert res_get.status_code == 200
+        data_get = res_get.get_json()
+        assert data_get['status'] == 'success'
+
+        # 3. Missing path
+        res_no_path = web_client.post('/api/document/open', json={'collection': 'test'})
+        assert res_no_path.status_code == 400
+
+        # 4. Nonexistent file
+        res_missing_file = web_client.post('/api/document/open', json={'collection': 'test', 'path': 'not_there.docx'})
+        assert res_missing_file.status_code == 404
+
+
+def test_web_document_open_system_error(web_client):
+    with patch("subprocess.Popen", side_effect=OSError("Command failed")):
+        with patch("os.startfile", side_effect=OSError("Command failed"), create=True):
+            res = web_client.post('/api/document/open', json={'collection': 'test', 'path': 'doc1.md'})
+            assert res.status_code == 500
+            data = res.get_json()
+            assert data['status'] == 'error'
+            assert 'Command failed' in data['message']
