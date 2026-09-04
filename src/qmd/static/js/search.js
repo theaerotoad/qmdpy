@@ -283,8 +283,6 @@ function renderResults(results, type, query) {
                 <span>•</span>
                 <span class="font-mono text-[11px]">Top Chunk: #${item.seq_id || item.rank || (index + 1)}</span>
                 <span>•</span>
-                <button type="button" class="btn-open-doc text-blue-600 dark:text-blue-400 hover:underline">Open Document</button>
-                <span>•</span>
                 <button type="button" class="btn-deep-search text-blue-600 dark:text-blue-400 hover:underline">Deep Search Inside</button>
                 <span>•</span>
                 <button type="button" class="btn-copy-chunk text-gray-500 hover:text-gray-700 dark:hover:text-gray-200">Copy chunk</button>
@@ -296,7 +294,6 @@ function renderResults(results, type, query) {
         const uriLink = article.querySelector('.uri-link');
         if (uriLink) uriLink.onclick = () => openDocument(item.collection, item.path, targetChunkText);
         article.querySelector('.doc-link').onclick = () => openDocument(item.collection, item.path, targetChunkText);
-        article.querySelector('.btn-open-doc').onclick = () => openDocument(item.collection, item.path, targetChunkText);
         article.querySelector('.btn-deep-search').onclick = () => deepSearchSnippet(item.title || item.path, item.path, item.collection);
         article.querySelector('.btn-copy-chunk').onclick = (e) => copySingleExcerpt(index, e.currentTarget);
         article.querySelector('.btn-copy-xml').onclick = (e) => copySingleXml(index, e.currentTarget);
