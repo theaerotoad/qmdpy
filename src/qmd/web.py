@@ -587,7 +587,12 @@ def get_document():
             if should_redact:
                 title = redact_pii(title)
                 content = redact_pii(content)
-            return jsonify({"title": title, "content": content, "collection": row[2]})
+            return jsonify({
+                "title": title,
+                "content": content,
+                "collection": row[2],
+                "allow_open": getattr(get_config(), "allow_open_file", False)
+            })
     return jsonify({"error": "Not found"}), 404
 
 @app.route('/api/document/download', methods=['GET'])
@@ -609,6 +614,13 @@ def download_document():
 
 @app.route('/api/document/open', methods=['GET', 'POST'])
 def open_document_system():
+    cfg = get_config()
+    if not getattr(cfg, "allow_open_file", False):
+        return jsonify({
+            "status": "disabled",
+            "error": "Opening files on the host system is disabled in settings (allow_open_file: false). Set allow_open_file: true in your config or QMD_ALLOW_OPEN_FILE=1 to enable."
+        }), 403
+
     if request.method == 'POST':
         data = request.json or {}
     else:

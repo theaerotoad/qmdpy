@@ -66,6 +66,9 @@ class Config:
     rerank_candidates: int = 20
     default_limit: int = 10
 
+    # System Integration
+    allow_open_file: bool = False
+
     @classmethod
     def from_dict(cls, data: Dict, config_path: Optional[Path] = None, visited_configs: Optional[Set[Path]] = None) -> 'Config':
         collections_raw = data.get('collections', {})
@@ -144,6 +147,12 @@ class Config:
         
         batch_size_env = os.environ.get("QMD_EMBED_BATCH_SIZE")
         embed_batch_size = int(batch_size_env) if batch_size_env else int(data.get("embed_batch_size", 16))
+
+        allow_open_env = os.environ.get("QMD_ALLOW_OPEN_FILE") or os.environ.get("QMD_ALLOW_OPEN")
+        if allow_open_env is not None:
+            allow_open_file = allow_open_env.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            allow_open_file = bool(data.get('allow_open_file', False) or data.get('allow_open', False))
 
         embed_model = os.environ.get("EMBED_MODEL") or data.get("embed_model") or "EmbeddingGemma 300m"
         rerank_model = os.environ.get("RERANK_MODEL") or data.get("rerank_model") or "Qwen Rerank 0.6B"
@@ -233,6 +242,7 @@ class Config:
             child_cfg.embed_batch_size = embed_batch_size
             child_cfg.rerank_model = rerank_model
             child_cfg.generate_model = generate_model
+            child_cfg.allow_open_file = allow_open_file
 
             included_configs.append(child_cfg)
 
@@ -276,7 +286,8 @@ class Config:
             fts_limit=data.get('fts_limit', 50),
             vec_limit=data.get('vec_limit', 50),
             rerank_candidates=data.get('rerank_candidates', 20),
-            default_limit=data.get('default_limit', 10)
+            default_limit=data.get('default_limit', 10),
+            allow_open_file=allow_open_file
         )
 
 def load_config(path: Optional[Union[str, Path]] = None, visited_configs: Optional[Set[Path]] = None) -> Config:

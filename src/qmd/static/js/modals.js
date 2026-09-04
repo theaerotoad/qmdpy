@@ -147,6 +147,9 @@ function setSettingsTab(tabName) {
 
 function openSettings() {
     loadSettingsModalValues();
+    ensureOpenFileSettingInSettings();
+    const chk = document.getElementById('setting-allow-open-file');
+    if (chk) chk.checked = isOpenFileSettingEnabled();
     const modal = document.getElementById('settings-modal');
     modal.classList.remove('hidden');
     void modal.offsetWidth;
@@ -469,9 +472,60 @@ function downloadCurrentOriginalFile() {
     showToast("Starting download...");
 }
 
+function isOpenFileSettingEnabled() {
+    return localStorage.getItem('qmd_allow_open_file') === 'true';
+}
+
+function setOpenFileSetting(enabled) {
+    localStorage.setItem('qmd_allow_open_file', enabled ? 'true' : 'false');
+    updateOpenFileButtonVisibility();
+}
+
+function updateOpenFileButtonVisibility(serverAllows = null) {
+    if (serverAllows !== null) window._serverAllowsOpen = serverAllows;
+    const btn = document.getElementById('btn-open-original');
+    if (!btn) return;
+    const isAllowedByServer = window._serverAllowsOpen !== false;
+    const isAllowedByClient = isOpenFileSettingEnabled();
+    if (isAllowedByServer && isAllowedByClient) {
+        btn.classList.remove('hidden');
+    } else {
+        btn.classList.add('hidden');
+    }
+}
+
+function ensureOpenFileSettingInSettings() {
+    const container = document.getElementById('tab-content-defaults');
+    if (!container || document.getElementById('setting-allow-open-file')) return;
+    const row = document.createElement('div');
+    row.id = 'setting-row-open-file';
+    row.className = "flex items-center justify-between py-2.5 border-t border-gray-200 dark:border-gray-700 mt-2";
+    row.innerHTML = `
+        <div class="pr-4">
+            <div class="text-xs font-semibold text-gray-800 dark:text-gray-200">Allow "Open File" on Host</div>
+            <div class="text-[11px] text-gray-500">Launch files in host desktop app (keep off if port-forwarding over 127.0.0.1)</div>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+            <input type="checkbox" id="setting-allow-open-file" class="sr-only peer">
+            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+        </label>
+    `;
+    container.appendChild(row);
+    const chk = row.querySelector('#setting-allow-open-file');
+    chk.checked = isOpenFileSettingEnabled();
+    chk.onchange = (e) => {
+        setOpenFileSetting(e.target.checked);
+        showToast(e.target.checked ? "Enabled 'Open File' option" : "Disabled 'Open File' option");
+    };
+}
+
 async function openCurrentOriginalFile() {
     if (!currentDocPath) {
         showToast("No document selected");
+        return;
+    }
+    if (!isOpenFileSettingEnabled()) {
+        showToast("Opening files on host is disabled in Settings");
         return;
     }
     const btn = document.getElementById('btn-open-original');
@@ -492,6 +546,8 @@ async function openCurrentOriginalFile() {
         const data = await res.json();
         if (res.ok && data.status === 'success') {
             showToast(data.message || "Opened file in system viewer ✓");
+        } else if (res.status === 403 || data.status === 'disabled') {
+            showToast(data.error || "Opening files on host is disabled in settings");
         } else {
             showToast(data.error || data.message || "Failed to open file in system viewer");
         }
@@ -568,6 +624,7 @@ async function openDocument(collection, path, targetText) {
         document.getElementById('slide-title').textContent = data.title || path;
         if (data.collection) currentDocCollection = data.collection;
         content.innerHTML = marked.parse(data.content || '');
+        updateOpenFileButtonVisibility(data.allow_open);
 
         if (targetText && targetText.trim()) {
             setTimeout(() => {
