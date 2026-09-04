@@ -1,19 +1,19 @@
 <!-- SESSION MANAGER MODAL -->
 <div id="session-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-hidden hidden">
-    <div id="session-backdrop" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity opacity-0 duration-200" onclick="closeSessionModal()"></div>
-    <div id="session-panel" class="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200">
-        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+    <div id="session-backdrop" class="fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity opacity-0 duration-200" onclick="closeSessionModal()"></div>
+    <div id="session-panel" class="relative w-full max-w-lg bg-white dark:bg-[#282a2d] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 bg-[#f8f9fa] dark:bg-[#202124]">
             <div class="flex items-center gap-2">
-                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                <h2 class="text-base font-semibold text-slate-900 dark:text-white">Session Management</h2>
+                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></div>
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Session Management</h2>
             </div>
-            <button type="button" onclick="closeSessionModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition focus:outline-none">
-                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            <button type="button" onclick="closeSessionModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition focus:outline-none">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
         </div>
-        <div class="p-6 space-y-5">
-            <div class="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
-                <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-medium">
+        <div class="p-5 space-y-4 text-xs">
+            <div class="bg-gray-50 dark:bg-[#202124] p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+                <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-medium">
                     <span>Active Session ID</span>
                     <span id="session-status-tag" class="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-mono text-[11px]">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
@@ -22,67 +22,67 @@
                 <div class="flex items-center justify-between gap-3">
                     <span id="modal-session-id" class="text-2xl font-mono font-bold tracking-wider text-blue-600 dark:text-blue-400">--------</span>
                     <div class="flex items-center gap-1.5">
-                        <button type="button" onclick="copySessionId('id')" id="btn-copy-session-id" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 transition shadow-sm">Copy ID</button>
-                        <button type="button" onclick="copySessionId('cli')" id="btn-copy-session-cli" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 transition shadow-sm">--session</button>
-                        <button type="button" onclick="generateNewSession()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition shadow-sm">New</button>
+                        <button type="button" onclick="copySessionId('id')" id="btn-copy-session-id" class="bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-[#3c4043] px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 transition shadow-sm">Copy ID</button>
+                        <button type="button" onclick="copySessionId('cli')" id="btn-copy-session-cli" class="bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-[#3c4043] px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 transition shadow-sm">--session</button>
+                        <button type="button" onclick="generateNewSession()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition shadow-sm">New</button>
                     </div>
                 </div>
             </div>
             <div class="grid grid-cols-2 gap-3 text-xs">
-                <div class="bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-                    <div class="text-slate-500 dark:text-slate-400 mb-1">Seen Chunks Recorded</div>
-                    <div id="modal-seen-count" class="text-lg font-mono font-semibold text-slate-900 dark:text-white">0</div>
+                <div class="bg-gray-50 dark:bg-[#202124] p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+                    <div class="text-gray-500 dark:text-gray-400 mb-1">Seen Chunks Recorded</div>
+                    <div id="modal-seen-count" class="text-lg font-mono font-semibold text-gray-900 dark:text-white">0</div>
                 </div>
-                <div class="bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-                    <div class="text-slate-500 dark:text-slate-400 mb-1">Search Queries Recorded</div>
-                    <div id="modal-events-count" class="text-lg font-mono font-semibold text-slate-900 dark:text-white">0</div>
+                <div class="bg-gray-50 dark:bg-[#202124] p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+                    <div class="text-gray-500 dark:text-gray-400 mb-1">Search Queries Recorded</div>
+                    <div id="modal-events-count" class="text-lg font-mono font-semibold text-gray-900 dark:text-white">0</div>
                 </div>
             </div>
-            <div class="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-                <label class="block text-xs font-medium text-slate-700 dark:text-slate-300">Switch or Resume Existing Session</label>
+            <div class="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Switch or Resume Existing Session</label>
                 <div class="flex items-center gap-2">
-                    <input type="text" id="input-switch-session" class="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs font-mono rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" placeholder="Paste session ID...">
-                    <button type="button" onclick="applySwitchedSession()" class="bg-slate-800 hover:bg-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-medium px-4 py-2 rounded-lg transition shadow-sm">Switch</button>
+                    <input type="text" id="input-switch-session" class="flex-1 bg-gray-50 dark:bg-[#202124] border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white text-xs font-mono rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" placeholder="Paste session ID...">
+                    <button type="button" onclick="applySwitchedSession()" class="bg-gray-800 hover:bg-gray-700 text-white text-xs font-medium px-4 py-2 rounded-lg transition shadow-sm">Switch</button>
                 </div>
             </div>
         </div>
-        <div class="px-6 py-3.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-200 dark:border-slate-800 flex justify-end">
-            <button type="button" onclick="closeSessionModal()" class="px-4 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition shadow-sm">Done</button>
+        <div class="px-5 py-3 bg-[#f8f9fa] dark:bg-[#202124] border-t border-gray-200 dark:border-gray-700 flex justify-end">
+            <button type="button" onclick="closeSessionModal()" class="px-4 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-[#3c4043] transition shadow-sm">Done</button>
         </div>
     </div>
 </div>
 
 <!-- SCOPE PICKER MODAL -->
 <div id="scope-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-hidden hidden">
-    <div id="scope-backdrop" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity opacity-0 duration-200" onclick="closeScopePicker()"></div>
-    <div id="scope-panel" class="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200 flex flex-col max-h-[85vh]">
-        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex-shrink-0">
+    <div id="scope-backdrop" class="fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity opacity-0 duration-200" onclick="closeScopePicker()"></div>
+    <div id="scope-panel" class="relative w-full max-w-2xl bg-white dark:bg-[#282a2d] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200 flex flex-col max-h-[85vh]">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 bg-[#f8f9fa] dark:bg-[#202124] flex-shrink-0">
             <div class="flex items-center gap-2 min-w-0 pr-2">
-                <svg class="w-5 h-5 text-blue-500 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                <svg class="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
                 <div>
                     <div class="flex items-center gap-2">
-                        <h2 class="text-base font-semibold text-slate-900 dark:text-white truncate">Directory &amp; File Scope Picker</h2>
-                        <span id="scope-selected-count" class="hidden text-[11px] font-sans font-medium px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">0 selected</span>
+                        <h2 class="text-sm font-semibold text-gray-900 dark:text-white truncate">Directory &amp; File Scope Picker</h2>
+                        <span id="scope-selected-count" class="hidden text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">0 selected</span>
                     </div>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 truncate">Multi-select collections, folders, or files to constrain searches</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate">Select collections, folders, or files to restrict searches</p>
                 </div>
             </div>
-            <button type="button" onclick="closeScopePicker()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition focus:outline-none flex-shrink-0">
-                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            <button type="button" onclick="closeScopePicker()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition focus:outline-none flex-shrink-0">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
         </div>
-        <div class="px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex-shrink-0 flex items-center justify-between gap-3">
+        <div class="px-5 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#202124] flex-shrink-0 flex items-center justify-between gap-3">
             <div class="relative flex-1">
-                <input type="text" id="scope-tree-filter" placeholder="Filter directories or files (e.g. docs/ or guide)..." class="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+                <input type="text" id="scope-tree-filter" placeholder="Filter directories or files..." class="w-full bg-gray-50 dark:bg-[#303134] border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
             </div>
-            <button type="button" onclick="clearAllScopes()" class="text-xs text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition font-medium px-2 py-1">Clear Selection</button>
+            <button type="button" onclick="clearAllScopes()" class="text-xs text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition font-medium px-2 py-1">Clear Selection</button>
         </div>
         <div id="scope-picker-tree" class="flex-1 overflow-y-auto p-5 space-y-3 text-xs font-mono"></div>
-        <div class="px-6 py-3.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0 text-xs">
-            <div id="scope-selection-summary" class="text-slate-500 dark:text-slate-400 truncate max-w-xs font-sans">Searching everywhere</div>
+        <div class="px-5 py-3 bg-[#f8f9fa] dark:bg-[#202124] border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 text-xs">
+            <div id="scope-selection-summary" class="text-gray-500 dark:text-gray-400 truncate max-w-xs font-sans">Searching everywhere</div>
             <div class="flex items-center gap-2">
-                <button type="button" onclick="clearAllScopes(); closeScopePicker();" class="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition font-medium px-3 py-1.5">Reset</button>
-                <button type="button" onclick="closeScopePicker()" class="px-4 py-1.5 font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition shadow-sm">Apply &amp; Close</button>
+                <button type="button" onclick="clearAllScopes(); closeScopePicker();" class="text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition font-medium px-3 py-1.5">Reset</button>
+                <button type="button" onclick="closeScopePicker()" class="px-4 py-1.5 font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-sm">Apply &amp; Close</button>
             </div>
         </div>
     </div>
@@ -90,131 +90,118 @@
 
 <!-- BATCH COMMAND MODAL -->
 <div id="batch-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-hidden hidden">
-    <div id="batch-backdrop" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity opacity-0 duration-200" onclick="closeBatchModal()"></div>
-    <div id="batch-panel" class="relative w-full max-w-3xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200 flex flex-col max-h-[90vh]">
-        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex-shrink-0">
-            <div class="flex items-center gap-2.5">
-                <div class="p-1.5 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                </div>
+    <div id="batch-backdrop" class="fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity opacity-0 duration-200" onclick="closeBatchModal()"></div>
+    <div id="batch-panel" class="relative w-full max-w-2xl bg-white dark:bg-[#282a2d] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200 flex flex-col max-h-[90vh]">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 bg-[#f8f9fa] dark:bg-[#202124] flex-shrink-0">
+            <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 <div>
-                    <h2 class="text-base font-semibold text-slate-900 dark:text-white">Batch Command Runner</h2>
-                    <p class="text-xs text-slate-500 dark:text-slate-400">Paste up to 5 QMD commands or XML action attributes to evaluate sequentially</p>
+                    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Batch Corpus Operations</h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Run parallel queries, mass chunk exports, or evaluate commands sequentially</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <button type="button" onclick="copyBatchGuide()" id="btn-copy-batch-guide" class="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 px-3 py-1.5 rounded-lg text-slate-700 dark:text-slate-200 transition shadow-sm flex items-center gap-1.5" title="Copy LLM Prompting Guide & Rules in XML">
+                <button type="button" onclick="copyBatchGuide()" id="btn-copy-batch-guide" class="text-xs bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-[#3c4043] px-2.5 py-1.5 rounded text-gray-700 dark:text-gray-200 transition flex items-center gap-1.5" title="Copy LLM Prompting Guide & Rules in XML">
                     <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                    Copy XML Guide for LLM
+                    Copy XML Guide
                 </button>
-                <button type="button" onclick="closeBatchModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition focus:outline-none">
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                <button type="button" onclick="closeBatchModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition focus:outline-none">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
             </div>
         </div>
 
-        <div class="p-6 overflow-y-auto flex-1 space-y-5 text-xs">
-            <!-- Command Input Area -->
-            <div class="space-y-2">
+        <div class="p-5 overflow-y-auto flex-1 space-y-4 text-xs">
+            <div class="space-y-1.5">
                 <div class="flex items-center justify-between">
-                    <label for="batch-input" class="font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                        <span>Pasted Commands</span>
-                        <span class="text-slate-400 font-normal">(1-5 commands using natural language questions, or read="..." attributes)</span>
+                    <label for="batch-input" class="font-medium text-gray-700 dark:text-gray-300">
+                        Batch Command Script:
                     </label>
-                    <button type="button" onclick="clearBatchInput()" class="text-slate-400 hover:text-red-500 transition text-[11px]">Clear</button>
+                    <button type="button" onclick="clearBatchInput()" class="text-gray-400 hover:text-red-500 transition text-[11px]">Clear</button>
                 </div>
-                <textarea id="batch-input" rows="5" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-mono text-xs rounded-xl p-3.5 focus:outline-none focus:border-blue-500 leading-relaxed placeholder-slate-400 dark:placeholder-slate-600 resize-y" placeholder="qmd discover &quot;what are the principles of orbital mechanics?&quot;&#10;qmd read 'Books:doc.epub:10-15'&#10;outline=&quot;qmd outline 'Books:doc.epub'&quot;&#10;qmd search &quot;how do orbital transfers work?&quot;"></textarea>
+                <textarea id="batch-input" rows="5" class="w-full bg-gray-50 dark:bg-[#202124] border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 font-mono text-xs rounded-lg p-3 outline-none focus:border-blue-500 leading-relaxed placeholder-gray-400 resize-y" placeholder="qmd discover &quot;what are the principles of orbital mechanics?&quot;&#10;qmd read 'Books:doc.epub:10-15'&#10;outline=&quot;qmd outline 'Books:doc.epub'&quot;&#10;qmd search &quot;how do orbital transfers work?&quot;"></textarea>
             </div>
 
             <!-- Execution Status & Progress -->
-            <div id="batch-progress-wrapper" class="hidden space-y-3">
-                <div class="flex items-center justify-between text-slate-600 dark:text-slate-400 font-medium">
+            <div id="batch-progress-wrapper" class="hidden space-y-2">
+                <div class="flex items-center justify-between text-gray-600 dark:text-gray-400 font-medium">
                     <span id="batch-progress-title">Executing commands...</span>
                     <span id="batch-progress-stats" class="font-mono text-[11px]"></span>
                 </div>
                 <div id="batch-step-list" class="space-y-2"></div>
             </div>
 
-            <!-- Output XML Bundle View -->
-            <div id="batch-output-wrapper" class="hidden space-y-2">
-                <label class="block font-medium text-slate-700 dark:text-slate-300">Combined Output XML</label>
-                <pre id="batch-output-xml" class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-[11px] overflow-x-auto max-h-64 border border-slate-800 leading-relaxed"></pre>
+            <!-- Combined Output XML -->
+            <div id="batch-output-wrapper" class="hidden space-y-1.5">
+                <label class="block font-medium text-gray-700 dark:text-gray-300">Combined Output XML</label>
+                <pre id="batch-output-xml" class="bg-gray-900 text-gray-100 p-3.5 rounded-lg font-mono text-[11px] overflow-x-auto max-h-56 border border-gray-800 leading-relaxed"></pre>
             </div>
         </div>
 
-        <div class="px-6 py-3.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
-            <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                Tip: Copy the guide above to prompt LLMs to emit natural language question commands directly.
-            </div>
+        <div class="px-5 py-3 bg-[#f8f9fa] dark:bg-[#202124] border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 text-xs">
+            <span class="text-gray-400 font-mono text-[11px]">Max 5 commands evaluated concurrently</span>
             <div class="flex items-center gap-2">
-                <button type="button" onclick="runBatchCommands()" id="btn-run-batch" class="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition shadow-sm flex items-center gap-1.5">
-                    <svg class="w-3.5 h-3.5 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    Run
+                <button type="button" onclick="closeBatchModal()" class="px-3 py-1.5 text-gray-600 dark:text-gray-300">Cancel</button>
+                <button type="button" onclick="runBatchCommands()" id="btn-run-batch" class="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded transition shadow-sm flex items-center gap-1.5">
+                    Run Batch
                 </button>
-                <button type="button" onclick="copyBatchOutputXml()" id="btn-copy-batch-output" class="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition shadow-sm flex items-center gap-1.5">
-                    <svg class="w-3.5 h-3.5 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                    Copy
+                <button type="button" onclick="copyBatchOutputXml()" id="btn-copy-batch-output" class="hidden px-3.5 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded transition shadow-sm">
+                    Copy Output
                 </button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- ENHANCED SETTINGS MODAL (Defaults, Collections, Appearance, Cheat Codes) -->
+<!-- ENHANCED SETTINGS MODAL -->
 <div id="settings-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-hidden hidden">
-    <div id="settings-backdrop" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity opacity-0 duration-200" onclick="closeSettings()"></div>
-    <div id="settings-panel" class="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200 flex flex-col max-h-[85vh]">
-        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex-shrink-0">
+    <div id="settings-backdrop" class="fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity opacity-0 duration-200" onclick="closeSettings()"></div>
+    <div id="settings-panel" class="relative w-full max-w-2xl bg-white dark:bg-[#282a2d] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-10 transform scale-95 opacity-0 transition-all duration-200 flex flex-col max-h-[85vh]">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 bg-[#f8f9fa] dark:bg-[#202124] flex-shrink-0">
             <div class="flex items-center gap-2">
-                <svg class="w-5 h-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                <h2 class="text-base font-semibold text-slate-900 dark:text-white">Settings &amp; Preferences</h2>
+                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Settings &amp; Preferences</h2>
             </div>
-            <button type="button" onclick="closeSettings()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition focus:outline-none">
-                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            <button type="button" onclick="closeSettings()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition focus:outline-none">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
         </div>
 
-        <!-- Settings Tabs Navigation -->
-        <div class="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 px-6 gap-2 text-xs font-medium">
+        <!-- Settings Tabs -->
+        <div class="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#202124] px-5 gap-2 text-xs font-medium">
             <button type="button" onclick="setSettingsTab('defaults')" class="settings-tab-btn px-3 py-2.5 border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 font-semibold" data-tab="defaults">Defaults</button>
-            <button type="button" onclick="setSettingsTab('collections')" class="settings-tab-btn px-3 py-2.5 border-b-2 border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-tab="collections">Collections</button>
-            <button type="button" onclick="setSettingsTab('appearance')" class="settings-tab-btn px-3 py-2.5 border-b-2 border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-tab="appearance">Appearance</button>
-            <button type="button" onclick="setSettingsTab('cheatcodes')" class="settings-tab-btn px-3 py-2.5 border-b-2 border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200" data-tab="cheatcodes">Cheat Codes</button>
+            <button type="button" onclick="setSettingsTab('collections')" class="settings-tab-btn px-3 py-2.5 border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200" data-tab="collections">Collections</button>
+            <button type="button" onclick="setSettingsTab('appearance')" class="settings-tab-btn px-3 py-2.5 border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200" data-tab="appearance">Appearance</button>
+            <button type="button" onclick="setSettingsTab('cheatcodes')" class="settings-tab-btn px-3 py-2.5 border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200" data-tab="cheatcodes">Cheat Codes</button>
         </div>
 
-        <!-- Settings Tab Contents -->
-        <div class="p-6 overflow-y-auto flex-1 text-xs space-y-6">
+        <div class="p-5 overflow-y-auto flex-1 text-xs space-y-5">
             <!-- Tab: Defaults -->
             <div id="tab-content-defaults" class="settings-tab-panel space-y-4">
-                <div>
-                    <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">Search Launch Defaults</h3>
-                    <p class="text-slate-500 dark:text-slate-400">Configure how the search interface initializes on start.</p>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
-                        <label class="block font-medium text-slate-700 dark:text-slate-300">Default Result Limit</label>
-                        <select id="setting-default-limit" onchange="saveDefaults()" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-slate-800 dark:text-slate-200 focus:outline-none">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="bg-gray-50 dark:bg-[#202124] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-1">
+                        <label class="block font-medium text-gray-700 dark:text-gray-300">Default Result Limit</label>
+                        <select id="setting-default-limit" onchange="saveDefaults()" class="w-full bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 rounded p-1.5 text-xs text-gray-800 dark:text-gray-200 outline-none">
+                            <option value="5">5 results</option>
                             <option value="10">10 results</option>
-                            <option value="25">25 results</option>
+                            <option value="20">20 results</option>
                             <option value="50">50 results</option>
-                            <option value="100">100 results</option>
                         </select>
                     </div>
-                    <div class="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
-                        <label class="block font-medium text-slate-700 dark:text-slate-300">Default Query Action</label>
-                        <select id="setting-default-mode" onchange="saveDefaults()" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-slate-800 dark:text-slate-200 focus:outline-none">
+                    <div class="bg-gray-50 dark:bg-[#202124] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-1">
+                        <label class="block font-medium text-gray-700 dark:text-gray-300">Default Query Action</label>
+                        <select id="setting-default-mode" onchange="saveDefaults()" class="w-full bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 rounded p-1.5 text-xs text-gray-800 dark:text-gray-200 outline-none">
                             <option value="discover">Discover (1 hit per doc overview)</option>
-                            <option value="search">Search (Full doc-grouped reading view)</option>
+                            <option value="search">Search (Full reading view)</option>
                         </select>
                     </div>
                 </div>
 
-                <div class="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
-                    <div class="font-medium text-slate-700 dark:text-slate-300 mb-2">Default Toggle Behaviors</div>
+                <div class="bg-gray-50 dark:bg-[#202124] p-3.5 rounded-lg border border-gray-200 dark:border-gray-700 space-y-2.5">
+                    <div class="font-medium text-gray-700 dark:text-gray-300">Default Toggle Behaviors</div>
                     <label class="flex items-center gap-2 cursor-pointer">
                         <input type="checkbox" id="setting-default-rerank" onchange="saveDefaults()" class="rounded text-blue-600 focus:ring-0">
-                        <span>Enable LLM Reranking by default</span>
+                        <span>Enable LLM Semantic Reranker by default</span>
                     </label>
                     <label class="flex items-center gap-2 cursor-pointer">
                         <input type="checkbox" id="setting-default-seen" onchange="saveDefaults()" class="rounded text-blue-600 focus:ring-0">
@@ -227,106 +214,71 @@
                 </div>
             </div>
 
-            <!-- Tab: Collections & Indexing -->
-            <div id="tab-content-collections" class="settings-tab-panel hidden space-y-4">
+            <!-- Tab: Collections -->
+            <div id="tab-content-collections" class="settings-tab-panel hidden space-y-3">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Configured Collections</h3>
-                        <p class="text-slate-500 dark:text-slate-400">Trigger manual re-indexes and check sync status.</p>
+                        <h3 class="text-xs font-semibold text-gray-900 dark:text-white">Configured Collections</h3>
+                        <p class="text-gray-500 dark:text-gray-400">Trigger re-indexes and check repository synchronization.</p>
                     </div>
-                    <button type="button" onclick="loadCollections(true)" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-3 py-1.5 rounded-lg transition text-slate-700 dark:text-slate-300">Refresh List</button>
+                    <button type="button" onclick="loadCollections(true)" class="bg-gray-100 dark:bg-[#303134] hover:bg-gray-200 dark:hover:bg-[#3c4043] px-2.5 py-1 rounded text-xs transition">Refresh</button>
                 </div>
-                <div id="settings-collections-list" class="space-y-2.5">
-                    <div class="text-slate-500 py-4 text-center">Loading collections...</div>
+                <div id="settings-collections-list" class="space-y-2">
+                    <div class="text-gray-500 py-3 text-center">Loading collections...</div>
                 </div>
             </div>
 
             <!-- Tab: Appearance -->
-            <div id="tab-content-appearance" class="settings-tab-panel hidden space-y-4">
+            <div id="tab-content-appearance" class="settings-tab-panel hidden space-y-3">
                 <div>
-                    <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Appearance &amp; Theme</h3>
-                    <p class="text-slate-500 dark:text-slate-400">Choose how the QMD interface looks to you.</p>
+                    <h3 class="text-xs font-semibold text-gray-900 dark:text-white">Appearance &amp; Theme</h3>
+                    <p class="text-gray-500 dark:text-gray-400">Select your preferred display theme.</p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <button type="button" onclick="applyTheme('light')" class="theme-option-btn p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 text-left transition" data-theme="light">
-                        <div class="font-semibold text-slate-900 dark:text-white mb-0.5">Light</div>
-                        <div class="text-[11px] text-slate-500">Crisp daytime theme</div>
+                    <button type="button" onclick="applyTheme('light')" class="theme-option-btn p-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#202124] text-left transition" data-theme="light">
+                        <div class="font-semibold text-gray-900 dark:text-white mb-0.5">Light</div>
+                        <div class="text-[11px] text-gray-500">Classic Google daytime</div>
                     </button>
-                    <button type="button" onclick="applyTheme('dark')" class="theme-option-btn p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 text-left transition" data-theme="dark">
-                        <div class="font-semibold text-slate-900 dark:text-white mb-0.5">Dark</div>
-                        <div class="text-[11px] text-slate-500">Deep slate contrast</div>
+                    <button type="button" onclick="applyTheme('dark')" class="theme-option-btn p-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#202124] text-left transition" data-theme="dark">
+                        <div class="font-semibold text-gray-900 dark:text-white mb-0.5">Dark</div>
+                        <div class="text-[11px] text-gray-500">Subdued slate contrast</div>
                     </button>
-                    <button type="button" onclick="applyTheme('system')" class="theme-option-btn p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 text-left transition" data-theme="system">
-                        <div class="font-semibold text-slate-900 dark:text-white mb-0.5">System</div>
-                        <div class="text-[11px] text-slate-500">Match device setting</div>
+                    <button type="button" onclick="applyTheme('system')" class="theme-option-btn p-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#202124] text-left transition" data-theme="system">
+                        <div class="font-semibold text-gray-900 dark:text-white mb-0.5">System</div>
+                        <div class="text-[11px] text-gray-500">Match operating system</div>
                     </button>
                 </div>
             </div>
 
             <!-- Tab: Cheat Codes -->
-            <div id="tab-content-cheatcodes" class="settings-tab-panel hidden space-y-4">
+            <div id="tab-content-cheatcodes" class="settings-tab-panel hidden space-y-3">
                 <div>
-                    <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Query Cheat Codes</h3>
-                    <p class="text-slate-500 dark:text-slate-400">Embed power directives right into your search box. Standard queries work best as natural language questions rather than keyword searches.</p>
+                    <h3 class="text-xs font-semibold text-gray-900 dark:text-white">Query Cheat Codes</h3>
+                    <p class="text-gray-500 dark:text-gray-400">Embed power filters directly inside search terms.</p>
                 </div>
-                <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-                    <table class="w-full text-left font-mono">
-                        <thead class="bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table class="w-full text-left font-mono text-[11px]">
+                        <thead class="bg-[#f8f9fa] dark:bg-[#202124] text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
                             <tr>
-                                <th class="p-2.5">Directive</th>
-                                <th class="p-2.5">Target Field / Action</th>
-                                <th class="p-2.5">Example</th>
+                                <th class="p-2">Directive</th>
+                                <th class="p-2">Target</th>
+                                <th class="p-2">Example</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/60 bg-white dark:bg-slate-900/40 text-slate-600 dark:text-slate-400">
-                            <tr>
-                                <td class="p-2.5 font-semibold text-blue-600 dark:text-blue-400">title:"..."</td>
-                                <td class="p-2.5 font-sans">Document Title Filter</td>
-                                <td class="p-2.5"><code>title:"Deep Space" orbit</code></td>
-                            </tr>
-                            <tr>
-                                <td class="p-2.5 font-semibold text-blue-600 dark:text-blue-400">file:"..." / path:...</td>
-                                <td class="p-2.5 font-sans">File or Directory Path</td>
-                                <td class="p-2.5"><code>file:guide.md markdown</code></td>
-                            </tr>
-                            <tr>
-                                <td class="p-2.5 font-semibold text-blue-600 dark:text-blue-400">col:... / in:...</td>
-                                <td class="p-2.5 font-sans">Target Collection</td>
-                                <td class="p-2.5"><code>in:Books propulsion</code></td>
-                            </tr>
-                            <tr>
-                                <td class="p-2.5 font-semibold text-blue-600 dark:text-blue-400">lex:"..." / fts:"..."</td>
-                                <td class="p-2.5 font-sans">Strict BM25 Lexical Term</td>
-                                <td class="p-2.5"><code>lex:"vector math" similarity</code></td>
-                            </tr>
-                            <tr>
-                                <td class="p-2.5 font-semibold text-blue-600 dark:text-blue-400">pii:off / pii:on</td>
-                                <td class="p-2.5 font-sans">Toggle PII Redaction</td>
-                                <td class="p-2.5"><code>pii:off contact info</code></td>
-                            </tr>
-                            <tr>
-                                <td class="p-2.5 font-semibold text-blue-600 dark:text-blue-400">seen:exclude / seen:off</td>
-                                <td class="p-2.5 font-sans">Toggle Exclude Seen</td>
-                                <td class="p-2.5"><code>seen:exclude apollo mission</code></td>
-                            </tr>
-                            <tr>
-                                <td class="p-2.5 font-semibold text-blue-600 dark:text-blue-400">rerank:on / rerank:off</td>
-                                <td class="p-2.5 font-sans">Toggle LLM Reranking</td>
-                                <td class="p-2.5"><code>rerank:on quantum mechanics</code></td>
-                            </tr>
-                            <tr>
-                                <td class="p-2.5 font-semibold text-blue-600 dark:text-blue-400">limit:N</td>
-                                <td class="p-2.5 font-sans">Result limit count</td>
-                                <td class="p-2.5"><code>limit:25 telemetry</code></td>
-                            </tr>
+                        <tbody class="divide-y divide-gray-200 dark:divide-gray-700 text-gray-600 dark:text-gray-400">
+                            <tr><td class="p-2 font-semibold text-blue-600">title:"..."</td><td class="p-2 font-sans">Document Title Filter</td><td class="p-2"><code>title:"Deep Space" orbit</code></td></tr>
+                            <tr><td class="p-2 font-semibold text-blue-600">file:"..."</td><td class="p-2 font-sans">File / Directory Path</td><td class="p-2"><code>file:guide.md markdown</code></td></tr>
+                            <tr><td class="p-2 font-semibold text-blue-600">col:...</td><td class="p-2 font-sans">Target Collection</td><td class="p-2"><code>col:Books propulsion</code></td></tr>
+                            <tr><td class="p-2 font-semibold text-blue-600">lex:"..."</td><td class="p-2 font-sans">Strict BM25 Lexical Term</td><td class="p-2"><code>lex:"vector math" similarity</code></td></tr>
+                            <tr><td class="p-2 font-semibold text-blue-600">limit:N</td><td class="p-2 font-sans">Result Limit Count</td><td class="p-2"><code>limit:25 telemetry</code></td></tr>
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
 
-        <div class="px-6 py-3.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-200 dark:border-slate-800 flex justify-end">
-            <button type="button" onclick="closeSettings()" class="px-4 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition shadow-sm">Done</button>
+        <div class="px-5 py-3 bg-[#f8f9fa] dark:bg-[#202124] border-t border-gray-200 dark:border-gray-700 flex justify-end">
+            <button type="button" onclick="closeSettings()" class="px-4 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 transition shadow-sm">Done</button>
         </div>
     </div>
 </div>
