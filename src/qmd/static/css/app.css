@@ -39,12 +39,19 @@
 }
 
 .g-url {
-  color: #3c4043;
+  color: #137333;
   font-size: 13px;
   line-height: 1.3;
+  text-decoration: none;
+}
+.g-url:hover {
+  text-decoration: underline;
 }
 .dark .g-url {
-  color: #bdc1c6;
+  color: #81c995;
+}
+.dark .g-url:hover {
+  text-decoration: underline;
 }
 
 .g-snippet {
