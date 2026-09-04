@@ -7,13 +7,15 @@ function apiUrl(path) {
 
 // Application State & Configuration
 let activeMode = 'discover';
+let activeTab = 'all'; // 'all' | 'passages' | 'documents' | 'llm-context'
+let toolsOpen = false;
 let lastRawJson = null;
 let lastRawXml = '';
 let lastSearchType = 'discover';
 let currentSessionId = null;
 let currentExcludedCount = 0;
 let selectedScopes = [];
-let featureStates = { rerank: false, exclude_seen: false, redact_pii: false };
+let featureStates = { rerank: true, exclude_seen: false, redact_pii: false };
 let treeFilterTimer = null, scopeFilterTimer = null;
 
 const DEFAULTS_KEY = 'qmd_search_defaults';
@@ -40,7 +42,7 @@ function highlightKeywords(text, query) {
     const terms = query.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(t => t.length > 1);
     if (!terms.length) return text;
     const reg = new RegExp(`(${terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
-    return text.replace(reg, '<mark class="qmd-highlight">$1</mark>');
+    return text.replace(reg, '<mark class="g-highlight">$1</mark>');
 }
 
 // Past Query History & Autocomplete Management
@@ -78,7 +80,7 @@ function applyDefaultPreferences(customDefaults = null) {
     if (defaults.mode) {
         setMode(defaults.mode);
     }
-    featureStates.rerank = defaults.rerank !== undefined ? !!defaults.rerank : false;
+    featureStates.rerank = defaults.rerank !== undefined ? !!defaults.rerank : true;
     featureStates.exclude_seen = defaults.exclude_seen !== undefined ? !!defaults.exclude_seen : false;
     featureStates.redact_pii = defaults.redact_pii !== undefined ? !!defaults.redact_pii : false;
     updateFeatureButtonsUI();
@@ -93,7 +95,7 @@ function loadSettingsModalValues() {
     const piEl = document.getElementById('setting-default-pii');
     if (limEl) limEl.value = defaults.limit || '10';
     if (modEl) modEl.value = defaults.mode || 'discover';
-    if (rkEl) rkEl.checked = !!defaults.rerank;
+    if (rkEl) rkEl.checked = defaults.rerank !== undefined ? !!defaults.rerank : true;
     if (snEl) snEl.checked = !!defaults.exclude_seen;
     if (piEl) piEl.checked = !!defaults.redact_pii;
 }
@@ -108,6 +110,7 @@ function saveDefaults() {
     };
     localStorage.setItem(DEFAULTS_KEY, JSON.stringify(defaults));
     applyDefaultPreferences(defaults);
+    showToast("Preferences saved");
 }
 
 function toggleFeature(name, forceVal = null) {
@@ -116,21 +119,12 @@ function toggleFeature(name, forceVal = null) {
 }
 
 function updateFeatureButtonsUI() {
-    const mapping = {
-        rerank: '.feature-btn-rerank',
-        exclude_seen: '.feature-btn-seen',
-        redact_pii: '.feature-btn-pii'
-    };
-    for (const [key, selector] of Object.entries(mapping)) {
-        const isActive = !!featureStates[key];
-        document.querySelectorAll(selector).forEach(btn => {
-            if (isActive) {
-                btn.className = `${selector.replace('.', '')} bg-blue-50 dark:bg-blue-950/60 border border-blue-400 dark:border-blue-700 text-blue-600 dark:text-blue-300 font-medium px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm`;
-            } else {
-                btn.className = `${selector.replace('.', '')} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm`;
-            }
-        });
-    }
+    const rerankEl = document.getElementById('filter-rerank');
+    const seenEl = document.getElementById('filter-exclude-seen');
+    const redactEl = document.getElementById('filter-redact');
+    if (rerankEl) rerankEl.checked = !!featureStates.rerank;
+    if (seenEl) seenEl.checked = !!featureStates.exclude_seen;
+    if (redactEl) redactEl.checked = !!featureStates.redact_pii;
 }
 
 // Smart Query Parser for Cheat Codes
@@ -176,20 +170,22 @@ function parseQueryDirectives(rawText) {
 // View Mode Switching
 function setMode(mode) {
     activeMode = mode;
-    const hQ = document.getElementById('hero-query');
-    const sQ = document.getElementById('serp-query');
-    if (mode === 'discover') {
-        if (hQ) hQ.placeholder = "Discover top documents (e.g. title:\"space\", pii:off)...";
-        if (sQ) sQ.placeholder = "Discover top documents...";
-    } else {
-        if (hQ) hQ.placeholder = "Search notes in full document reading order...";
-        if (sQ) sQ.placeholder = "Search documents...";
-    }
 }
 
 // App View State Handling
 function setAppState(state) {
-    document.getElementById('app-container').className = state === 'serp' ? 'state-serp min-h-screen flex flex-col' : 'state-hero min-h-screen flex flex-col';
+    const container = document.getElementById('app-container');
+    if (state === 'serp') {
+        container.classList.remove('state-hero');
+        container.classList.add('state-serp');
+        const resWrapper = document.getElementById('results-wrapper');
+        if (resWrapper) resWrapper.classList.remove('hidden');
+    } else {
+        container.classList.remove('state-serp');
+        container.classList.add('state-hero');
+        const resWrapper = document.getElementById('results-wrapper');
+        if (resWrapper) resWrapper.classList.add('hidden');
+    }
 }
 
 function returnToHero() {
@@ -198,8 +194,109 @@ function returnToHero() {
     document.getElementById('hero-query').value = '';
     document.getElementById('serp-query').value = '';
     document.getElementById('results').innerHTML = '';
-    document.getElementById('results-toolbar').classList.add('hidden');
+    const footer = document.getElementById('results-footer');
+    if (footer) footer.classList.add('hidden');
     document.getElementById('hero-query').focus();
+}
+
+// Navigation Tabs
+function setSearchTab(tabName) {
+    activeTab = tabName;
+    ['all', 'passages', 'documents', 'llm-context'].forEach(tab => {
+        const btn = document.getElementById(`tab-${tab}`);
+        if (!btn) return;
+        if (tab === tabName) {
+            btn.className = "h-10 border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1.5 px-2";
+        } else {
+            btn.className = "h-10 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-white flex items-center gap-1.5 px-2 font-medium";
+        }
+    });
+
+    if (tabName === 'documents') {
+        activeMode = 'discover';
+    } else if (tabName === 'all' || tabName === 'passages') {
+        activeMode = 'search';
+    }
+
+    const currentQuery = document.getElementById('serp-query').value.trim();
+    if (currentQuery) {
+        handleFormSubmit(new Event('submit'), 'serp');
+    }
+}
+
+// Tools Drawer Toggle
+function toggleToolsDrawer() {
+    const drawer = document.getElementById('tools-drawer');
+    const chevron = document.getElementById('tools-chevron');
+    const btn = document.getElementById('tools-toggle-btn');
+    if (!drawer) return;
+
+    toolsOpen = !toolsOpen;
+    if (toolsOpen) {
+        drawer.classList.remove('hidden');
+        if (chevron) chevron.classList.add('rotate-180');
+        if (btn) btn.classList.add('bg-gray-100', 'dark:bg-[#303134]');
+    } else {
+        drawer.classList.add('hidden');
+        if (chevron) chevron.classList.remove('rotate-180');
+        if (btn) btn.classList.remove('bg-gray-100', 'dark:bg-[#303134]');
+    }
+}
+
+function onToolsLimitChange(val) {
+    document.querySelectorAll('.limit-select').forEach(sel => sel.value = val);
+    const query = document.getElementById('serp-query').value.trim();
+    if (query) handleFormSubmit(new Event('submit'), 'serp');
+}
+
+function resetToolsFilters() {
+    document.querySelectorAll('.limit-select').forEach(sel => sel.value = "10");
+    toggleFeature('rerank', true);
+    toggleFeature('exclude_seen', false);
+    toggleFeature('redact_pii', false);
+    showToast("Filters reset to default");
+    const query = document.getElementById('serp-query').value.trim();
+    if (query) handleFormSubmit(new Event('submit'), 'serp');
+}
+
+// Suggestion & Query Helpers
+function runSampleQuery(q) {
+    const heroInput = document.getElementById('hero-query');
+    const serpInput = document.getElementById('serp-query');
+    if (heroInput) heroInput.value = q;
+    if (serpInput) serpInput.value = q;
+    handleFormSubmit(new Event('submit'), 'hero');
+}
+
+function clearQuery() {
+    const input = document.getElementById('serp-query');
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
+}
+
+// Dropdown Helper
+function toggleDropdown(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden');
+}
+
+// Toast Notifications
+let toastTimeout;
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    const msg = document.getElementById('toast-message');
+    if (!toast || !msg) return;
+    msg.textContent = message;
+    toast.classList.remove('translate-y-20', 'opacity-0');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => dismissToast(), 3500);
+}
+
+function dismissToast() {
+    const toast = document.getElementById('toast');
+    if (toast) toast.classList.add('translate-y-20', 'opacity-0');
 }
 
 // Theme Handling
@@ -211,3 +308,17 @@ function applyTheme(mode) {
         btn.classList.toggle('border-blue-500', btn.dataset.theme === mode);
     });
 }
+
+function toggleTheme() {
+    const isDark = document.documentElement.classList.contains('dark');
+    applyTheme(isDark ? 'light' : 'dark');
+    showToast(isDark ? "Switched to Light mode" : "Switched to Dark mode");
+}
+
+// Close Dropdowns on Click Outside
+window.addEventListener('click', (e) => {
+    if (!e.target.closest('#session-menu') && !e.target.closest('button[onclick*="session-menu"]')) {
+        const menu = document.getElementById('session-menu');
+        if (menu && !menu.classList.contains('hidden')) menu.classList.add('hidden');
+    }
+});
