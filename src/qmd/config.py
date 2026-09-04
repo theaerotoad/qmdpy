@@ -67,7 +67,7 @@ class Config:
     default_limit: int = 10
 
     # System Integration
-    allow_open_file: bool = False
+    allow_open_file: bool = True
 
     @classmethod
     def from_dict(cls, data: Dict, config_path: Optional[Path] = None, visited_configs: Optional[Set[Path]] = None) -> 'Config':
@@ -152,7 +152,11 @@ class Config:
         if allow_open_env is not None:
             allow_open_file = allow_open_env.strip().lower() in ("1", "true", "yes", "on")
         else:
-            allow_open_file = bool(data.get('allow_open_file', False) or data.get('allow_open', False))
+            raw_allow_open = data.get('allow_open_file', data.get('allow_open', True))
+            if isinstance(raw_allow_open, str):
+                allow_open_file = raw_allow_open.strip().lower() in ("1", "true", "yes", "on")
+            else:
+                allow_open_file = bool(raw_allow_open)
 
         embed_model = os.environ.get("EMBED_MODEL") or data.get("embed_model") or "EmbeddingGemma 300m"
         rerank_model = os.environ.get("RERANK_MODEL") or data.get("rerank_model") or "Qwen Rerank 0.6B"

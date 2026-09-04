@@ -478,6 +478,9 @@ function isOpenFileSettingEnabled() {
 
 function setOpenFileSetting(enabled) {
     localStorage.setItem('qmd_allow_open_file', enabled ? 'true' : 'false');
+    if (enabled) {
+        window._serverAllowsOpen = true;
+    }
     updateOpenFileButtonVisibility();
 }
 
@@ -485,9 +488,9 @@ function updateOpenFileButtonVisibility(serverAllows = null) {
     if (serverAllows !== null) window._serverAllowsOpen = serverAllows;
     const btn = document.getElementById('btn-open-original');
     if (!btn) return;
-    const isAllowedByServer = window._serverAllowsOpen !== false;
     const isAllowedByClient = isOpenFileSettingEnabled();
-    if (isAllowedByServer && isAllowedByClient) {
+    const isForbiddenByServer = window._serverAllowsOpen === false;
+    if (isAllowedByClient && !isForbiddenByServer) {
         btn.classList.remove('hidden');
     } else {
         btn.classList.add('hidden');
@@ -712,3 +715,10 @@ document.addEventListener('keydown', (e) => {
         closeTreeDrawer();
     }
 });
+
+// Initialize button visibility according to setting on DOM ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => updateOpenFileButtonVisibility());
+} else {
+    updateOpenFileButtonVisibility();
+}
