@@ -1,90 +1,66 @@
 <!-- STATE A: HERO LANDING STATE -->
-<div id="hero-section" class="flex-1 flex-col justify-center items-center px-4 py-12 max-w-4xl mx-auto w-full">
-    <!-- Utility Header -->
-    <div class="w-full flex justify-between items-center mb-14 text-xs text-slate-500 dark:text-slate-400">
-        <button type="button" onclick="openSessionModal()" class="font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2 transition cursor-pointer text-slate-700 dark:text-slate-300 group" title="Manage Session">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Session: <strong class="session-id-val font-semibold text-slate-900 dark:text-white">-</strong></span>
-            <span class="session-excluded-badge hidden bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 text-[10px] font-mono px-1.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50"></span>
-            <svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-        </button>
-        <div class="flex items-center gap-2">
-            <button type="button" onclick="openBatchModal()" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200 py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm" title="Batch Command Runner">
-                <svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                Batch Command
-            </button>
-            <button type="button" class="btn-open-tree bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200 py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm">
-                <svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                Tree
-            </button>
-            <button type="button" onclick="openSettings()" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200 py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm" title="Settings & Collections">
-                <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                Settings
-            </button>
-        </div>
-    </div>
-
-    <!-- Hero Branding -->
-    <div class="text-center mb-8">
-        <h1 class="text-5xl md:text-6xl font-black tracking-tight mb-2 bg-gradient-to-r from-blue-600 via-sky-500 to-indigo-600 dark:from-blue-400 dark:via-sky-300 dark:to-indigo-400 bg-clip-text text-transparent">
+<main id="hero-section" class="flex-1 flex flex-col items-center justify-center px-4 py-12 -mt-10 select-none max-w-4xl mx-auto w-full">
+    
+    <!-- Hero Logo with Signature Purple-Blue Gradient -->
+    <div class="mb-7 text-center">
+        <h1 class="text-6xl sm:text-7xl font-bold tracking-tight qmd-logo-gradient font-sans">
             qmd
         </h1>
-        <p class="text-slate-600 dark:text-slate-400 text-sm md:text-base font-medium tracking-wide">
-            Query Multiple Documents
+        <p class="text-xs sm:text-sm font-normal text-gray-500 dark:text-gray-400 tracking-wide mt-2">
+            Query Multiple Documents • Multi-corpus semantic search
         </p>
     </div>
 
-    <!-- Hero Search Form -->
-    <div class="w-full max-w-2xl space-y-3">
+    <!-- Center Search Input Box -->
+    <div class="w-full max-w-2xl">
         <form id="hero-search-form" onsubmit="handleFormSubmit(event, 'hero')">
-            <div class="relative flex items-center shadow-xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition duration-200">
-                <div class="pl-4 text-slate-400 dark:text-slate-500 pointer-events-none">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                </div>
-                <input type="text" id="hero-query" list="past-queries-list" class="w-full bg-transparent text-slate-900 dark:text-white px-4 py-4 text-base focus:outline-none placeholder-slate-400 dark:placeholder-slate-500" placeholder="Search notes with natural language or keywords (e.g. title:&quot;space&quot;, pii:off)..." autocomplete="off" autofocus required>
-                <div class="pr-2.5 flex items-center gap-1.5 flex-shrink-0">
-                    <button type="button" onclick="openScopePicker()" class="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition" title="Choose Directory / File Scope">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                    </button>
-                    <button type="button" onclick="triggerSearchWithMode('discover', 'hero')" class="bg-purple-600 hover:bg-purple-500 text-white font-medium px-4 py-2.5 rounded-xl transition shadow-sm text-sm flex items-center gap-1.5" title="Discover top matching documents (1 best snippet per document)">
-                        <svg class="w-4 h-4 text-purple-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
-                        <span>Discover</span>
-                    </button>
-                    <button type="button" onclick="triggerSearchWithMode('search', 'hero')" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2.5 rounded-xl transition shadow-sm text-sm flex items-center gap-1.5" title="Search all matching documents in reading order">
-                        <svg class="w-4 h-4 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                        <span>Search</span>
-                    </button>
-                </div>
+            <div class="flex items-center bg-white dark:bg-[#303134] rounded-full border border-google-border dark:border-[#5f6368] hover:shadow-md focus-within:g-search-shadow focus-within:border-transparent transition-all h-12 px-4 gap-3">
+                <svg class="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+                <input 
+                    id="hero-query"
+                    list="past-queries-list"
+                    type="text" 
+                    class="w-full bg-transparent outline-none text-base text-[#202124] dark:text-[#e8eaed] placeholder-gray-400" 
+                    placeholder="Search notes or books with natural language or keyword..."
+                    autocomplete="off"
+                    autofocus
+                    required
+                />
+                <button type="button" onclick="openScopePicker()" title="Select directory or file scope" class="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 p-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                </button>
             </div>
         </form>
 
         <!-- Active Scope Filter Chips -->
-        <div id="hero-scope-chips" class="hidden flex flex-wrap items-center justify-center gap-2 pt-1"></div>
+        <div id="hero-scope-chips" class="hidden flex flex-wrap items-center justify-center gap-2 pt-2"></div>
 
-        <!-- Quick Toggles Bar -->
-        <div class="flex flex-wrap items-center justify-center gap-2 text-xs pt-1">
-            <div class="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 shadow-sm text-slate-500 dark:text-slate-400">
-                <span>Limit:</span>
-                <select id="hero-limit" class="limit-select bg-transparent text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer">
-                    <option value="10">10</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                </select>
-            </div>
+        <!-- Mid-2010s Style Dual Action Buttons -->
+        <div class="flex items-center justify-center gap-3 mt-7">
+            <button 
+                type="button"
+                onclick="triggerSearchWithMode('search', 'hero')" 
+                class="bg-[#f8f9fa] dark:bg-[#303134] hover:bg-[#f1f3f4] dark:hover:bg-[#3c4043] border border-[#f8f9fa] dark:border-[#303134] hover:border-[#dadce0] dark:hover:border-[#5f6368] text-sm text-[#3c4043] dark:text-[#e8eaed] px-5 py-2.5 rounded font-medium shadow-none hover:shadow-sm transition-all"
+            >
+                Corpus Search
+            </button>
+            <button 
+                type="button"
+                onclick="triggerSearchWithMode('discover', 'hero')" 
+                class="bg-[#f8f9fa] dark:bg-[#303134] hover:bg-[#f1f3f4] dark:hover:bg-[#3c4043] border border-[#f8f9fa] dark:border-[#303134] hover:border-[#dadce0] dark:hover:border-[#5f6368] text-sm text-purple-700 dark:text-purple-300 px-5 py-2.5 rounded font-medium shadow-none hover:shadow-sm transition-all flex items-center gap-1.5"
+            >
+                <span>✨ I'm Feeling Inquisitive</span>
+            </button>
+        </div>
 
-            <!-- Search Feature Pills -->
-            <div class="search-toggles flex items-center gap-1.5">
-                <button type="button" onclick="toggleFeature('rerank')" class="feature-btn-rerank bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm" title="Enable LLM Reranker (cheat code: rerank:on)">
-                    <span>✨ Rerank</span>
-                </button>
-                <button type="button" onclick="toggleFeature('exclude_seen')" class="feature-btn-seen bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm" title="Exclude seen chunks from current session (cheat code: seen:exclude)">
-                    <span>👁 Exclude Seen</span>
-                </button>
-                <button type="button" onclick="toggleFeature('redact_pii')" class="feature-btn-pii bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm" title="Redact emails/PII (cheat code: pii:on)">
-                    <span>🛡 Redact PII</span>
-                </button>
-            </div>
+        <!-- Sample Query Suggestions -->
+        <div class="mt-8 text-center text-xs text-gray-400">
+            Try: 
+            <button type="button" onclick="runSampleQuery('winston churchill habits')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">winston churchill habits</button> •
+            <button type="button" onclick="runSampleQuery('quantum entanglement notes')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">quantum entanglement notes</button> •
+            <button type="button" onclick="runSampleQuery('project roadmap Q3')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">project roadmap Q3</button>
         </div>
     </div>
-</div>
+</main>

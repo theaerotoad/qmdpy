@@ -3,12 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>qmd Search</title>
+    <title>qmd - Query Multiple Documents</title>
     <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
-            theme: { extend: {} }
+            theme: {
+                extend: {
+                    colors: {
+                        google: {
+                            blue: '#1a73e8',
+                            hoverBlue: '#174ea6',
+                            link: '#1a0dab',
+                            linkDark: '#8ab4f8',
+                            breadcrumb: '#202124',
+                            breadcrumbDark: '#9aa0a6',
+                            text: '#4d5156',
+                            textDark: '#bdc1c6',
+                            surface: '#ffffff',
+                            surfaceDark: '#202124',
+                            barBg: '#f8f9fa',
+                            barBgDark: '#303134',
+                            border: '#dadce0',
+                            borderDark: '#3c4043'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Roboto', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Arial', 'sans-serif'],
+                        mono: ['SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace']
+                    }
+                }
+            }
         }
     </script>
     <script>
@@ -23,8 +48,197 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') if request.script_root else 'static/css/app.css' }}">
 </head>
-<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-full font-sans antialiased selection:bg-blue-600 selection:text-white transition-colors duration-150">
+<body class="bg-white dark:bg-[#171717] text-[#202124] dark:text-[#e8eaed] min-h-full font-sans antialiased selection:bg-blue-600 selection:text-white transition-colors duration-150">
     <div id="app-container" class="state-hero min-h-screen flex flex-col">
+        
+        <!-- Persistent Top Header -->
+        <header id="global-header" class="w-full border-b border-google-border dark:border-google-borderDark bg-white dark:bg-[#202124] sticky top-0 z-40 transition-colors">
+            <div class="max-w-[1400px] mx-auto px-4 h-16 flex items-center justify-between gap-4">
+                
+                <!-- Left: Logo & Search Box (visible in SERP mode) -->
+                <div class="flex items-center gap-6 flex-1 max-w-4xl">
+                    <!-- Logo with signature purple-blue gradient -->
+                    <a href="javascript:void(0)" onclick="returnToHero()" class="flex items-center gap-1.5 select-none group cursor-pointer flex-shrink-0" title="qmd home">
+                        <span class="text-2xl font-bold tracking-tight qmd-logo-gradient font-sans">qmd</span>
+                        <span class="text-[10px] uppercase font-semibold text-gray-400 group-hover:text-blue-600 tracking-wider transition-colors ml-0.5">docs</span>
+                    </a>
+
+                    <!-- Results Mode Compact Search Input -->
+                    <div id="header-search-bar" class="hidden flex-1 relative max-w-2xl">
+                        <form id="serp-search-form" class="w-full" onsubmit="handleFormSubmit(event, 'serp')">
+                            <div class="flex items-center bg-white dark:bg-[#303134] rounded-full border border-google-border dark:border-[#5f6368] hover:shadow-md focus-within:g-search-shadow focus-within:border-transparent transition-all h-10 px-4 gap-3">
+                                <svg class="w-4 h-4 text-gray-400 dark:text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                                <input 
+                                    id="serp-query"
+                                    list="past-queries-list"
+                                    type="text" 
+                                    class="w-full bg-transparent outline-none text-sm text-[#202124] dark:text-[#e8eaed] placeholder-gray-500" 
+                                    placeholder="Search notes with natural language or keyword..."
+                                    autocomplete="off"
+                                    required
+                                />
+                                <button type="button" onclick="clearQuery()" id="clear-btn" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm font-semibold px-1" title="Clear">
+                                    ✕
+                                </button>
+                                <button type="button" onclick="openScopePicker()" class="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 p-0.5" title="Directory & File Scope Picker">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                                </button>
+                                <span class="w-[1px] h-5 bg-gray-200 dark:bg-gray-600"></span>
+                                <button type="submit" class="text-blue-600 dark:text-blue-400 hover:text-blue-700 font-medium text-xs tracking-wide uppercase px-1">
+                                    Search
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Right: Subdued Utility Cluster -->
+                <div class="flex items-center gap-2.5 shrink-0">
+                    <!-- Session Dropdown -->
+                    <div class="relative">
+                        <button type="button" onclick="toggleDropdown('session-menu')" class="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-[#303134] dark:hover:bg-[#3c4043] px-2.5 py-1.5 rounded-full border border-gray-200 dark:border-transparent transition-colors cursor-pointer" title="Manage Session">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                            <span class="session-id-val font-mono font-medium text-[11px]">-</span>
+                            <span class="session-excluded-badge hidden bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 text-[10px] font-mono px-1 py-0.2 rounded-full border border-amber-200 dark:border-amber-900/50"></span>
+                            <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div id="session-menu" class="hidden absolute right-0 mt-1.5 w-64 bg-white dark:bg-[#282a2d] rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-2 z-50 text-xs text-gray-700 dark:text-gray-200">
+                            <div class="px-3 py-1.5 border-b border-gray-100 dark:border-gray-700">
+                                <p class="font-semibold">Session: <span class="session-id-val font-mono">-</span></p>
+                                <p class="text-[11px] text-gray-400">Exclude seen docs tracking</p>
+                            </div>
+                            <button type="button" onclick="copySessionId('id'); toggleDropdown('session-menu');" class="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between">
+                                <span>Copy Session Key</span>
+                                <span class="text-gray-400 text-[10px]">ID</span>
+                            </button>
+                            <button type="button" onclick="copySessionId('cli'); toggleDropdown('session-menu');" class="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between">
+                                <span>Copy CLI Argument</span>
+                                <span class="text-gray-400 text-[10px]">--session</span>
+                            </button>
+                            <button type="button" onclick="openSessionModal(); toggleDropdown('session-menu');" class="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-slate-700 dark:text-slate-300">
+                                Session Details &amp; History...
+                            </button>
+                            <button type="button" onclick="generateNewSession(); toggleDropdown('session-menu');" class="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-blue-600 dark:text-blue-400 font-medium border-t border-gray-100 dark:border-gray-700">
+                                + Start Fresh Session
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Corpus Tree Directory Trigger -->
+                    <button type="button" onclick="openTreeDrawer()" title="Corpus Tree Directory" class="btn-open-tree p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#303134] rounded-full transition-colors" aria-label="Tree Directory">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                        </svg>
+                    </button>
+
+                    <!-- Batch Command Runner Trigger -->
+                    <button type="button" onclick="openBatchModal()" title="Batch Command Runner" class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#303134] rounded-full transition-colors" aria-label="Batch Command">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </button>
+
+                    <!-- Dark/Light Theme Toggle -->
+                    <button type="button" onclick="toggleTheme()" title="Toggle Dark/Light Mode" class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#303134] rounded-full transition-colors">
+                        <svg id="theme-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                        </svg>
+                    </button>
+
+                    <!-- Settings Button -->
+                    <button type="button" onclick="openSettings()" title="Settings &amp; Collections" class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#303134] rounded-full transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    </button>
+
+                    <!-- Avatar -->
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold shadow-sm select-none cursor-pointer" title="Researcher Profile">
+                        W
+                    </div>
+                </div>
+            </div>
+
+            <!-- Secondary Navigation & Tools Bar -->
+            <div id="results-nav-bar" class="border-t border-google-border dark:border-google-borderDark bg-white dark:bg-[#202124] text-xs text-gray-600 dark:text-gray-300 select-none">
+                <div class="max-w-[1400px] mx-auto px-4 flex items-center justify-between">
+                    <!-- Search Type Tabs -->
+                    <div class="flex items-center gap-1 sm:gap-6 pl-0 sm:pl-28">
+                        <button type="button" onclick="setSearchTab('all')" id="tab-all" class="h-10 border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1.5 px-2">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            <span>All Results</span>
+                        </button>
+                        <button type="button" onclick="setSearchTab('passages')" id="tab-passages" class="h-10 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-white flex items-center gap-1.5 px-2 font-medium">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            <span>Passages</span>
+                        </button>
+                        <button type="button" onclick="setSearchTab('documents')" id="tab-documents" class="h-10 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-white flex items-center gap-1.5 px-2 font-medium">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                            <span>Documents</span>
+                        </button>
+                        <button type="button" onclick="setSearchTab('llm-context')" id="tab-llm-context" class="h-10 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-white flex items-center gap-1.5 px-2 font-medium text-purple-700 dark:text-purple-400">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                            <span>LLM Context</span>
+                        </button>
+                    </div>
+
+                    <!-- Tools Drawer Toggle -->
+                    <div class="flex items-center gap-2">
+                        <button 
+                            type="button"
+                            id="tools-toggle-btn"
+                            onclick="toggleToolsDrawer()" 
+                            class="px-3 py-1.5 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#303134] font-medium flex items-center gap-1.5 transition-colors"
+                        >
+                            <span>Tools</span>
+                            <svg id="tools-chevron" class="w-3.5 h-3.5 text-gray-500 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Collapsible Tools Drawer -->
+                <div id="tools-drawer" class="hidden border-t border-gray-100 dark:border-gray-800 bg-[#f8f9fa] dark:bg-[#282a2d] py-2 px-4 transition-drawer">
+                    <div class="max-w-[1400px] mx-auto sm:pl-28 flex flex-wrap items-center gap-4 text-xs">
+                        <!-- Limit Selector -->
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-gray-500 dark:text-gray-400">Limit:</span>
+                            <select id="filter-limit" onchange="onToolsLimitChange(this.value)" class="limit-select bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs outline-none focus:border-blue-500 text-[#202124] dark:text-[#e8eaed]">
+                                <option value="5">5 results</option>
+                                <option value="10" selected>10 results</option>
+                                <option value="20">20 results</option>
+                                <option value="50">50 results</option>
+                            </select>
+                        </div>
+
+                        <!-- Rerank Toggle -->
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" id="filter-rerank" onchange="toggleFeature('rerank', this.checked)" class="rounded text-blue-600 focus:ring-0 w-3.5 h-3.5" />
+                            <span class="text-gray-700 dark:text-gray-300">Semantic Reranker</span>
+                        </label>
+
+                        <!-- Exclude Seen Toggle -->
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" id="filter-exclude-seen" onchange="toggleFeature('exclude_seen', this.checked)" class="rounded text-blue-600 focus:ring-0 w-3.5 h-3.5" />
+                            <span class="text-gray-700 dark:text-gray-300">Exclude seen docs</span>
+                        </label>
+
+                        <!-- Redact PII Toggle -->
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" id="filter-redact" onchange="toggleFeature('redact_pii', this.checked)" class="rounded text-blue-600 focus:ring-0 w-3.5 h-3.5" />
+                            <span class="text-gray-700 dark:text-gray-300">Redact PII</span>
+                        </label>
+
+                        <!-- Reset Tools Button -->
+                        <button type="button" onclick="resetToolsFilters()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline text-[11px] ml-auto">
+                            Reset filters
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
         <!-- Hero Landing State -->
         {% include 'partials/hero.html' %}
 
@@ -32,7 +246,28 @@
         {% include 'partials/serp.html' %}
     </div>
 
-    <!-- Modals (Session, Scope Picker, Settings) -->
+    <!-- Floating Quick-Action Dock (Bottom-Right) -->
+    <div class="floating-dock flex flex-col items-center gap-2 bg-[#202124]/90 dark:bg-[#303134]/90 backdrop-blur text-white p-1.5 rounded-2xl shadow-2xl border border-gray-700/60 z-30">
+        <button type="button" onclick="openTreeDrawer()" class="p-2 hover:bg-white/10 rounded-xl transition" title="Collection Tree">
+            <svg class="w-4 h-4 text-gray-300" fill="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>
+        </button>
+        <button type="button" onclick="openBatchModal()" class="p-2 hover:bg-white/10 rounded-xl transition" title="Batch Runner &amp; AI Assist">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </button>
+        <button type="button" onclick="window.scrollTo({top: 0, behavior: 'smooth'})" class="p-2 hover:bg-white/10 rounded-xl transition" title="Scroll to Top">
+            <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+        </button>
+    </div>
+
+    <!-- Notification Toast (Material Snackbar) -->
+    <div id="toast" class="fixed bottom-6 left-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 flex items-center gap-3 bg-[#323232] text-white text-xs px-4 py-3 rounded shadow-lg max-w-md pointer-events-none">
+        <span id="toast-message">Copied to clipboard</span>
+        <button type="button" onclick="dismissToast()" class="text-blue-400 hover:text-blue-300 uppercase font-semibold text-[11px] tracking-wider ml-auto pointer-events-auto">
+            Dismiss
+        </button>
+    </div>
+
+    <!-- Modals (Session, Scope Picker, Settings, Batch) -->
     {% include 'partials/modals.html' %}
 
     <!-- Slide-over Drawers (Collection Tree, Document Viewer) -->
