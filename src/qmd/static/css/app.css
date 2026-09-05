@@ -112,3 +112,23 @@
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+/* Responsive Session Pill Truncation */
+.session-id-badge {
+  display: inline-block;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 4ch;
+}
+@media (min-width: 640px) {
+  .session-id-badge {
+    max-width: 6ch;
+  }
+}
+@media (min-width: 768px) {
+  .session-id-badge {
+    max-width: none;
+  }
+}
