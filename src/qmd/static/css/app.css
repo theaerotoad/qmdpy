@@ -103,3 +103,12 @@
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
 .dark ::-webkit-scrollbar-thumb { background: #334155; }
+
+/* Clean Horizontal Scrolling for Mobile Navigation Bar */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
