@@ -1,3 +1,11 @@
+import sys
+from unittest.mock import MagicMock
+
+# Preemptively stub onnxruntime before pymupdf4llm import to prevent native C-extension segfault
+for _mod in ("onnxruntime", "onnxruntime.capi", "onnxruntime.capi._pybind_state"):
+    if _mod not in sys.modules:
+        sys.modules[_mod] = MagicMock()
+
 import pytest
 from pathlib import Path
 from qmd.converters import convert_to_markdown, _format_matrix_to_md_table, is_supported_file

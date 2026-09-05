@@ -1,7 +1,15 @@
+import sys
+from unittest.mock import MagicMock
 import pytest
 import sqlite3
 from pathlib import Path
 from qmd.db import get_connection, init_schema
+
+# Preemptively stub onnxruntime before tests run to prevent segmentation faults
+# caused by native ONNX / OpenMP runtime conflicts when pymupdf4llm is imported after spaCy/BLIS.
+for _mod in ("onnxruntime", "onnxruntime.capi", "onnxruntime.capi._pybind_state"):
+    if _mod not in sys.modules:
+        sys.modules[_mod] = MagicMock()
 
 @pytest.fixture
 def temp_db_path(tmp_path):
