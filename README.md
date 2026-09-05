@@ -1,6 +1,6 @@
 # QMD Python Adaptation - Technical Architecture & Usage Guide
 
-QMD(py) is a quick (markdown-based) local search system.  It's intended to be lightweight, modular, and relatively easy for folks to set up. It was originally inspired by Tobias Lütke's original [qmd](https://github.com/tobi).  On the off chance you're looking for a solution and found this repo, you're almost certainly better off with that project, unless you want super-lightweight python.
+QMD(py) is a quick (markdown-based) local search system, for "Query Multiple Documents".  It's intended to be lightweight, modular, and relatively easy for folks to set up. It was originally inspired by Tobias Lütke's original [qmd](https://github.com/tobi).  On the off chance you're looking for a solution and found this repo, you're almost certainly better off with that project, unless you want super-lightweight python, and a kind of attractive web front end to boot.
 
 This project tries to solve two main problems:
 
@@ -443,6 +443,6 @@ hyde: {complete hypothetical document passage from Step 2 on a SINGLE LINE}
 * [ ] Cursor based paging (not sure yet how to best handle this)
 * [ ] Allow (if available) additional document level or directory level summary / classification and metadata that could be used in searching or revealed when sharing results and documents ("File is a review document for XXXX..." "Directory contains PDF assembly drawings..." "Directory is listing of non-fiction books concerning epidemiological issues")
 * [ ] Order multi-file listings by original directory order
-* [ ] Implement a poor-man's clipboard-based RAG/MCP loop--first results copied to LLM include instructions of how to pass back xml-formatted queries--let the user paste those into QMD's web, return to LLM as needed.
+* [x] Implement a poor-man's clipboard-based RAG/MCP loop--first results copied to LLM include instructions of how to pass back xml-formatted queries--let the user paste those into QMD's web, return to LLM as needed.
 * [ ] During indexing, detect if we have duplicate files, especially a .md or .pdf version of the same other file type, and optionally skip indexing
 * [ ] Add search-within-sequence-range
