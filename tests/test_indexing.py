@@ -652,7 +652,7 @@ def test_pdf_fallback_not_treated_as_indexing_error(db_conn, temp_db_path, tmp_p
     notes_dir.mkdir()
 
     config = Config(
-        collections={"test": CollectionConfig(path=str(notes_dir))},
+        collections={"test": CollectionConfig(path=str(notes_dir), file_extensions=["md", "pdf"])},
         db_path=str(temp_db_path)
     )
     store = Store(config, connection=db_conn)
