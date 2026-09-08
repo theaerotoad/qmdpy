@@ -781,3 +781,76 @@ def test_convert_pptx_real_presentation(tmp_path):
     md = convert_to_markdown(pptx_path)
     assert "## Slide 1: Intro Title" in md
     assert "Subtitle Body" in md
+
+
+def test_vision_api_verbose_output(monkeypatch):
+    import httpx
+    from qmd.converters import _process_image_vision_api
+    from qmd.config import Config
+
+    class MockResponse:
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {
+                "detections": [
+                    {"label": "unknown_layout_box", "confidence": 0.95, "content": "mystery layout text"}
+                ]
+            }
+
+    monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: MockResponse())
+
+    # Quiet mode: empty because label is unrecognized
+    cfg_quiet = Config.from_dict({"vision_url": "http://127.0.0.1:9000"})
+    res_quiet = _process_image_vision_api(b"fakebytes", "chart.png", cfg_quiet)
+    assert res_quiet == ""
+
+    # Verbose mode: renders inline debug block with full raw JSON
+    cfg_verbose = Config.from_dict({"vision_url": "http://127.0.0.1:9000"})
+    cfg_verbose.verbose = True
+    res_verbose = _process_image_vision_api(b"fakebytes", "chart.png", cfg_verbose)
+    assert "[DEBUG: Vision API / Image Layout for `chart.png`]" in res_verbose
+    assert "unknown_layout_box" in res_verbose
+    assert "mystery layout text" in res_verbose
+    assert "No content extracted by built-in parser" in res_verbose
+
+
+def test_vision_api_verbose_error(monkeypatch):
+    import httpx
+    from qmd.converters import _process_image_vision_api
+    from qmd.config import Config
+
+    def mock_post_fail(*args, **kwargs):
+        raise httpx.ConnectError("Connection refused by layout service")
+
+    monkeypatch.setattr(httpx, "post", mock_post_fail)
+
+    cfg = Config.from_dict({"vision_url": "http://127.0.0.1:9000"})
+    cfg.verbose = True
+    errors = []
+    res = _process_image_vision_api(b"fakebytes", "chart.png", cfg, errors_out=errors)
+    assert "[DEBUG: Vision API Error for `chart.png`" in res
+    assert "Connection refused" in res
+    assert len(errors) == 1
+
+
+def test_multimodal_verbose_output(monkeypatch):
+    from qmd.converters import _process_image_multimodal_llm
+    from qmd.config import Config
+
+    class MockLLMClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def process_image(self, image_bytes, filename):
+            return "Detailed image description from multimodal model"
+
+    monkeypatch.setattr("qmd.llm.LLMClient", MockLLMClient)
+
+    cfg = Config.from_dict({
+        "multimodal_url": "http://127.0.0.1:8888",
+        "multimodal_model": "gpt-4o"
+    })
+    cfg.verbose = True
+    res = _process_image_multimodal_llm(b"fakebytes", "diagram.png", cfg)
+    assert "[DEBUG: Multimodal LLM for `diagram.png`]" in res
+    assert "Detailed image description from multimodal model" in res

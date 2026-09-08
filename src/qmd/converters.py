@@ -250,6 +250,15 @@ def _is_image_processing_enabled(config) -> bool:
     )
 
 
+def _is_verbose(config=None) -> bool:
+    import os
+    if os.environ.get("QMD_VERBOSE") == "1":
+        return True
+    if config is not None:
+        return bool(getattr(config, "verbose", False) or getattr(config, "verbose_images", False))
+    return False
+
+
 def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config, errors_out: Optional[List[dict]] = None) -> str:
     if not config or not image_bytes:
         return ""
@@ -264,11 +273,26 @@ def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config, err
             multimodal_prompt=getattr(config, "multimodal_prompt", None),
             timeout=getattr(config, "request_timeout", 120.0),
         )
-        return client.process_image(image_bytes, filename=filename)
+        res = client.process_image(image_bytes, filename=filename)
+        if _is_verbose(config):
+            debug_lines = [
+                f"> **[DEBUG: Multimodal LLM for `{filename}`]**"
+            ]
+            if res:
+                debug_lines.extend([
+                    f"> **Model Output ({len(res)} chars):**",
+                    res
+                ])
+            else:
+                debug_lines.append("> *(Model returned empty response)*")
+            return "\n\n" + "\n".join(debug_lines) + "\n\n"
+        return res
     except Exception as e:
         print(f"Warning: Multimodal LLM error for {filename}: {e}")
         if errors_out is not None:
             errors_out.append({"error_type": "multimodal_image_error", "message": f"{filename}: {e}"})
+        if _is_verbose(config):
+            return f"\n\n> **[DEBUG: Multimodal LLM Error for `{filename}`: {e}]**\n\n"
         return ""
 
 
@@ -312,14 +336,17 @@ def _process_images_concurrently(
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(_process_image, b, fn, config, errors_out) for b, fn in items]
         results = []
-        for f in futures:
+        for (b, fn), f in zip(items, futures):
             try:
                 results.append(f.result())
             except Exception as e:
                 print(f"Warning: Concurrent image processing error: {e}")
                 if errors_out is not None:
                     errors_out.append({"error_type": "image_processing_error", "message": str(e)})
-                results.append("")
+                if _is_verbose(config):
+                    results.append(f"\n\n> **[DEBUG: Image Processing Worker Error for `{fn}`: {e}]**\n\n")
+                else:
+                    results.append("")
         return results
 
 
@@ -379,11 +406,42 @@ def _process_image_vision_api(image_bytes: bytes, filename: str, config, errors_
                 if d.get("text"):
                     md_lines.append(d["text"].strip())
                     
-        return "\n\n".join(md_lines)
+        parsed_result = "\n\n".join(md_lines)
+
+        if _is_verbose(config):
+            import json
+            try:
+                raw_json = json.dumps(data, indent=2, ensure_ascii=False)
+            except Exception:
+                raw_json = str(data)
+
+            debug_lines = [
+                f"> **[DEBUG: Vision API / Image Layout for `{filename}`]**",
+                "> **Raw Endpoint Response:**",
+                "```json",
+                raw_json,
+                "```"
+            ]
+            if parsed_result:
+                debug_lines.extend([
+                    f"> **Parsed Content ({len(md_lines)} item(s)):**",
+                    parsed_result
+                ])
+            else:
+                debug_lines.append("> *(No content extracted by built-in parser from above detections)*")
+
+            return "\n\n" + "\n".join(debug_lines) + "\n\n"
+
+        return parsed_result
     except Exception as e:
+        resp_details = ""
+        if 'resp' in locals() and hasattr(resp, 'text') and resp.text:
+            resp_details = f"\n> **Response Body:**\n```\n{resp.text[:2000]}\n```"
         print(f"Warning: Vision API error for {filename}: {e}")
         if errors_out is not None:
             errors_out.append({"error_type": "vision_api_error", "message": f"{filename}: {e}"})
+        if _is_verbose(config):
+            return f"\n\n> **[DEBUG: Vision API Error for `{filename}`: {e}]**{resp_details}\n\n"
         return ""
 
 
@@ -1123,6 +1181,7 @@ def main():
     )
     parser.add_argument("file_path", type=str, help="Path to the document to convert")
     parser.add_argument("-o", "--output", type=str, help="Optional output path to save the Markdown content")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debug output (shows inline raw responses from image endpoints)")
     parser.add_argument("--clean", action="store_true", help="Output only the raw converted Markdown without headers, stats, or metadata")
     parser.add_argument("--show-blocks", action="store_true", help="Display parsed semantic blocks from docparse")
     parser.add_argument("--show-chunks", action="store_true", help="Display chunked content ready for embedding")
@@ -1143,8 +1202,12 @@ def main():
     if not is_supported_file(file_path):
         print(f"Warning: Extension '{file_path.suffix}' is not explicitly supported. Attempting plain text conversion...", file=sys.stderr)
 
+    if args.verbose:
+        import os
+        os.environ["QMD_VERBOSE"] = "1"
+
     mock_config = None
-    if args.vision_url or args.multimodal_url or args.multimodal_model:
+    if args.vision_url or args.multimodal_url or args.multimodal_model or args.verbose:
         class MockConfig:
             vision_url = args.vision_url
             vision_api_key = args.vision_api_key
@@ -1153,6 +1216,7 @@ def main():
             multimodal_model = args.multimodal_model
             max_image_concurrency = args.max_image_concurrency
             request_timeout = 120.0
+            verbose = args.verbose
         mock_config = MockConfig()
 
     try:
