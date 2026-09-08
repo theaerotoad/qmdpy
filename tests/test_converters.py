@@ -700,9 +700,11 @@ def test_convert_pptx_no_embedded_image(tmp_path, monkeypatch):
                 paragraphs = [Paragraph()]
             return TextFrame()
 
+    class MockShapes(list):
+        title = None
+
     class MockSlide:
-        shapes = [MockShape()]
-        shapes.title = None
+        shapes = MockShapes([MockShape()])
 
     class MockPresentation:
         slides = [MockSlide()]
@@ -740,9 +742,11 @@ def test_convert_pptx_no_embedded_image_with_vision_config(tmp_path, monkeypatch
                 paragraphs = [Paragraph()]
             return TextFrame()
 
+    class MockShapes(list):
+        title = None
+
     class MockSlide:
-        shapes = [MockShape()]
-        shapes.title = None
+        shapes = MockShapes([MockShape()])
 
     class MockPresentation:
         slides = [MockSlide()]

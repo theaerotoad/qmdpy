@@ -860,18 +860,21 @@ def _convert_pptx(path: Path, config=None, errors_out: Optional[List[dict]] = No
                 except Exception:
                     shape_image = None
 
+            image_extracted = False
             if shape_image is not None:
                 try:
                     image_bytes = shape_image.blob
                     filename = getattr(shape_image, "filename", "slide_image.png")
                     slide_images.append((image_bytes, filename))
+                    image_extracted = True
                 except Exception:
                     pass
-            elif shape.has_text_frame:
+
+            if not image_extracted and getattr(shape, "has_text_frame", False):
                 text = shape.text_frame.text.strip()
                 if not text:
                     continue
-                if shape == slide.shapes.title:
+                if shape == getattr(slide.shapes, "title", None):
                     if hasattr(shape, "element"):
                         parsed_title = _extract_text_and_math(shape.element).strip()
                         slide_title = parsed_title.replace('\n', ' ')
@@ -884,10 +887,10 @@ def _convert_pptx(path: Path, config=None, errors_out: Optional[List[dict]] = No
                         else:
                             p_text = paragraph.text.strip()
                         if p_text:
-                            level = paragraph.level
+                            level = getattr(paragraph, "level", 0)
                             indent = "  " * level
                             slide_texts.append(f"{indent}- {p_text}")
-            elif shape.has_table:
+            elif not image_extracted and getattr(shape, "has_table", False):
                 table_matrix = []
                 for row in shape.table.rows:
                     table_matrix.append([cell.text.strip().replace('\n', ' ') for cell in row.cells])
