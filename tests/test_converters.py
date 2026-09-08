@@ -641,3 +641,139 @@ def test_converter_main_inferred_date_output(tmp_path, capsys, monkeypatch):
     captured = capsys.readouterr()
     assert "Inferred Date:" in captured.out
     assert "2026-03-30" in captured.out
+
+
+def test_converter_main_clean_output(tmp_path, capsys, monkeypatch):
+    import sys
+    from qmd.converters import main
+
+    f = tmp_path / "2026-03-30_summary.md"
+    f.write_text("# Project Summary\nAll done.", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "argv", ["converters.py", str(f), "--clean"])
+    main()
+
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "# Project Summary\nAll done."
+    assert "Inferred Date:" not in captured.out
+    assert "CONVERTED MARKDOWN" not in captured.out
+    assert "Stats:" not in captured.out
+    assert "=" * 10 not in captured.out
+
+
+def test_converter_main_clean_output_with_file_output(tmp_path, capsys, monkeypatch):
+    import sys
+    from qmd.converters import main
+
+    src = tmp_path / "input.md"
+    src.write_text("# Direct Output\nJust the markdown.", encoding="utf-8")
+    out_file = tmp_path / "output.md"
+
+    monkeypatch.setattr(sys, "argv", ["converters.py", str(src), "--clean", "-o", str(out_file)])
+    main()
+
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "# Direct Output\nJust the markdown."
+    assert "Saved output to:" not in captured.out
+    assert out_file.read_text(encoding="utf-8") == "# Direct Output\nJust the markdown."
+
+
+def test_convert_pptx_no_embedded_image(tmp_path, monkeypatch):
+    import pptx
+    from qmd.converters import convert_to_markdown
+
+    class MockShape:
+        has_table = False
+        has_text_frame = True
+
+        @property
+        def image(self):
+            raise ValueError("no embedded image")
+
+        @property
+        def text_frame(self):
+            class Paragraph:
+                text = "Slide content paragraph"
+                level = 0
+            class TextFrame:
+                text = "Slide content paragraph"
+                paragraphs = [Paragraph()]
+            return TextFrame()
+
+    class MockSlide:
+        shapes = [MockShape()]
+        shapes.title = None
+
+    class MockPresentation:
+        slides = [MockSlide()]
+
+    monkeypatch.setattr(pptx, "Presentation", lambda path: MockPresentation())
+
+    dummy_pptx = tmp_path / "sample.pptx"
+    dummy_pptx.write_bytes(b"dummy pptx")
+
+    md = convert_to_markdown(dummy_pptx)
+    assert "## Slide 1" in md
+    assert "Slide content paragraph" in md
+
+
+def test_convert_pptx_no_embedded_image_with_vision_config(tmp_path, monkeypatch):
+    import pptx
+    from qmd.converters import convert_to_markdown
+    from qmd.config import Config
+
+    class MockShape:
+        has_table = False
+        has_text_frame = True
+
+        @property
+        def image(self):
+            raise ValueError("no embedded image")
+
+        @property
+        def text_frame(self):
+            class Paragraph:
+                text = "Slide text with vision config"
+                level = 0
+            class TextFrame:
+                text = "Slide text with vision config"
+                paragraphs = [Paragraph()]
+            return TextFrame()
+
+    class MockSlide:
+        shapes = [MockShape()]
+        shapes.title = None
+
+    class MockPresentation:
+        slides = [MockSlide()]
+
+    monkeypatch.setattr(pptx, "Presentation", lambda path: MockPresentation())
+
+    dummy_pptx = tmp_path / "sample_vision.pptx"
+    dummy_pptx.write_bytes(b"dummy pptx")
+
+    cfg = Config.from_dict({"vision_url": "http://127.0.0.1:9999"})
+    errors = []
+    md = convert_to_markdown(dummy_pptx, config=cfg, errors_out=errors)
+    assert "## Slide 1" in md
+    assert "Slide text with vision config" in md
+    assert len(errors) == 0
+
+
+def test_convert_pptx_real_presentation(tmp_path):
+    try:
+        from pptx import Presentation
+    except ImportError:
+        pytest.skip("python-pptx is not installed")
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[0])
+    slide.shapes.title.text = "Intro Title"
+    slide.placeholders[1].text = "Subtitle Body"
+
+    pptx_path = tmp_path / "real_test.pptx"
+    prs.save(str(pptx_path))
+
+    md = convert_to_markdown(pptx_path)
+    assert "## Slide 1: Intro Title" in md
+    assert "Subtitle Body" in md

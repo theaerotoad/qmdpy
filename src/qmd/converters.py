@@ -853,10 +853,17 @@ def _convert_pptx(path: Path, config=None, errors_out: Optional[List[dict]] = No
         slide_images = []
 
         for shape in slide.shapes:
-            if hasattr(shape, "image") and config and _is_image_processing_enabled(config):
+            shape_image = None
+            if config and _is_image_processing_enabled(config):
                 try:
-                    image_bytes = shape.image.blob
-                    filename = getattr(shape.image, "filename", "slide_image.png")
+                    shape_image = getattr(shape, "image", None)
+                except Exception:
+                    shape_image = None
+
+            if shape_image is not None:
+                try:
+                    image_bytes = shape_image.blob
+                    filename = getattr(shape_image, "filename", "slide_image.png")
                     slide_images.append((image_bytes, filename))
                 except Exception:
                     pass
@@ -1113,6 +1120,7 @@ def main():
     )
     parser.add_argument("file_path", type=str, help="Path to the document to convert")
     parser.add_argument("-o", "--output", type=str, help="Optional output path to save the Markdown content")
+    parser.add_argument("--clean", action="store_true", help="Output only the raw converted Markdown without headers, stats, or metadata")
     parser.add_argument("--show-blocks", action="store_true", help="Display parsed semantic blocks from docparse")
     parser.add_argument("--show-chunks", action="store_true", help="Display chunked content ready for embedding")
     parser.add_argument("--vision-url", type=str, help="URL for the Vision API to test image extraction")
@@ -1150,22 +1158,26 @@ def main():
         print(f"Error converting {file_path}: {e}", file=sys.stderr)
         sys.exit(1)
 
-    print("=" * 80)
-    print(f"CONVERTED MARKDOWN ({file_path.name})")
-    print("=" * 80)
-    print(md_content)
-    print("=" * 80)
-    print(f"Stats: {len(md_content)} characters, {len(md_content.splitlines())} lines")
-    inferred_date = guess_document_date(file_path, md_content)
-    date_str = inferred_date if inferred_date else "None detected"
-    print(f"Inferred Date: {date_str}")
+    if args.clean:
+        print(md_content)
+    else:
+        print("=" * 80)
+        print(f"CONVERTED MARKDOWN ({file_path.name})")
+        print("=" * 80)
+        print(md_content)
+        print("=" * 80)
+        print(f"Stats: {len(md_content)} characters, {len(md_content.splitlines())} lines")
+        inferred_date = guess_document_date(file_path, md_content)
+        date_str = inferred_date if inferred_date else "None detected"
+        print(f"Inferred Date: {date_str}")
 
     if args.output:
         out_path = Path(args.output).expanduser().resolve()
         out_path.write_text(md_content, encoding="utf-8")
-        print(f"\nSaved output to: {out_path}")
+        if not args.clean:
+            print(f"\nSaved output to: {out_path}")
 
-    if args.show_blocks or args.show_chunks:
+    if not args.clean and (args.show_blocks or args.show_chunks):
         try:
             from qmd.docparse.parser import parse_markdown_to_blocks
             from qmd.docparse.grouper import group_blocks_into_chunks
