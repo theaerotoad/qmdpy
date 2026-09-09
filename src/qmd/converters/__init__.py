@@ -17,6 +17,8 @@ from .math import (
     _extract_text_and_math,
 )
 from .images import (
+    _clean_vision_markdown,
+    clean_vision_text,
     _is_image_processing_enabled,
     _is_verbose,
     _process_image_multimodal_llm,
@@ -596,6 +598,8 @@ __all__ = [
     "_mathml_to_latex",
     "_omml_to_latex",
     "_extract_text_and_math",
+    "_clean_vision_markdown",
+    "clean_vision_text",
     "_is_image_processing_enabled",
     "_is_verbose",
     "_process_image_multimodal_llm",

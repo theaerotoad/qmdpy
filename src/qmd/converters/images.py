@@ -14,6 +14,153 @@ def _get_converter_fn(name: str, fallback):
     return fallback
 
 
+def _clean_vision_markdown(text: str) -> tuple[str, list[str]]:
+    """
+    Cleans vision and multimodal OCR output by removing spurious junk lines,
+    runaway character loops, symbol soup, and repetitive hallucination loops.
+    
+    Returns:
+        (cleaned_text, omitted_lines)
+    """
+    if not text:
+        return "", []
+
+    lines = text.splitlines()
+    cleaned_lines: list[str] = []
+    omitted_lines: list[str] = []
+    
+    in_code_block = False
+    last_norm_line: Optional[str] = None
+    consecutive_repeats = 0
+
+    for line in lines:
+        stripped = line.strip()
+        
+        # 1. Blank lines: preserve structure, reset repeat tracking
+        if not stripped:
+            cleaned_lines.append("")
+            last_norm_line = None
+            consecutive_repeats = 0
+            continue
+
+        # 2. Fenced code blocks: preserve verbatim
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            cleaned_lines.append(line)
+            last_norm_line = None
+            consecutive_repeats = 0
+            continue
+
+        if in_code_block:
+            cleaned_lines.append(line)
+            continue
+
+        # 3. Markdown tables: preserve valid rows & separators
+        if stripped.startswith("|") and stripped.endswith("|"):
+            # Check for non-empty table row (not just pipe spam like |||||||)
+            pipe_content = stripped.replace("|", "").strip()
+            if pipe_content:
+                cleaned_lines.append(line)
+                last_norm_line = stripped.lower()
+                continue
+            else:
+                omitted_lines.append(line)
+                continue
+
+        # 4. Display or inline math
+        if stripped.startswith("$$") or (stripped.startswith("$") and stripped.endswith("$") and len(stripped) > 2):
+            cleaned_lines.append(line)
+            last_norm_line = None
+            consecutive_repeats = 0
+            continue
+
+        # 5. Standalone Markdown images or links
+        if re.match(r'^[ \t]*!\[.*?\]\(.*?\)[ \t]*$', line) or re.match(r'^[ \t]*\[.*?\]\(.*?\)[ \t]*$', line):
+            cleaned_lines.append(line)
+            last_norm_line = None
+            consecutive_repeats = 0
+            continue
+
+        # 6. Legitimate thematic breaks / horizontal rules (---, ***, ___)
+        if re.match(r'^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$', line):
+            cleaned_lines.append(line)
+            last_norm_line = None
+            consecutive_repeats = 0
+            continue
+
+        # Extract content after common markdown prefixes (headings, blockquotes, bullets)
+        content = re.sub(r'^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+\.\s+)', '', stripped).strip()
+
+        # If line had a prefix but empty content, omit
+        if not content:
+            omitted_lines.append(line)
+            continue
+
+        # Normalize dot leaders (e.g. "Chapter 1 .......... 15" -> "Chapter 1 ... 15")
+        normalized_content = re.sub(r'\.{4,}', ' ... ', content)
+
+        # Quality Check A: Zero alphanumeric characters (pure symbol soup)
+        if not re.search(r'[a-zA-Z0-9]', normalized_content):
+            omitted_lines.append(line)
+            continue
+
+        # Quality Check B: Corrupt Unicode replacement characters or non-printable ASCII
+        if normalized_content.count('\ufffd') >= 2 or (normalized_content.count('\ufffd') / len(normalized_content)) > 0.1:
+            omitted_lines.append(line)
+            continue
+        if any(ord(c) < 32 and c not in ('\t', '\n') for c in normalized_content):
+            omitted_lines.append(line)
+            continue
+
+        # Quality Check C: Extreme symbol/punctuation density (> 75% symbols for 8+ char lines)
+        non_ws = [c for c in normalized_content if not c.isspace()]
+        if len(non_ws) >= 8:
+            alnum_count = sum(1 for c in non_ws if c.isalnum())
+            if (alnum_count / len(non_ws)) < 0.25:
+                omitted_lines.append(line)
+                continue
+
+        # Quality Check D: Runaway character repetition loop (6+ identical consecutive characters)
+        if re.search(r'([^\s])\1{5,}', normalized_content):
+            omitted_lines.append(line)
+            continue
+
+        # Quality Check E: Non-word vowel-less consonant gibberish tokens (15+ chars)
+        tokens = normalized_content.split()
+        if any(len(tok) >= 15 and tok.isalpha() and not re.search(r'[aeiouyAEIOUY]', tok) for tok in tokens):
+            omitted_lines.append(line)
+            continue
+
+        # Quality Check F: Repetitive line hallucination loop (drop 3rd and subsequent identical lines)
+        norm_line = stripped.lower()
+        if norm_line == last_norm_line:
+            consecutive_repeats += 1
+            if consecutive_repeats >= 2:
+                omitted_lines.append(line)
+                continue
+        else:
+            last_norm_line = norm_line
+            consecutive_repeats = 0
+
+        # Line passed all checks: use dot-leader cleaned line if modified
+        if normalized_content != content:
+            prefix_match = re.match(r'^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+\.\s+)', stripped)
+            prefix = prefix_match.group(0) if prefix_match else ""
+            cleaned_lines.append(f"{prefix}{normalized_content}")
+        else:
+            cleaned_lines.append(line)
+
+    result = "\n".join(cleaned_lines)
+    result = re.sub(r'\n{3,}', '\n\n', result).strip()
+    return result, omitted_lines
+
+
+def clean_vision_text(text: str) -> str:
+    """Convenience helper returning cleaned vision text without metadata."""
+    cleaned, _ = _clean_vision_markdown(text)
+    return cleaned
+
+
 def _is_image_processing_enabled(config) -> bool:
     if not config:
         return False
@@ -47,19 +194,28 @@ def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config, err
             timeout=getattr(config, "request_timeout", 120.0),
         )
         res = client.process_image(image_bytes, filename=filename)
+        cleaned_res, omitted_lines = _clean_vision_markdown(res)
+
         if _is_verbose(config):
             debug_lines = [
                 f"> **[DEBUG: Multimodal LLM for `{filename}`]**"
             ]
             if res:
+                output_preview = cleaned_res if cleaned_res else "*(All output filtered as spurious junk)*"
                 debug_lines.extend([
                     f"> **Model Output ({len(res)} chars):**",
-                    res
+                    output_preview
                 ])
+                if omitted_lines:
+                    debug_lines.append(f"> **[Junk Filter: Omitted {len(omitted_lines)} spurious line(s)]**")
+                    for o in omitted_lines[:10]:
+                        debug_lines.append(f">   - `{o}`")
+                    if len(omitted_lines) > 10:
+                        debug_lines.append(f">   - *... and {len(omitted_lines) - 10} more line(s)*")
             else:
                 debug_lines.append("> *(Model returned empty response)*")
             return "\n\n" + "\n".join(debug_lines) + "\n\n"
-        return res
+        return cleaned_res
     except Exception as e:
         print(f"Warning: Multimodal LLM error for {filename}: {e}")
         if errors_out is not None:
@@ -184,6 +340,7 @@ def _process_image_vision_api(image_bytes: bytes, filename: str, config, errors_
                     md_lines.append(d["text"].strip())
                     
         parsed_result = "\n\n".join(md_lines)
+        cleaned_result, omitted_lines = _clean_vision_markdown(parsed_result)
 
         if _is_verbose(config):
             import json
@@ -199,17 +356,23 @@ def _process_image_vision_api(image_bytes: bytes, filename: str, config, errors_
                 raw_json,
                 "```"
             ]
-            if parsed_result:
+            if cleaned_result:
                 debug_lines.extend([
                     f"> **Parsed Content ({len(md_lines)} item(s)):**",
-                    parsed_result
+                    cleaned_result
                 ])
+                if omitted_lines:
+                    debug_lines.append(f"> **[Junk Filter: Omitted {len(omitted_lines)} spurious line(s)]**")
+                    for o in omitted_lines[:10]:
+                        debug_lines.append(f">   - `{o}`")
+                    if len(omitted_lines) > 10:
+                        debug_lines.append(f">   - *... and {len(omitted_lines) - 10} more line(s)*")
             else:
                 debug_lines.append("> *(No content extracted by built-in parser from above detections)*")
 
             return "\n\n" + "\n".join(debug_lines) + "\n\n"
 
-        return parsed_result
+        return cleaned_result
     except Exception as e:
         resp_details = ""
         if 'resp' in locals() and hasattr(resp, 'text') and resp.text:

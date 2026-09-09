@@ -834,6 +834,95 @@ def test_vision_api_verbose_error(monkeypatch):
     assert len(errors) == 1
 
 
+def test_clean_vision_markdown_filters_junk():
+    from qmd.converters import _clean_vision_markdown
+
+    raw_junk = (
+        "Valid header line\n"
+        "~_!@#$%>?^\n"
+        ".....::::::\n"
+        "(((((((((((((((((((((\n"
+        "None\n"
+        "None\n"
+        "None\n"
+        "None\n"
+        "Valid middle line\n"
+        "bcdfghjklmnpqrstvwxyz\n"
+        "- ????????\n"
+        "Another valid line"
+    )
+
+    cleaned, omitted = _clean_vision_markdown(raw_junk)
+
+    assert "Valid header line" in cleaned
+    assert "Valid middle line" in cleaned
+    assert "Another valid line" in cleaned
+    assert "~_!@#$%>?^" not in cleaned
+    assert ".....::::::" not in cleaned
+    assert "(((((((((((((((((((((" not in cleaned
+    assert "bcdfghjklmnpqrstvwxyz" not in cleaned
+    assert "- ????" not in cleaned
+
+    # Repetition loop: at most 2 "None" kept, subsequent omitted
+    assert cleaned.count("None") == 2
+    assert len(omitted) >= 5
+
+
+def test_clean_vision_markdown_preserves_valid_markdown():
+    from qmd.converters import _clean_vision_markdown
+
+    valid_md = (
+        "# Title\n\n"
+        "Introduction .................... 5\n\n"
+        "```python\n"
+        "# Comment inside code: %%%%%\n"
+        "x = [1, 2, 3]\n"
+        "```\n\n"
+        "| Name | Score |\n"
+        "| --- | --- |\n"
+        "| Alice | 100% |\n\n"
+        "$$ \\sum_{i=1}^n x_i $$\n\n"
+        "![Alt text](image.png)\n"
+        "> Quote block with punctuation: 'Hello!'"
+    )
+
+    cleaned, omitted = _clean_vision_markdown(valid_md)
+
+    assert "# Title" in cleaned
+    # Dot leader in TOC line normalized to ellipses without dropping line
+    assert "Introduction ... 5" in cleaned
+    assert "# Comment inside code: %%%%%" in cleaned
+    assert "| Alice | 100% |" in cleaned
+    assert "$$ \\sum_{i=1}^n x_i $$" in cleaned
+    assert "![Alt text](image.png)" in cleaned
+    assert "> Quote block with punctuation: 'Hello!'" in cleaned
+    assert len(omitted) == 0
+
+
+def test_multimodal_verbose_output_with_junk_filter(monkeypatch):
+    from qmd.converters import _process_image_multimodal_llm
+    from qmd.config import Config
+
+    class MockLLMWithJunk:
+        def __init__(self, *args, **kwargs):
+            pass
+        def process_image(self, image_bytes, filename):
+            return "Valid diagram label\n~~~~~!!!!!!@#$%\nNone\nNone\nNone\nNone"
+
+    monkeypatch.setattr("qmd.llm.LLMClient", MockLLMWithJunk)
+
+    cfg = Config.from_dict({
+        "multimodal_url": "[http://127.0.0.1:8888](http://127.0.0.1:8888)",
+        "multimodal_model": "gpt-4o"
+    })
+    cfg.verbose = True
+    res = _process_image_multimodal_llm(b"fakebytes", "noisy_diagram.png", cfg)
+
+    assert "[DEBUG: Multimodal LLM for `noisy_diagram.png`]" in res
+    assert "[Junk Filter: Omitted" in res
+    assert "Valid diagram label" in res
+
+
 def test_multimodal_verbose_output(monkeypatch):
     from qmd.converters import _process_image_multimodal_llm
     from qmd.config import Config
