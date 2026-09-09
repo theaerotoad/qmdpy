@@ -171,6 +171,8 @@ def _wrap_vision_xml(text: str) -> str:
     if not text:
         return ""
     stripped = text.strip()
+    if not stripped:
+        return ""
     if stripped.startswith("<vision>") and stripped.endswith("</vision>"):
         return stripped
 
