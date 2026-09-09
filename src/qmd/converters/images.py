@@ -3,6 +3,7 @@ Vision and Multimodal LLM Image Processing for QMD.
 Handles OCR, diagram transcription, and layout analysis for embedded document images.
 """
 import os
+import re
 import sys
 from typing import List, Optional, Union
 
