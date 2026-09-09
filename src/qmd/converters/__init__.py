@@ -19,6 +19,7 @@ from .math import (
 from .images import (
     _clean_vision_markdown,
     clean_vision_text,
+    _wrap_vision_xml,
     _is_image_processing_enabled,
     _is_verbose,
     _process_image_multimodal_llm,
@@ -600,6 +601,7 @@ __all__ = [
     "_extract_text_and_math",
     "_clean_vision_markdown",
     "clean_vision_text",
+    "_wrap_vision_xml",
     "_is_image_processing_enabled",
     "_is_verbose",
     "_process_image_multimodal_llm",

@@ -899,6 +899,35 @@ def test_clean_vision_markdown_preserves_valid_markdown():
     assert len(omitted) == 0
 
 
+def test_wrap_vision_xml_behavior():
+    from qmd.converters import _wrap_vision_xml
+
+    # 1. Plain image embed should NOT be wrapped
+    img_only = "![A photograph of a server rack](rack.png)"
+    assert _wrap_vision_xml(img_only) == img_only
+
+    # Multiple image embeds should NOT be wrapped
+    multi_img = "![Image 1](a.png)\n![Image 2](b.png)"
+    assert _wrap_vision_xml(multi_img) == multi_img
+
+    # 2. Text, tables, or diagrams SHOULD be wrapped in <vision>
+    text_content = "Architecture diagram shows 3 backend microservices."
+    wrapped_text = _wrap_vision_xml(text_content)
+    assert wrapped_text == f"<vision>\n{text_content}\n</vision>"
+
+    table_content = "| A | B |\n| --- | --- |\n| 1 | 2 |"
+    wrapped_table = _wrap_vision_xml(table_content)
+    assert wrapped_table == f"<vision>\n{table_content}\n</vision>"
+
+    # 3. Empty input stays empty
+    assert _wrap_vision_xml("") == ""
+    assert _wrap_vision_xml("   ") == ""
+
+    # 4. Do not double-wrap
+    already_wrapped = "<vision>\nSome text\n</vision>"
+    assert _wrap_vision_xml(already_wrapped) == already_wrapped
+
+
 def test_multimodal_verbose_output_with_junk_filter(monkeypatch):
     from qmd.converters import _process_image_multimodal_llm
     from qmd.config import Config

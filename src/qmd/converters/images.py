@@ -162,6 +162,26 @@ def clean_vision_text(text: str) -> str:
     return cleaned
 
 
+def _wrap_vision_xml(text: str) -> str:
+    """
+    Wraps vision and multimodal output in <vision>...</vision> XML tags
+    if the content contains inferred text, tables, or descriptions rather than
+    solely standard Markdown image embed tags (![alt](url)).
+    """
+    if not text:
+        return ""
+    stripped = text.strip()
+    if stripped.startswith("<vision>") and stripped.endswith("</vision>"):
+        return stripped
+
+    # If all non-empty lines are standard markdown image tags, leave unwrapped
+    lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+    if lines and all(re.match(r'^!\[.*?\]\(.*?\)$', line) for line in lines):
+        return stripped
+
+    return f"<vision>\n{stripped}\n</vision>"
+
+
 def _is_image_processing_enabled(config) -> bool:
     if not config:
         return False
@@ -196,13 +216,14 @@ def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config, err
         )
         res = client.process_image(image_bytes, filename=filename)
         cleaned_res, omitted_lines = _clean_vision_markdown(res)
+        wrapped_res = _wrap_vision_xml(cleaned_res)
 
         if _is_verbose(config):
             debug_lines = [
                 f"> **[DEBUG: Multimodal LLM for `{filename}`]**"
             ]
             if res:
-                output_preview = cleaned_res if cleaned_res else "*(All output filtered as spurious junk)*"
+                output_preview = wrapped_res if wrapped_res else "*(All output filtered as spurious junk)*"
                 debug_lines.extend([
                     f"> **Model Output ({len(res)} chars):**",
                     output_preview
@@ -216,7 +237,7 @@ def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config, err
             else:
                 debug_lines.append("> *(Model returned empty response)*")
             return "\n\n" + "\n".join(debug_lines) + "\n\n"
-        return cleaned_res
+        return wrapped_res
     except Exception as e:
         print(f"Warning: Multimodal LLM error for {filename}: {e}")
         if errors_out is not None:
@@ -342,6 +363,7 @@ def _process_image_vision_api(image_bytes: bytes, filename: str, config, errors_
                     
         parsed_result = "\n\n".join(md_lines)
         cleaned_result, omitted_lines = _clean_vision_markdown(parsed_result)
+        wrapped_result = _wrap_vision_xml(cleaned_result)
 
         if _is_verbose(config):
             import json
@@ -357,10 +379,10 @@ def _process_image_vision_api(image_bytes: bytes, filename: str, config, errors_
                 raw_json,
                 "```"
             ]
-            if cleaned_result:
+            if wrapped_result:
                 debug_lines.extend([
                     f"> **Parsed Content ({len(md_lines)} item(s)):**",
-                    cleaned_result
+                    wrapped_result
                 ])
                 if omitted_lines:
                     debug_lines.append(f"> **[Junk Filter: Omitted {len(omitted_lines)} spurious line(s)]**")
@@ -373,7 +395,7 @@ def _process_image_vision_api(image_bytes: bytes, filename: str, config, errors_
 
             return "\n\n" + "\n".join(debug_lines) + "\n\n"
 
-        return cleaned_result
+        return wrapped_result
     except Exception as e:
         resp_details = ""
         if 'resp' in locals() and hasattr(resp, 'text') and resp.text:
