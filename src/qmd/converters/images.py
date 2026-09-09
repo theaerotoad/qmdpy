@@ -98,7 +98,7 @@ def _clean_vision_markdown(text: str) -> tuple[str, list[str]]:
             continue
 
         # Normalize dot leaders (e.g. "Chapter 1 .......... 15" -> "Chapter 1 ... 15")
-        normalized_content = re.sub(r'\.{4,}', ' ... ', content)
+        normalized_content = re.sub(r'\s*\.{4,}\s*', ' ... ', content)
 
         # Quality Check A: Zero alphanumeric characters (pure symbol soup)
         if not re.search(r'[a-zA-Z0-9]', normalized_content):
@@ -126,9 +126,9 @@ def _clean_vision_markdown(text: str) -> tuple[str, list[str]]:
             omitted_lines.append(line)
             continue
 
-        # Quality Check E: Non-word vowel-less consonant gibberish tokens (15+ chars)
-        tokens = normalized_content.split()
-        if any(len(tok) >= 15 and tok.isalpha() and not re.search(r'[aeiouyAEIOUY]', tok) for tok in tokens):
+        # Quality Check E: Non-word vowel-less or vowel-depleted consonant gibberish tokens (12+ chars)
+        tokens = [re.sub(r'^\W+|\W+$', '', tok) for tok in normalized_content.split()]
+        if any(len(tok) >= 12 and tok.isalpha() and (not re.search(r'[aeiouAEIOU]', tok) or len(re.findall(r'[aeiouyAEIOUY]', tok)) / len(tok) < 0.1) for tok in tokens):
             omitted_lines.append(line)
             continue
 
