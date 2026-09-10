@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QMD Document Manifold & Soft Clustering Explorer</title>
+  <title>QMD Document & Chunk Manifold Explorer</title>
   <style>
     :root {
       --bg-main: #0b0f19;
@@ -39,7 +39,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      font-size: 1.1rem;
+      font-size: 1.05rem;
       font-weight: 700;
       letter-spacing: -0.01em;
     }
@@ -56,6 +56,12 @@
       color: #93c5fd;
       border-color: #3b82f6;
       background: rgba(59, 130, 246, 0.1);
+    }
+    .badge.granularity {
+      color: #34d399;
+      border-color: #059669;
+      background: rgba(16, 185, 129, 0.1);
+      text-transform: capitalize;
     }
     .header-actions {
       display: flex;
@@ -138,7 +144,7 @@
     
     /* Right Side Drawer / Inspector */
     .sidebar {
-      width: 420px;
+      width: 430px;
       background: var(--bg-panel);
       border-left: 1px solid var(--border);
       display: flex;
@@ -266,7 +272,7 @@
     .membership-bar-fill { height: 100%; border-radius: 4px; }
     .membership-percent { width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
 
-    /* Bridge Documents Item */
+    /* Bridge Items */
     .bridge-item {
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -279,7 +285,7 @@
     .bridge-title { font-weight: 600; font-size: 0.82rem; margin-bottom: 4px; }
     .bridge-meta { font-size: 0.72rem; color: #f59e0b; display: flex; justify-content: space-between; }
 
-    /* Document Detail View */
+    /* Item Detail View */
     .detail-section {
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -294,8 +300,8 @@
       letter-spacing: 0.04em;
       margin-bottom: 8px;
     }
-    .detail-title { font-size: 1.05rem; font-weight: 700; color: #fff; margin-bottom: 6px; }
-    .detail-path { font-size: 0.75rem; font-family: monospace; color: #9ca3af; word-break: break-all; margin-bottom: 8px; }
+    .detail-title { font-size: 1.02rem; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .detail-path { font-size: 0.74rem; font-family: monospace; color: #9ca3af; word-break: break-all; margin-bottom: 8px; }
     .detail-snippet {
       font-size: 0.78rem;
       color: #d1d5db;
@@ -303,9 +309,14 @@
       padding: 10px;
       border-radius: 6px;
       line-height: 1.45;
-      max-height: 150px;
+      max-height: 160px;
       overflow-y: auto;
       border-left: 3px solid var(--accent);
+    }
+    .trajectory-btn {
+      margin-top: 8px;
+      width: 100%;
+      justify-content: center;
     }
   </style>
   <script id="manifold-data" type="application/json">{}</script>
@@ -315,7 +326,8 @@
   <header>
     <div class="header-title">
       <span>QMD Manifold Explorer</span>
-      <span id="badge-total-docs" class="badge">0 docs</span>
+      <span id="badge-granularity" class="badge granularity">Document Level</span>
+      <span id="badge-total-items" class="badge">0 items</span>
       <span id="badge-clusters" class="badge active">K = 0</span>
       <span id="badge-dim" class="badge">0-D</span>
     </div>
@@ -336,7 +348,8 @@
       <div class="viewport-controls">
         <button id="btn-zoom-in" title="Zoom In">+</button>
         <button id="btn-zoom-out" title="Zoom Out">−</button>
-        <button id="btn-zoom-reset" title="Reset View">Reset</button>
+        <button id="btn-zoom-reset" title="Fit Core Distribution">Fit Core</button>
+        <button id="btn-zoom-all" title="Fit All Points">Fit All</button>
         <button id="btn-toggle-ellipses" title="Toggle Cluster Ellipses">Contours</button>
       </div>
 
@@ -352,7 +365,7 @@
     <div class="sidebar">
       <div class="tabs-bar">
         <button class="tab-btn active" data-tab="tab-clusters">Clusters</button>
-        <button class="tab-btn" data-tab="tab-selection">Selected Doc</button>
+        <button class="tab-btn" data-tab="tab-selection">Selected Item</button>
         <button class="tab-btn" data-tab="tab-bridges">Bridges / Soft</button>
         <button class="tab-btn" data-tab="tab-settings">Filters</button>
       </div>
@@ -365,21 +378,24 @@
         <div id="cluster-items-list"></div>
       </div>
 
-      <!-- Tab 2: Document Inspector -->
+      <!-- Tab 2: Document / Chunk Inspector -->
       <div id="tab-selection" class="tab-content">
-        <div id="no-doc-selected" style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 40px 10px;">
-          Click any document point in the manifold to inspect its soft cluster probabilities and text preview.
+        <div id="no-item-selected" style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 40px 10px;">
+          Click any point in the manifold to inspect its soft cluster probabilities and text preview.
         </div>
-        <div id="doc-inspector-content" style="display: none;">
+        <div id="item-inspector-content" style="display: none;">
           <div class="detail-section">
             <div class="detail-title" id="inspector-title"></div>
             <div class="detail-path" id="inspector-path"></div>
-            <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
               <span class="badge" id="inspector-collection"></span>
               <span class="badge" id="inspector-chunks"></span>
               <span class="badge" id="inspector-date"></span>
             </div>
             <div class="detail-snippet" id="inspector-snippet"></div>
+            <button id="btn-toggle-trajectory" class="btn trajectory-btn" style="display:none;">
+              📍 Trace Document Trajectory
+            </button>
           </div>
 
           <div class="detail-section">
@@ -396,7 +412,7 @@
       <!-- Tab 3: Bridges / Soft Cluster Boundaries -->
       <div id="tab-bridges" class="tab-content">
         <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;">
-          Documents with high Shannon Entropy straddling multiple topic boundaries.
+          Items with high Shannon Entropy straddling multiple topic boundaries.
         </div>
         <div id="bridges-list"></div>
       </div>
@@ -419,7 +435,7 @@
         </div>
 
         <div class="form-group">
-          <label>Search Document Title / Path</label>
+          <label>Search Title / Path</label>
           <input type="text" id="input-search" placeholder="Type to filter points...">
         </div>
 
@@ -442,7 +458,7 @@
 
         <div class="form-group">
           <label>Point Size <span id="val-point-size" class="range-val">6px</span></label>
-          <input type="range" id="range-point-size" min="3" max="16" value="6">
+          <input type="range" id="range-point-size" min="2" max="16" value="6">
         </div>
       </div>
 
@@ -450,7 +466,6 @@
   </div>
 
   <script>
-    // Palettes for categorical clusters
     const CLUSTER_COLORS = [
       '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
       '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
@@ -460,9 +475,11 @@
 
     let state = {
       artifact: null,
-      documents: [],
+      items: [],
       clusters: [],
+      selectedItemId: null,
       selectedDocId: null,
+      highlightDocTrajectory: false,
       focusedClusterId: null,
       showEllipses: true,
       colorMode: 'primary',
@@ -490,7 +507,6 @@
       setupEvents();
       resizeCanvas();
 
-      // Read embedded artifact
       const dataEl = document.getElementById('manifold-data');
       if (dataEl && dataEl.textContent.trim().length > 2) {
         try {
@@ -513,15 +529,26 @@
       render();
     }
 
-    function resetView() {
-      if (!state.documents.length) return;
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      state.documents.forEach(d => {
-        if (d.x < minX) minX = d.x;
-        if (d.x > maxX) maxX = d.x;
-        if (d.y < minY) minY = d.y;
-        if (d.y > maxY) maxY = d.y;
-      });
+    function resetView(useCorePercentiles = true) {
+      if (!state.items.length) return;
+
+      let minX, maxX, minY, maxY;
+
+      if (useCorePercentiles && state.items.length > 20) {
+        const xs = state.items.map(d => d.x).sort((a, b) => a - b);
+        const ys = state.items.map(d => d.y).sort((a, b) => a - b);
+        const p02 = Math.floor(xs.length * 0.02);
+        const p98 = Math.ceil(xs.length * 0.98) - 1;
+        minX = xs[p02];
+        maxX = xs[p98];
+        minY = ys[p02];
+        maxY = ys[p98];
+      } else {
+        minX = Math.min(...state.items.map(d => d.x));
+        maxX = Math.max(...state.items.map(d => d.x));
+        minY = Math.min(...state.items.map(d => d.y));
+        maxY = Math.max(...state.items.map(d => d.y));
+      }
 
       const rect = container.getBoundingClientRect();
       const pad = 60;
@@ -545,32 +572,24 @@
       };
     }
 
-    function screenToWorld(sx, sy) {
-      return {
-        wx: (sx - state.viewport.panX) / state.viewport.zoom,
-        wy: (sy - state.viewport.panY) / state.viewport.zoom
-      };
-    }
-
     function loadArtifact(data) {
       state.artifact = data;
-      state.documents = data.documents || [];
+      state.items = data.items || data.documents || [];
       state.clusters = data.clusters || [];
 
-      // Update header badges
-      document.getElementById('badge-total-docs').textContent = `${state.documents.length} docs`;
+      const gran = data.meta?.granularity || 'document';
+      document.getElementById('badge-granularity').textContent = `${gran} Level`;
+      document.getElementById('badge-total-items').textContent = `${state.items.length} ${data.meta?.entity_label || 'items'}`;
       document.getElementById('badge-clusters').textContent = `K = ${state.clusters.length}`;
       document.getElementById('badge-dim').textContent = `${data.meta?.embedding_dim || '?'}-D (${data.meta?.quantization || 'float'})`;
 
-      // Populate collections filter
-      const collections = new Set(state.documents.map(d => d.collection).filter(Boolean));
+      const collections = new Set(state.items.map(d => d.collection).filter(Boolean));
       const collSelect = document.getElementById('select-collection-filter');
       collSelect.innerHTML = '<option value="ALL">All Collections</option>';
       collections.forEach(c => {
         collSelect.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
       });
 
-      // Populate focus cluster selector
       const focusSelect = document.getElementById('select-focus-cluster');
       focusSelect.innerHTML = '';
       state.clusters.forEach(c => {
@@ -579,7 +598,7 @@
 
       populateClustersList();
       populateBridgesList();
-      resetView();
+      resetView(true);
     }
 
     function populateClustersList() {
@@ -598,7 +617,7 @@
               <span class="color-dot" style="background:${color};"></span>
               Cluster ${c.id}
             </span>
-            <span class="badge">${c.hard_count} docs (${c.soft_weight})</span>
+            <span class="badge">${c.hard_count} items (${c.soft_weight})</span>
           </div>
           <div class="cluster-terms">${termsHtml}</div>
         `;
@@ -625,10 +644,10 @@
     function populateBridgesList() {
       const listEl = document.getElementById('bridges-list');
       listEl.innerHTML = '';
-      const bridges = state.artifact?.bridge_documents || [];
+      const bridges = state.artifact?.bridge_items || state.artifact?.bridge_documents || [];
 
       if (!bridges.length) {
-        listEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem;">No bridge documents found with high entropy.</div>';
+        listEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem;">No bridge items found with high entropy.</div>';
         return;
       }
 
@@ -647,33 +666,44 @@
           </div>
         `;
         item.addEventListener('click', () => {
-          selectDocument(b.id);
+          selectItem(b.id);
         });
         listEl.appendChild(item);
       });
     }
 
-    function selectDocument(docId) {
-      state.selectedDocId = docId;
-      const doc = state.documents.find(d => d.id === docId);
-      if (!doc) return;
+    function selectItem(itemId) {
+      state.selectedItemId = itemId;
+      const item = state.items.find(d => d.id === itemId);
+      if (!item) return;
 
-      document.getElementById('no-doc-selected').style.display = 'none';
-      document.getElementById('doc-inspector-content').style.display = 'block';
+      state.selectedDocId = item.doc_id;
 
-      document.getElementById('inspector-title').textContent = doc.title;
-      document.getElementById('inspector-path').textContent = doc.path;
-      document.getElementById('inspector-collection').textContent = doc.collection || 'Default';
-      document.getElementById('inspector-chunks').textContent = `${doc.chunks_count || 1} chunks`;
-      document.getElementById('inspector-date').textContent = doc.doc_date || 'No date';
-      document.getElementById('inspector-snippet').textContent = doc.snippet || 'No text preview available.';
-      document.getElementById('inspector-entropy').textContent = doc.entropy.toFixed(3);
-      document.getElementById('inspector-conf').textContent = `${(doc.confidence * 100).toFixed(1)}%`;
+      document.getElementById('no-item-selected').style.display = 'none';
+      document.getElementById('item-inspector-content').style.display = 'block';
 
-      // Render soft membership distribution bars
+      document.getElementById('inspector-title').textContent = item.title;
+      document.getElementById('inspector-path').textContent = item.path;
+      document.getElementById('inspector-collection').textContent = item.collection || 'Default';
+      
+      const isChunk = state.artifact?.meta?.granularity === 'chunk';
+      document.getElementById('inspector-chunks').textContent = isChunk ? `Seq #${item.seq_id}` : `${item.chunks_count || 1} chunks`;
+      document.getElementById('inspector-date').textContent = item.doc_date || 'No date';
+      document.getElementById('inspector-snippet').textContent = item.snippet || 'No text preview available.';
+      document.getElementById('inspector-entropy').textContent = item.entropy.toFixed(3);
+      document.getElementById('inspector-conf').textContent = `${(item.confidence * 100).toFixed(1)}%`;
+
+      const trajBtn = document.getElementById('btn-toggle-trajectory');
+      if (isChunk) {
+        trajBtn.style.display = 'flex';
+        trajBtn.textContent = state.highlightDocTrajectory ? '❌ Clear Trajectory' : '📍 Trace Document Trajectory';
+      } else {
+        trajBtn.style.display = 'none';
+      }
+
       const mbEl = document.getElementById('inspector-memberships');
       mbEl.innerHTML = '';
-      (doc.memberships || []).forEach(m => {
+      (item.memberships || []).forEach(m => {
         const color = CLUSTER_COLORS[m.cluster % CLUSTER_COLORS.length];
         const pct = (m.prob * 100).toFixed(1);
         mbEl.innerHTML += `
@@ -687,7 +717,6 @@
         `;
       });
 
-      // Switch to Selection Tab
       document.querySelectorAll('.tab-btn').forEach(btn => {
         if (btn.dataset.tab === 'tab-selection') btn.click();
       });
@@ -695,32 +724,29 @@
       render();
     }
 
-    function getPointColor(doc) {
+    function getPointColor(item) {
       if (state.colorMode === 'primary') {
-        const color = CLUSTER_COLORS[doc.primary_cluster % CLUSTER_COLORS.length];
-        const alpha = Math.max(0.25, Math.min(1.0, doc.confidence));
+        const color = CLUSTER_COLORS[item.primary_cluster % CLUSTER_COLORS.length];
+        const alpha = Math.max(0.25, Math.min(1.0, item.confidence));
         return { fill: color, alpha: alpha };
       } else if (state.colorMode === 'soft_focus') {
         const focusK = state.focusedClusterId !== null ? state.focusedClusterId : 0;
-        const memb = (doc.memberships || []).find(m => m.cluster === focusK);
+        const memb = (item.memberships || []).find(m => m.cluster === focusK);
         const p = memb ? memb.prob : 0.0;
         if (p < 0.05) {
-          return { fill: '#4b5563', alpha: 0.2 };
+          return { fill: '#4b5563', alpha: 0.18 };
         }
-        // Continuous heat ramp from dark slate -> cyan -> yellow/orange
         const baseColor = CLUSTER_COLORS[focusK % CLUSTER_COLORS.length];
         return { fill: baseColor, alpha: Math.max(0.2, p) };
       } else if (state.colorMode === 'entropy') {
-        // High entropy = red/orange, low entropy = blue/cyan
-        const h = doc.entropy;
+        const h = item.entropy;
         const r = Math.round(h * 239 + (1 - h) * 59);
         const g = Math.round(h * 68 + (1 - h) * 130);
         const b = Math.round(h * 68 + (1 - h) * 246);
         return { fill: `rgb(${r},${g},${b})`, alpha: 0.85 };
       } else {
-        // Collection coloring
         let hash = 0;
-        for (let i = 0; i < (doc.collection || '').length; i++) hash = (hash << 5) - hash + doc.collection.charCodeAt(i);
+        for (let i = 0; i < (item.collection || '').length; i++) hash = (hash << 5) - hash + item.collection.charCodeAt(i);
         const color = CLUSTER_COLORS[Math.abs(hash) % CLUSTER_COLORS.length];
         return { fill: color, alpha: 0.8 };
       }
@@ -730,7 +756,7 @@
       const rect = container.getBoundingClientRect();
       ctx.clearRect(0, 0, rect.width, rect.height);
 
-      if (!state.documents.length) return;
+      if (!state.items.length) return;
 
       // 1. Draw Cluster Covariance Ellipses
       if (state.showEllipses && state.clusters.length) {
@@ -753,7 +779,6 @@
           ctx.globalAlpha = state.focusedClusterId === c.id ? 0.8 : 0.35;
           ctx.stroke();
 
-          // Soft translucent cluster fill
           ctx.fillStyle = color;
           ctx.globalAlpha = state.focusedClusterId === c.id ? 0.12 : 0.04;
           ctx.fill();
@@ -761,45 +786,74 @@
         });
       }
 
-      // 2. Draw Documents as Scatter Points
+      // 2. Draw Document Trajectory (In chunk mode)
+      if (state.highlightDocTrajectory && state.selectedDocId !== null) {
+        const siblingChunks = state.items
+          .filter(d => d.doc_id === state.selectedDocId)
+          .sort((a, b) => a.seq_id - b.seq_id);
+
+        if (siblingChunks.length > 1) {
+          ctx.save();
+          ctx.beginPath();
+          siblingChunks.forEach((c, idx) => {
+            const { sx, sy } = worldToScreen(c.x, c.y);
+            if (idx === 0) ctx.moveTo(sx, sy);
+            else ctx.lineTo(sx, sy);
+          });
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+          ctx.lineWidth = 2.0;
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // 3. Draw Points
       const sq = state.searchQuery.toLowerCase().trim();
       const minConf = state.minConfidence;
       const minEnt = state.minEntropy;
       const collFilter = state.collectionFilter;
 
-      state.documents.forEach(doc => {
-        // Filter evaluation
+      state.items.forEach(item => {
         let matches = true;
-        if (sq && !doc.title.toLowerCase().includes(sq) && !doc.path.toLowerCase().includes(sq)) {
+        if (sq && !item.title.toLowerCase().includes(sq) && !item.path.toLowerCase().includes(sq)) {
           matches = false;
         }
-        if (collFilter !== 'ALL' && doc.collection !== collFilter) {
+        if (collFilter !== 'ALL' && item.collection !== collFilter) {
           matches = false;
         }
-        if (doc.confidence < minConf) {
+        if (item.confidence < minConf) {
           matches = false;
         }
-        if (doc.entropy < minEnt) {
+        if (item.entropy < minEnt) {
           matches = false;
         }
 
-        const { sx, sy } = worldToScreen(doc.x, doc.y);
+        const { sx, sy } = worldToScreen(item.x, item.y);
         if (sx < -20 || sx > rect.width + 20 || sy < -20 || sy > rect.height + 20) return;
 
-        const { fill, alpha } = getPointColor(doc);
-        const isSelected = state.selectedDocId === doc.id;
-        const rad = isSelected ? state.pointRadius + 4 : state.pointRadius;
+        const { fill, alpha } = getPointColor(item);
+        const isSelected = state.selectedItemId === item.id;
+        const isSiblingInTrajectory = state.highlightDocTrajectory && item.doc_id === state.selectedDocId;
+
+        let rad = state.pointRadius;
+        if (isSelected) rad += 4;
+        else if (isSiblingInTrajectory) rad += 2;
 
         ctx.save();
         ctx.beginPath();
         ctx.arc(sx, sy, rad, 0, Math.PI * 2);
         ctx.fillStyle = fill;
-        ctx.globalAlpha = matches ? alpha : 0.08;
+        ctx.globalAlpha = matches ? (isSiblingInTrajectory ? 1.0 : alpha) : 0.08;
         ctx.fill();
 
         if (isSelected) {
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 2.5;
+          ctx.stroke();
+        } else if (isSiblingInTrajectory) {
+          ctx.strokeStyle = '#93c5fd';
+          ctx.lineWidth = 1.5;
           ctx.stroke();
         } else if (matches && state.colorMode === 'soft_focus') {
           ctx.strokeStyle = 'rgba(255,255,255,0.3)';
@@ -813,7 +867,6 @@
     function setupEvents() {
       window.addEventListener('resize', resizeCanvas);
 
-      // Pan & Zoom on Canvas
       canvas.addEventListener('mousedown', e => {
         state.viewport.isDragging = true;
         state.viewport.lastMouseX = e.clientX;
@@ -845,7 +898,7 @@
         const mouseY = e.clientY - rect.top;
 
         const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
-        const newZoom = Math.max(5, Math.min(2000, state.viewport.zoom * zoomFactor));
+        const newZoom = Math.max(2, Math.min(4000, state.viewport.zoom * zoomFactor));
 
         state.viewport.panX = mouseX - (mouseX - state.viewport.panX) * (newZoom / state.viewport.zoom);
         state.viewport.panY = mouseY - (mouseY - state.viewport.panY) * (newZoom / state.viewport.zoom);
@@ -854,13 +907,13 @@
       }, { passive: false });
 
       canvas.addEventListener('click', e => {
-        const hit = findHitDocument(e);
+        const hit = findHitItem(e);
         if (hit) {
-          selectDocument(hit.id);
+          selectItem(hit.id);
         }
       });
 
-      // Viewport Control Buttons
+      // Viewport Buttons
       document.getElementById('btn-zoom-in').addEventListener('click', () => {
         const rect = container.getBoundingClientRect();
         state.viewport.zoom *= 1.25;
@@ -875,13 +928,22 @@
         state.viewport.panY = rect.height / 2 - (rect.height / 2 - state.viewport.panY) * 0.8;
         render();
       });
-      document.getElementById('btn-zoom-reset').addEventListener('click', resetView);
+      document.getElementById('btn-zoom-reset').addEventListener('click', () => resetView(true));
+      document.getElementById('btn-zoom-all').addEventListener('click', () => resetView(false));
       document.getElementById('btn-toggle-ellipses').addEventListener('click', () => {
         state.showEllipses = !state.showEllipses;
         render();
       });
 
-      // Sidebar Tab Switching
+      // Trajectory Toggle
+      document.getElementById('btn-toggle-trajectory').addEventListener('click', () => {
+        state.highlightDocTrajectory = !state.highlightDocTrajectory;
+        document.getElementById('btn-toggle-trajectory').textContent =
+          state.highlightDocTrajectory ? '❌ Clear Trajectory' : '📍 Trace Document Trajectory';
+        render();
+      });
+
+      // Tab Switching
       document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -891,7 +953,7 @@
         });
       });
 
-      // Coloring Mode Selector
+      // Coloring Mode
       document.getElementById('select-color-mode').addEventListener('change', e => {
         state.colorMode = e.target.value;
         document.getElementById('focus-cluster-group').style.display = state.colorMode === 'soft_focus' ? 'block' : 'none';
@@ -908,7 +970,7 @@
         render();
       });
 
-      // Filter Inputs
+      // Filters
       document.getElementById('input-search').addEventListener('input', e => {
         state.searchQuery = e.target.value;
         render();
@@ -935,7 +997,7 @@
         render();
       });
 
-      // Load JSON File Picker
+      // Load JSON
       const fileInput = document.getElementById('file-input');
       document.getElementById('btn-load-json').addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', e => {
@@ -953,7 +1015,7 @@
         reader.readAsText(file);
       });
 
-      // Export PNG Screenshot
+      // Export PNG
       document.getElementById('btn-export-png').addEventListener('click', () => {
         const link = document.createElement('a');
         link.download = 'qmd-manifold-clusters.png';
@@ -962,17 +1024,17 @@
       });
     }
 
-    function findHitDocument(e) {
+    function findHitItem(e) {
       const rect = container.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const threshold = Math.max(8, state.pointRadius + 4);
 
-      for (let i = state.documents.length - 1; i >= 0; i--) {
-        const doc = state.documents[i];
-        const { sx, sy } = worldToScreen(doc.x, doc.y);
+      for (let i = state.items.length - 1; i >= 0; i--) {
+        const item = state.items[i];
+        const { sx, sy } = worldToScreen(item.x, item.y);
         const dist = Math.hypot(sx - mx, sy - my);
-        if (dist <= threshold) return doc;
+        if (dist <= threshold) return item;
       }
       return null;
     }
@@ -981,19 +1043,19 @@
       const rect = container.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
-      const doc = findHitDocument(e);
+      const item = findHitItem(e);
 
-      if (doc) {
+      if (item) {
         hoverCard.style.display = 'block';
         hoverCard.style.left = Math.min(rect.width - 340, mx + 15) + 'px';
         hoverCard.style.top = Math.min(rect.height - 180, my + 15) + 'px';
 
-        document.getElementById('hover-title').textContent = doc.title;
-        document.getElementById('hover-meta').textContent = `${doc.collection || 'Default'} • Primary Cluster ${doc.primary_cluster} (${(doc.confidence * 100).toFixed(0)}%)`;
+        document.getElementById('hover-title').textContent = item.title;
+        document.getElementById('hover-meta').textContent = `${item.collection || 'Default'} • Primary Cluster ${item.primary_cluster} (${(item.confidence * 100).toFixed(0)}%)`;
 
         const membEl = document.getElementById('hover-memberships');
         membEl.innerHTML = '';
-        (doc.memberships || []).slice(0, 3).forEach(m => {
+        (item.memberships || []).slice(0, 3).forEach(m => {
           const color = CLUSTER_COLORS[m.cluster % CLUSTER_COLORS.length];
           const pct = (m.prob * 100).toFixed(0);
           membEl.innerHTML += `
