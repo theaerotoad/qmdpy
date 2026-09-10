@@ -33,6 +33,35 @@ def test_arg_parsing_search(monkeypatch):
             exclude_seen_set=set()
         )
 
+def test_arg_parsing_search_with_inline_cheatcodes(monkeypatch):
+    """Test that inline query cheat codes override CLI flags."""
+    monkeypatch.setattr(sys, "argv", ["qmd", "search", "test query col:Books file:bob.pdf limit:20 rerank:on pii:on seen:exclude lex:\"strict terms\""])
+    
+    with patch("qmd.main.Store") as MockStore, \
+         patch("qmd.main.load_config") as MockConfig:
+        
+        mock_store_inst = MockStore.return_value
+        mock_store_inst.hybrid_search.return_value = []
+        mock_store_inst.history_conn = None
+        
+        main()
+        
+        mock_store_inst.hybrid_search.assert_called_once_with(
+            "test query",
+            limit=20,
+            verbose=False,
+            rerank=True,
+            reranker_only=False,
+            collection="Books",
+            lexical_query="strict terms",
+            title=None,
+            path="bob.pdf",
+            fts_limit=None,
+            vec_limit=None,
+            rerank_candidates=None,
+            exclude_seen_set=set()
+        )
+
 def test_git_pull_trigger(monkeypatch, tmp_path):
     """Test that --pull attempts a git command."""
     monkeypatch.setattr(sys, "argv", ["qmd", "update", "--pull"])
