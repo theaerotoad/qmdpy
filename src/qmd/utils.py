@@ -470,33 +470,33 @@ def parse_query_directives(query: str) -> Tuple[str, Dict[str, Any]]:
         return val
 
     # Title filter
-    t = _extract_str(r'(?:title|t):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
+    t = _extract_str(r'\b(?:title|t):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
     if t is not None:
         directives["title"] = t
 
     # Path / File filter
-    p = _extract_str(r'(?:path|file|p):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
+    p = _extract_str(r'\b(?:path|file|p):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
     if p is not None:
         directives["path"] = p
 
     # Collection filter (supports exact, wildcards, or comma-separated lists)
-    c = _extract_str(r'(?:col|in|c):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
+    c = _extract_str(r'\b(?:col|in|c):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
     if c is not None:
         directives["collection"] = c.strip()
 
     # Lexical / FTS override
-    l = _extract_str(r'(?:lex|fts|l):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
+    l = _extract_str(r'\b(?:lex|fts|l):(?:"([^"]+)"|\'([^\']+)\'|(\S+))')
     if l is not None:
         directives["lex"] = l
 
     # Numeric limit
-    limit_match = re.search(r'(?:limit|n):(\d+)', text, re.IGNORECASE)
+    limit_match = re.search(r'\b(?:limit|n):(\d+)', text, re.IGNORECASE)
     if limit_match:
         directives["limit"] = int(limit_match.group(1))
         text = text[:limit_match.start()] + " " + text[limit_match.end():]
 
     # Redact PII flag
-    pii_match = re.search(r'(?:pii):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))|(--redact-pii|--no-pii)', text, re.IGNORECASE)
+    pii_match = re.search(r'\b(?:pii):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))|(--redact-pii|--no-pii)\b', text, re.IGNORECASE)
     if pii_match:
         raw_val = (pii_match.group(1) or pii_match.group(2) or pii_match.group(3) or pii_match.group(4) or "").lower()
         if raw_val in ("on", "true", "--redact-pii"):
@@ -506,7 +506,7 @@ def parse_query_directives(query: str) -> Tuple[str, Dict[str, Any]]:
         text = text[:pii_match.start()] + " " + text[pii_match.end():]
 
     # Exclude Seen flag
-    seen_match = re.search(r'(?:seen):(?:"(exclude|off|on|true|false)"|\'(exclude|off|on|true|false)\'|(exclude|off|on|true|false))|(--exclude-seen)', text, re.IGNORECASE)
+    seen_match = re.search(r'\b(?:seen):(?:"(exclude|off|on|true|false)"|\'(exclude|off|on|true|false)\'|(exclude|off|on|true|false))|(--exclude-seen)\b', text, re.IGNORECASE)
     if seen_match:
         raw_val = (seen_match.group(1) or seen_match.group(2) or seen_match.group(3) or seen_match.group(4) or "").lower()
         if raw_val in ("exclude", "on", "true", "--exclude-seen"):
@@ -516,21 +516,21 @@ def parse_query_directives(query: str) -> Tuple[str, Dict[str, Any]]:
         text = text[:seen_match.start()] + " " + text[seen_match.end():]
 
     # Rerank flag
-    rr_match = re.search(r'(?:rerank|rr):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))', text, re.IGNORECASE)
+    rr_match = re.search(r'\b(?:rerank|rr):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))', text, re.IGNORECASE)
     if rr_match:
         raw_val = (rr_match.group(1) or rr_match.group(2) or rr_match.group(3) or "").lower()
         directives["rerank"] = raw_val in ("on", "true")
         text = text[:rr_match.start()] + " " + text[rr_match.end():]
 
     # Regex flag (for grep)
-    regex_match = re.search(r'(?:regex):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))', text, re.IGNORECASE)
+    regex_match = re.search(r'\b(?:regex):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))', text, re.IGNORECASE)
     if regex_match:
         raw_val = (regex_match.group(1) or regex_match.group(2) or regex_match.group(3) or "").lower()
         directives["regex"] = raw_val in ("on", "true")
         text = text[:regex_match.start()] + " " + text[regex_match.end():]
 
     # Case sensitivity flag (for grep)
-    case_match = re.search(r'(?:case):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))', text, re.IGNORECASE)
+    case_match = re.search(r'\b(?:case):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))', text, re.IGNORECASE)
     if case_match:
         raw_val = (case_match.group(1) or case_match.group(2) or case_match.group(3) or "").lower()
         directives["case_sensitive"] = raw_val in ("on", "true")
