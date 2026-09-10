@@ -28,6 +28,24 @@ def test_format_matrix_to_md_table():
     expected = "| Header 1 | Header 2 |\n| --- | --- |\n| Value 1 | Value 2 |"
     assert _format_matrix_to_md_table(matrix) == expected
 
+def test_format_matrix_to_md_table_compression():
+    matrix = [
+        ["", "", "", "Col4", ""],
+        ["", "", "", "", ""],
+        ["", "", "", "", ""],
+        ["", "", "", "", ""],
+        ["", "", "", "Data", ""]
+    ]
+    md = _format_matrix_to_md_table(matrix)
+    assert "<3 empty cols>" in md
+    assert "<3 empty rows skipped>" in md
+    assert "| <3 empty cols> | Col4 | |" in md
+    assert "| ... | <3 empty rows skipped> | |" in md
+    
+    # Check that completely empty matrices return empty string
+    empty_matrix = [["", ""], ["", ""]]
+    assert _format_matrix_to_md_table(empty_matrix) == ""
+
 def test_convert_csv(tmp_path):
     csv_file = tmp_path / "test.csv"
     csv_file.write_text("Name,Age\nAlice,30\nBob,25\n", encoding="utf-8")

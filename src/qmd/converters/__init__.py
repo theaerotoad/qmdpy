@@ -97,9 +97,78 @@ def _format_matrix_to_md_table(matrix: List[List[str]]) -> str:
         norm_row = [re.sub(r'\s+', ' ', cell).strip().replace("|", "\\|") for cell in norm_row]
         norm_matrix.append(norm_row)
 
-    header = norm_matrix[0]
-    separator = ["---"] * max_cols
-    rows = norm_matrix[1:] if len(norm_matrix) > 1 else []
+    col_is_empty = [True] * max_cols
+    for row in norm_matrix:
+        for c in range(max_cols):
+            if row[c] != "":
+                col_is_empty[c] = False
+
+    if all(col_is_empty):
+        return ""
+
+    cols_to_keep = []
+    c = 0
+    while c < max_cols:
+        if col_is_empty[c]:
+            j = c
+            while j < max_cols and col_is_empty[j]:
+                j += 1
+            empty_count = j - c
+            if empty_count >= 3:
+                cols_to_keep.append((False, empty_count))
+                c = j
+                continue
+        cols_to_keep.append((True, c))
+        c += 1
+
+    row_is_empty = [all(cell == "" for cell in row) for row in norm_matrix]
+    
+    final_matrix = []
+    i = 0
+    while i < len(norm_matrix):
+        if row_is_empty[i]:
+            j = i
+            while j < len(norm_matrix) and row_is_empty[j]:
+                j += 1
+            empty_count = j - i
+            if empty_count >= 3:
+                new_row = []
+                marker_placed = False
+                for keep, val in cols_to_keep:
+                    if not keep:
+                        if i == 0:
+                            new_row.append(f"<{val} empty cols>")
+                        else:
+                            new_row.append("...")
+                    else:
+                        if not marker_placed:
+                            new_row.append(f"<{empty_count} empty rows skipped>")
+                            marker_placed = True
+                        else:
+                            new_row.append("")
+                final_matrix.append(new_row)
+                i = j
+                continue
+            
+        row = norm_matrix[i]
+        new_row = []
+        for keep, val in cols_to_keep:
+            if not keep:
+                if i == 0:
+                    new_row.append(f"<{val} empty cols>")
+                else:
+                    new_row.append("...")
+            else:
+                new_row.append(row[val])
+        final_matrix.append(new_row)
+        i += 1
+
+    if not final_matrix:
+        return ""
+
+    header = final_matrix[0]
+    separator = ["---"] * len(header)
+    rows = final_matrix[1:] if len(final_matrix) > 1 else []
 
     header_line = "| " + " | ".join(header) + " |"
     sep_line = "| " + " | ".join(separator) + " |"
