@@ -135,6 +135,53 @@ def test_group_results_by_doc_fts_normalization():
     # Chunk 0 text should come before Chunk 1 text in reading order
     assert "Chunk 0 text" in grouped[0]["snippets"][0]
 
+def test_map_search(db_conn, monkeypatch):
+    """Test map search correctly builds a scored hierarchical tree."""
+    from qmd.utils import compress_text
+    from qmd.store import encode_vector
+    config = Config(db_path=":memory:")
+    store = Store(config, connection=db_conn)
+
+    class MockLLM:
+        def format_query_for_embedding(self, q): return q
+        def embed_batch(self, texts):
+            return [[1.0, 0.0]] * len(texts)
+
+    monkeypatch.setattr(store, "llm", MockLLM())
+
+    cursor = db_conn.cursor()
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'python basics', 'now')")
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'python advanced', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('code', 'src/basics/intro.md', 'Intro', 'h1', 'now')")
+    id1 = cursor.lastrowid
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('code', 'src/advanced/async.md', 'Async', 'h2', 'now')")
+    id2 = cursor.lastrowid
+
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'code', 'src/basics/intro.md', 'Intro', 'python basics')", (id1,))
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'code', 'src/advanced/async.md', 'Async', 'python advanced')", (id2,))
+
+    dummy_vec = encode_vector([1.0, 0.0])
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (id1, dummy_vec))
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (id2, dummy_vec))
+
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'h1', 0, ?, '')", (id1, compress_text("python basics")))
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'h2', 0, ?, '')", (id2, compress_text("python advanced")))
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'code', 'src/basics/intro.md', 'Intro', 'python basics', '')", (id1,))
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'code', 'src/advanced/async.md', 'Async', 'python advanced', '')", (id2,))
+    db_conn.commit()
+
+    results = store.map_search("python", limit=100)
+    assert len(results) == 1
+    tree_item = results[0]
+    assert tree_item["collection"] == "code"
+    assert tree_item["score"] > 0
+    
+    root = tree_item["tree"]
+    assert root["name"] == "code"
+    assert len(root["children"]) == 1
+    assert root["children"][0]["name"] == "src"
+    assert len(root["children"][0]["children"]) == 2
+
 def test_wide_to_narrow_search(db_conn):
     from qmd.utils import compress_text
     from qmd.store import encode_vector

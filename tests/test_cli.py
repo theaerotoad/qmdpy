@@ -225,6 +225,34 @@ def test_cli_xml_flags(monkeypatch, capsys):
         assert '<result' in out
         assert 'Helios 1 deep space mission' in out
 
+def test_cli_map_command(monkeypatch, capsys):
+    """Test qmd map CLI command routing and output."""
+    monkeypatch.setattr(sys, "argv", ["qmd", "map", "helios", "--limit", "50"])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.map_search.return_value = [{
+            "collection": "space",
+            "score": 1.5,
+            "tree": {
+                "name": "space",
+                "type": "directory",
+                "score": 1.5,
+                "children": [
+                    {"name": "helios.md", "type": "file", "title": "Helios", "score": 1.5}
+                ]
+            }
+        }]
+        main()
+        out = capsys.readouterr().out
+        assert "Semantic density map for" in out
+        assert "space/" in out
+        assert "[Score: 1.50]" in out
+        assert "helios.md" in out
+        
+        # Check kwargs routing
+        mock_store.map_search.assert_called_once()
+        assert mock_store.map_search.call_args.kwargs["limit"] == 50
+
 def test_cli_discover_command(monkeypatch, capsys):
     """Test qmd discover CLI command routing and output."""
     from qmd.store import Result
@@ -275,6 +303,7 @@ def test_helpall_flag(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Query Multiple Documents" in out
     assert "discover" in out
+    assert "map" in out
     assert "search" in out
     assert "outline" in out
     assert "chunk" in out
@@ -301,6 +330,7 @@ def test_format_help_all_direct():
     help_text = format_help_all(parser)
     assert "Query Multiple Documents" in help_text
     assert "usage: qmd discover" in help_text
+    assert "usage: qmd map" in help_text
     assert "usage: qmd search" in help_text
     assert "Target & Filters:" in help_text
     assert "Search Mode & Quality:" in help_text
