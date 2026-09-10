@@ -602,6 +602,80 @@ def test_process_image_routing_and_concurrency(monkeypatch):
     assert concurrent_results[2] == "# MD for c.png"
 
 
+def test_convert_xlsx_chartsheet(tmp_path, monkeypatch):
+    try:
+        import openpyxl
+    except ImportError:
+        pytest.skip("openpyxl is not installed")
+
+    from qmd.converters import convert_to_markdown
+
+    class MockR:
+        def __init__(self, t):
+            self.t = t
+    class MockP:
+        def __init__(self, r_list):
+            self.r = r_list
+    class MockRich:
+        def __init__(self, p_list):
+            self.p = p_list
+    class MockTx:
+        def __init__(self, rich):
+            self.rich = rich
+    class MockTitleRich:
+        def __init__(self, text):
+            self.tx = MockTx(MockRich([MockP([MockR(text)])]))
+
+    class MockChartSimple:
+        def __init__(self, title_str):
+            self.title = title_str
+
+    class MockChartRich:
+        def __init__(self, text):
+            self.title = MockTitleRich(text)
+
+    class MockChartsheet:
+        # Crucially, no iter_rows attribute
+        def __init__(self):
+            self.charts = [
+                MockChartRich("Sales Trend (Rich)"),
+                MockChartSimple("Revenue (Simple)")
+            ]
+
+    class MockWorksheet:
+        def iter_rows(self, values_only=True):
+            yield ["Col1", "Col2"]
+            yield [10, 20]
+
+    class MockWorkbook:
+        def __init__(self, *args, **kwargs):
+            self.sheetnames = ["Data", "Charts"]
+        def __getitem__(self, item):
+            if item == "Data":
+                return MockWorksheet()
+            return MockChartsheet()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(openpyxl, "load_workbook", MockWorkbook)
+
+    xlsx_file = tmp_path / "test.xlsx"
+    xlsx_file.write_bytes(b"dummy xlsx")
+
+    md = convert_to_markdown(xlsx_file)
+    
+    # Verify standard sheet parsed
+    assert "## Sheet: Data" in md
+    assert "| Col1 | Col2 |" in md
+    assert "| 10 | 20 |" in md
+    
+    # Verify chart sheet parsed correctly
+    assert "## Sheet: Charts" in md
+    assert "*[Chart Sheet]*" in md
+    assert "- Chart Title: Sales Trend (Rich)" in md
+    assert "- Chart Title: Revenue (Simple)" in md
+
+
 def test_guess_document_date(tmp_path):
     from qmd.converters import guess_document_date
 
