@@ -492,10 +492,6 @@ collections:
     assert outline is not None
     assert outline["collection"] == "child_coll"
 
-    grep_res = store.grep_search("content", collection="child_coll")
-    assert len(grep_res) == 1
-    assert grep_res[0]["collection"] == "child_coll"
-
     # 5. Partial collection searches across federated databases
     # 5a. Partial match targeting child database ('child' -> 'child_coll')
     res_fed_child_partial = store.search_fts("databases", collection="child")

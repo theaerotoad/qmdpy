@@ -74,7 +74,6 @@ def test_store_public_methods_present():
         "get_chunk_by_id",
         "get_chunk_by_seq",
         "get_collection_tree",
-        "grep_search",
         # Vector Index
         "build_usearch_index",
     ]
