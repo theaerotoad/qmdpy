@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QMD Document Manifold & Soft Clustering Explorer</title>
+  <style>
+    :root {
+      --bg-main: #0b0f19;
+      --bg-panel: #111827;
+      --bg-card: #1f2937;
+      --border: #374151;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg-main);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    header {
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      z-index: 10;
+    }
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .badge {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-weight: 500;
+    }
+    .badge.active {
+      color: #93c5fd;
+      border-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.1);
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    button, .btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+    button:hover, .btn:hover {
+      background: #374151;
+      border-color: #4b5563;
+    }
+    button.btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+    button.btn-primary:hover { background: var(--accent-hover); }
+    
+    .layout-container {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 54px);
+      position: relative;
+    }
+    .canvas-wrapper {
+      flex: 1;
+      position: relative;
+      background: radial-gradient(circle at 50% 50%, #131d31 0%, #0b0f19 100%);
+      cursor: grab;
+      overflow: hidden;
+    }
+    .canvas-wrapper:active { cursor: grabbing; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    /* Floating Viewport Controls */
+    .viewport-controls {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      display: flex;
+      gap: 6px;
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      padding: 6px;
+      border-radius: 8px;
+      z-index: 5;
+    }
+
+    /* Floating Hover Tooltip */
+    #hover-card {
+      position: absolute;
+      display: none;
+      pointer-events: none;
+      background: rgba(17, 24, 39, 0.95);
+      border: 1px solid #4b5563;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.6);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      max-width: 320px;
+      z-index: 20;
+      backdrop-filter: blur(8px);
+    }
+    #hover-card .hover-title { font-weight: 700; color: #fff; margin-bottom: 4px; line-height: 1.3; }
+    #hover-card .hover-meta { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 8px; }
+    
+    /* Right Side Drawer / Inspector */
+    .sidebar {
+      width: 420px;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 8;
+    }
+    .tabs-bar {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: #0f172a;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      border: none;
+      background: transparent;
+      border-bottom: 2px solid transparent;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      color: #60a5fa;
+      border-bottom-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.05);
+      font-weight: 600;
+    }
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: none;
+    }
+    .tab-content.active { display: block; }
+
+    /* Form Controls in Sidebar */
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-group label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    select, input[type="text"], input[type="range"] {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      outline: none;
+    }
+    select:focus, input[type="text"]:focus {
+      border-color: var(--accent);
+    }
+    .range-val { color: #93c5fd; font-weight: bold; }
+
+    /* Cluster Card in List */
+    .cluster-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .cluster-item:hover, .cluster-item.active {
+      border-color: #60a5fa;
+      background: #273549;
+    }
+    .cluster-item-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .cluster-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+    .color-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .cluster-terms {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 6px;
+    }
+    .term-tag {
+      background: #111827;
+      border: 1px solid #374151;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      color: #93c5fd;
+    }
+
+    /* Soft Membership Bar */
+    .membership-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+      margin-bottom: 6px;
+    }
+    .membership-label { width: 85px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    .membership-bar-bg { flex: 1; height: 7px; background: #374151; border-radius: 4px; overflow: hidden; }
+    .membership-bar-fill { height: 100%; border-radius: 4px; }
+    .membership-percent { width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+    /* Bridge Documents Item */
+    .bridge-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .bridge-item:hover { border-color: #f59e0b; }
+    .bridge-title { font-weight: 600; font-size: 0.82rem; margin-bottom: 4px; }
+    .bridge-meta { font-size: 0.72rem; color: #f59e0b; display: flex; justify-content: space-between; }
+
+    /* Document Detail View */
+    .detail-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .detail-section h4 {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+    }
+    .detail-title { font-size: 1.05rem; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .detail-path { font-size: 0.75rem; font-family: monospace; color: #9ca3af; word-break: break-all; margin-bottom: 8px; }
+    .detail-snippet {
+      font-size: 0.78rem;
+      color: #d1d5db;
+      background: #111827;
+      padding: 10px;
+      border-radius: 6px;
+      line-height: 1.45;
+      max-height: 150px;
+      overflow-y: auto;
+      border-left: 3px solid var(--accent);
+    }
+  </style>
+  <script id="manifold-data" type="application/json">{}</script>
+</head>
+<body>
+
+  <header>
+    <div class="header-title">
+      <span>QMD Manifold Explorer</span>
+      <span id="badge-total-docs" class="badge">0 docs</span>
+      <span id="badge-clusters" class="badge active">K = 0</span>
+      <span id="badge-dim" class="badge">0-D</span>
+    </div>
+    <div class="header-actions">
+      <input type="file" id="file-input" accept=".json" style="display:none;">
+      <button id="btn-load-json" title="Load another manifold_data.json artifact">📁 Load JSON</button>
+      <button id="btn-export-png" title="Export high-res screenshot">📷 Export PNG</button>
+    </div>
+  </header>
+
+  <div class="layout-container">
+    
+    <!-- Main Manifold Canvas Viewport -->
+    <div class="canvas-wrapper" id="canvas-container">
+      <canvas id="manifold-canvas"></canvas>
+      
+      <!-- Floating Viewport Controls -->
+      <div class="viewport-controls">
+        <button id="btn-zoom-in" title="Zoom In">+</button>
+        <button id="btn-zoom-out" title="Zoom Out">−</button>
+        <button id="btn-zoom-reset" title="Reset View">Reset</button>
+        <button id="btn-toggle-ellipses" title="Toggle Cluster Ellipses">Contours</button>
+      </div>
+
+      <!-- Hover Tooltip -->
+      <div id="hover-card">
+        <div class="hover-title" id="hover-title">Document Title</div>
+        <div class="hover-meta" id="hover-meta">Collection • Path</div>
+        <div id="hover-memberships"></div>
+      </div>
+    </div>
+
+    <!-- Right Interrogation Panel -->
+    <div class="sidebar">
+      <div class="tabs-bar">
+        <button class="tab-btn active" data-tab="tab-clusters">Clusters</button>
+        <button class="tab-btn" data-tab="tab-selection">Selected Doc</button>
+        <button class="tab-btn" data-tab="tab-bridges">Bridges / Soft</button>
+        <button class="tab-btn" data-tab="tab-settings">Filters</button>
+      </div>
+
+      <!-- Tab 1: Clusters List -->
+      <div id="tab-clusters" class="tab-content active">
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;">
+          Select a cluster to focus on its continuous soft membership gradient across the manifold.
+        </div>
+        <div id="cluster-items-list"></div>
+      </div>
+
+      <!-- Tab 2: Document Inspector -->
+      <div id="tab-selection" class="tab-content">
+        <div id="no-doc-selected" style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 40px 10px;">
+          Click any document point in the manifold to inspect its soft cluster probabilities and text preview.
+        </div>
+        <div id="doc-inspector-content" style="display: none;">
+          <div class="detail-section">
+            <div class="detail-title" id="inspector-title"></div>
+            <div class="detail-path" id="inspector-path"></div>
+            <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+              <span class="badge" id="inspector-collection"></span>
+              <span class="badge" id="inspector-chunks"></span>
+              <span class="badge" id="inspector-date"></span>
+            </div>
+            <div class="detail-snippet" id="inspector-snippet"></div>
+          </div>
+
+          <div class="detail-section">
+            <h4>Soft Cluster Distribution</h4>
+            <div style="margin-bottom: 10px; font-size: 0.78rem; display: flex; justify-content: space-between;">
+              <span>Ambiguity Entropy: <b id="inspector-entropy">0.0</b></span>
+              <span>Primary Confidence: <b id="inspector-conf">0%</b></span>
+            </div>
+            <div id="inspector-memberships"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Bridges / Soft Cluster Boundaries -->
+      <div id="tab-bridges" class="tab-content">
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;">
+          Documents with high Shannon Entropy straddling multiple topic boundaries.
+        </div>
+        <div id="bridges-list"></div>
+      </div>
+
+      <!-- Tab 4: Visualization Settings & Filters -->
+      <div id="tab-settings" class="tab-content">
+        <div class="form-group">
+          <label>Coloring Mode</label>
+          <select id="select-color-mode">
+            <option value="primary">Primary Cluster (Confidence Alpha)</option>
+            <option value="soft_focus">Soft Membership Heatmap (Single Cluster)</option>
+            <option value="entropy">Ambiguity / Entropy (Hybridity)</option>
+            <option value="collection">Collection</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="focus-cluster-group" style="display:none;">
+          <label>Focus Cluster</label>
+          <select id="select-focus-cluster"></select>
+        </div>
+
+        <div class="form-group">
+          <label>Search Document Title / Path</label>
+          <input type="text" id="input-search" placeholder="Type to filter points...">
+        </div>
+
+        <div class="form-group">
+          <label>Collection Filter</label>
+          <select id="select-collection-filter">
+            <option value="ALL">All Collections</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Min Primary Confidence <span id="val-conf-filter" class="range-val">0%</span></label>
+          <input type="range" id="range-conf-filter" min="0" max="100" value="0">
+        </div>
+
+        <div class="form-group">
+          <label>Min Ambiguity Entropy <span id="val-entropy-filter" class="range-val">0.00</span></label>
+          <input type="range" id="range-entropy-filter" min="0" max="100" value="0">
+        </div>
+
+        <div class="form-group">
+          <label>Point Size <span id="val-point-size" class="range-val">6px</span></label>
+          <input type="range" id="range-point-size" min="3" max="16" value="6">
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Palettes for categorical clusters
+    const CLUSTER_COLORS = [
+      '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+      '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+      '#14b8a6', '#d946ef', '#eab308', '#0ea5e9', '#a855f7',
+      '#22c55e', '#e11d48', '#64748b', '#0284c7', '#16a34a'
+    ];
+
+    let state = {
+      artifact: null,
+      documents: [],
+      clusters: [],
+      selectedDocId: null,
+      focusedClusterId: null,
+      showEllipses: true,
+      colorMode: 'primary',
+      searchQuery: '',
+      collectionFilter: 'ALL',
+      minConfidence: 0.0,
+      minEntropy: 0.0,
+      pointRadius: 6,
+      viewport: {
+        panX: 0,
+        panY: 0,
+        zoom: 1.0,
+        isDragging: false,
+        lastMouseX: 0,
+        lastMouseY: 0
+      }
+    };
+
+    const canvas = document.getElementById('manifold-canvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('canvas-container');
+    const hoverCard = document.getElementById('hover-card');
+
+    function init() {
+      setupEvents();
+      resizeCanvas();
+
+      // Read embedded artifact
+      const dataEl = document.getElementById('manifold-data');
+      if (dataEl && dataEl.textContent.trim().length > 2) {
+        try {
+          const parsed = JSON.parse(dataEl.textContent);
+          loadArtifact(parsed);
+        } catch (e) {
+          console.error("Failed to parse embedded data:", e);
+        }
+      }
+    }
+
+    function resizeCanvas() {
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      ctx.scale(dpr, dpr);
+      render();
+    }
+
+    function resetView() {
+      if (!state.documents.length) return;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      state.documents.forEach(d => {
+        if (d.x < minX) minX = d.x;
+        if (d.x > maxX) maxX = d.x;
+        if (d.y < minY) minY = d.y;
+        if (d.y > maxY) maxY = d.y;
+      });
+
+      const rect = container.getBoundingClientRect();
+      const pad = 60;
+      const rangeX = (maxX - minX) || 1;
+      const rangeY = (maxY - minY) || 1;
+
+      const scaleX = (rect.width - pad * 2) / rangeX;
+      const scaleY = (rect.height - pad * 2) / rangeY;
+      const zoom = Math.min(scaleX, scaleY);
+
+      state.viewport.zoom = zoom;
+      state.viewport.panX = rect.width / 2 - ((minX + maxX) / 2) * zoom;
+      state.viewport.panY = rect.height / 2 - ((minY + maxY) / 2) * zoom;
+      render();
+    }
+
+    function worldToScreen(wx, wy) {
+      return {
+        sx: wx * state.viewport.zoom + state.viewport.panX,
+        sy: wy * state.viewport.zoom + state.viewport.panY
+      };
+    }
+
+    function screenToWorld(sx, sy) {
+      return {
+        wx: (sx - state.viewport.panX) / state.viewport.zoom,
+        wy: (sy - state.viewport.panY) / state.viewport.zoom
+      };
+    }
+
+    function loadArtifact(data) {
+      state.artifact = data;
+      state.documents = data.documents || [];
+      state.clusters = data.clusters || [];
+
+      // Update header badges
+      document.getElementById('badge-total-docs').textContent = `${state.documents.length} docs`;
+      document.getElementById('badge-clusters').textContent = `K = ${state.clusters.length}`;
+      document.getElementById('badge-dim').textContent = `${data.meta?.embedding_dim || '?'}-D (${data.meta?.quantization || 'float'})`;
+
+      // Populate collections filter
+      const collections = new Set(state.documents.map(d => d.collection).filter(Boolean));
+      const collSelect = document.getElementById('select-collection-filter');
+      collSelect.innerHTML = '<option value="ALL">All Collections</option>';
+      collections.forEach(c => {
+        collSelect.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+      });
+
+      // Populate focus cluster selector
+      const focusSelect = document.getElementById('select-focus-cluster');
+      focusSelect.innerHTML = '';
+      state.clusters.forEach(c => {
+        focusSelect.innerHTML += `<option value="${c.id}">Cluster ${c.id}: ${(c.terms || []).slice(0, 3).join(', ')}</option>`;
+      });
+
+      populateClustersList();
+      populateBridgesList();
+      resetView();
+    }
+
+    function populateClustersList() {
+      const listEl = document.getElementById('cluster-items-list');
+      listEl.innerHTML = '';
+
+      state.clusters.forEach(c => {
+        const color = CLUSTER_COLORS[c.id % CLUSTER_COLORS.length];
+        const termsHtml = (c.terms || []).map(t => `<span class="term-tag">${escapeHtml(t)}</span>`).join('');
+
+        const item = document.createElement('div');
+        item.className = 'cluster-item' + (state.focusedClusterId === c.id ? ' active' : '');
+        item.innerHTML = `
+          <div class="cluster-item-header">
+            <span class="cluster-name">
+              <span class="color-dot" style="background:${color};"></span>
+              Cluster ${c.id}
+            </span>
+            <span class="badge">${c.hard_count} docs (${c.soft_weight})</span>
+          </div>
+          <div class="cluster-terms">${termsHtml}</div>
+        `;
+        item.addEventListener('click', () => {
+          if (state.focusedClusterId === c.id && state.colorMode === 'soft_focus') {
+            state.colorMode = 'primary';
+            document.getElementById('select-color-mode').value = 'primary';
+            document.getElementById('focus-cluster-group').style.display = 'none';
+            state.focusedClusterId = null;
+          } else {
+            state.focusedClusterId = c.id;
+            state.colorMode = 'soft_focus';
+            document.getElementById('select-color-mode').value = 'soft_focus';
+            document.getElementById('select-focus-cluster').value = c.id;
+            document.getElementById('focus-cluster-group').style.display = 'block';
+          }
+          populateClustersList();
+          render();
+        });
+        listEl.appendChild(item);
+      });
+    }
+
+    function populateBridgesList() {
+      const listEl = document.getElementById('bridges-list');
+      listEl.innerHTML = '';
+      const bridges = state.artifact?.bridge_documents || [];
+
+      if (!bridges.length) {
+        listEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem;">No bridge documents found with high entropy.</div>';
+        return;
+      }
+
+      bridges.forEach(b => {
+        const item = document.createElement('div');
+        item.className = 'bridge-item';
+        const topClustersText = (b.top_clusters || [])
+          .map(tc => `C${tc.cluster}: ${(tc.prob * 100).toFixed(0)}%`)
+          .join(' • ');
+
+        item.innerHTML = `
+          <div class="bridge-title">${escapeHtml(b.title)}</div>
+          <div class="bridge-meta">
+            <span>Entropy: ${b.entropy}</span>
+            <span>${topClustersText}</span>
+          </div>
+        `;
+        item.addEventListener('click', () => {
+          selectDocument(b.id);
+        });
+        listEl.appendChild(item);
+      });
+    }
+
+    function selectDocument(docId) {
+      state.selectedDocId = docId;
+      const doc = state.documents.find(d => d.id === docId);
+      if (!doc) return;
+
+      document.getElementById('no-doc-selected').style.display = 'none';
+      document.getElementById('doc-inspector-content').style.display = 'block';
+
+      document.getElementById('inspector-title').textContent = doc.title;
+      document.getElementById('inspector-path').textContent = doc.path;
+      document.getElementById('inspector-collection').textContent = doc.collection || 'Default';
+      document.getElementById('inspector-chunks').textContent = `${doc.chunks_count || 1} chunks`;
+      document.getElementById('inspector-date').textContent = doc.doc_date || 'No date';
+      document.getElementById('inspector-snippet').textContent = doc.snippet || 'No text preview available.';
+      document.getElementById('inspector-entropy').textContent = doc.entropy.toFixed(3);
+      document.getElementById('inspector-conf').textContent = `${(doc.confidence * 100).toFixed(1)}%`;
+
+      // Render soft membership distribution bars
+      const mbEl = document.getElementById('inspector-memberships');
+      mbEl.innerHTML = '';
+      (doc.memberships || []).forEach(m => {
+        const color = CLUSTER_COLORS[m.cluster % CLUSTER_COLORS.length];
+        const pct = (m.prob * 100).toFixed(1);
+        mbEl.innerHTML += `
+          <div class="membership-row">
+            <span class="membership-label" title="Cluster ${m.cluster}">Cluster ${m.cluster}</span>
+            <div class="membership-bar-bg">
+              <div class="membership-bar-fill" style="width:${pct}%; background:${color};"></div>
+            </div>
+            <span class="membership-percent">${pct}%</span>
+          </div>
+        `;
+      });
+
+      // Switch to Selection Tab
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.dataset.tab === 'tab-selection') btn.click();
+      });
+
+      render();
+    }
+
+    function getPointColor(doc) {
+      if (state.colorMode === 'primary') {
+        const color = CLUSTER_COLORS[doc.primary_cluster % CLUSTER_COLORS.length];
+        const alpha = Math.max(0.25, Math.min(1.0, doc.confidence));
+        return { fill: color, alpha: alpha };
+      } else if (state.colorMode === 'soft_focus') {
+        const focusK = state.focusedClusterId !== null ? state.focusedClusterId : 0;
+        const memb = (doc.memberships || []).find(m => m.cluster === focusK);
+        const p = memb ? memb.prob : 0.0;
+        if (p < 0.05) {
+          return { fill: '#4b5563', alpha: 0.2 };
+        }
+        // Continuous heat ramp from dark slate -> cyan -> yellow/orange
+        const baseColor = CLUSTER_COLORS[focusK % CLUSTER_COLORS.length];
+        return { fill: baseColor, alpha: Math.max(0.2, p) };
+      } else if (state.colorMode === 'entropy') {
+        // High entropy = red/orange, low entropy = blue/cyan
+        const h = doc.entropy;
+        const r = Math.round(h * 239 + (1 - h) * 59);
+        const g = Math.round(h * 68 + (1 - h) * 130);
+        const b = Math.round(h * 68 + (1 - h) * 246);
+        return { fill: `rgb(${r},${g},${b})`, alpha: 0.85 };
+      } else {
+        // Collection coloring
+        let hash = 0;
+        for (let i = 0; i < (doc.collection || '').length; i++) hash = (hash << 5) - hash + doc.collection.charCodeAt(i);
+        const color = CLUSTER_COLORS[Math.abs(hash) % CLUSTER_COLORS.length];
+        return { fill: color, alpha: 0.8 };
+      }
+    }
+
+    function render() {
+      const rect = container.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      if (!state.documents.length) return;
+
+      // 1. Draw Cluster Covariance Ellipses
+      if (state.showEllipses && state.clusters.length) {
+        state.clusters.forEach(c => {
+          if (!c.ellipse) return;
+          const { cx, cy, rx, ry, angle } = c.ellipse;
+          const { sx, sy } = worldToScreen(cx, cy);
+          const srx = rx * state.viewport.zoom;
+          const sry = ry * state.viewport.zoom;
+          const color = CLUSTER_COLORS[c.id % CLUSTER_COLORS.length];
+
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate((angle * Math.PI) / 180);
+          ctx.beginPath();
+          ctx.ellipse(0, 0, Math.max(1, srx), Math.max(1, sry), 0, 0, Math.PI * 2);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = state.focusedClusterId === c.id ? 2.5 : 1.2;
+          ctx.setLineDash([5, 5]);
+          ctx.globalAlpha = state.focusedClusterId === c.id ? 0.8 : 0.35;
+          ctx.stroke();
+
+          // Soft translucent cluster fill
+          ctx.fillStyle = color;
+          ctx.globalAlpha = state.focusedClusterId === c.id ? 0.12 : 0.04;
+          ctx.fill();
+          ctx.restore();
+        });
+      }
+
+      // 2. Draw Documents as Scatter Points
+      const sq = state.searchQuery.toLowerCase().trim();
+      const minConf = state.minConfidence;
+      const minEnt = state.minEntropy;
+      const collFilter = state.collectionFilter;
+
+      state.documents.forEach(doc => {
+        // Filter evaluation
+        let matches = true;
+        if (sq && !doc.title.toLowerCase().includes(sq) && !doc.path.toLowerCase().includes(sq)) {
+          matches = false;
+        }
+        if (collFilter !== 'ALL' && doc.collection !== collFilter) {
+          matches = false;
+        }
+        if (doc.confidence < minConf) {
+          matches = false;
+        }
+        if (doc.entropy < minEnt) {
+          matches = false;
+        }
+
+        const { sx, sy } = worldToScreen(doc.x, doc.y);
+        if (sx < -20 || sx > rect.width + 20 || sy < -20 || sy > rect.height + 20) return;
+
+        const { fill, alpha } = getPointColor(doc);
+        const isSelected = state.selectedDocId === doc.id;
+        const rad = isSelected ? state.pointRadius + 4 : state.pointRadius;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(sx, sy, rad, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.globalAlpha = matches ? alpha : 0.08;
+        ctx.fill();
+
+        if (isSelected) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+        } else if (matches && state.colorMode === 'soft_focus') {
+          ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        }
+        ctx.restore();
+      });
+    }
+
+    function setupEvents() {
+      window.addEventListener('resize', resizeCanvas);
+
+      // Pan & Zoom on Canvas
+      canvas.addEventListener('mousedown', e => {
+        state.viewport.isDragging = true;
+        state.viewport.lastMouseX = e.clientX;
+        state.viewport.lastMouseY = e.clientY;
+      });
+
+      window.addEventListener('mousemove', e => {
+        if (state.viewport.isDragging) {
+          const dx = e.clientX - state.viewport.lastMouseX;
+          const dy = e.clientY - state.viewport.lastMouseY;
+          state.viewport.panX += dx;
+          state.viewport.panY += dy;
+          state.viewport.lastMouseX = e.clientX;
+          state.viewport.lastMouseY = e.clientY;
+          render();
+        } else {
+          handleCanvasHover(e);
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        state.viewport.isDragging = false;
+      });
+
+      canvas.addEventListener('wheel', e => {
+        e.preventDefault();
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+        const newZoom = Math.max(5, Math.min(2000, state.viewport.zoom * zoomFactor));
+
+        state.viewport.panX = mouseX - (mouseX - state.viewport.panX) * (newZoom / state.viewport.zoom);
+        state.viewport.panY = mouseY - (mouseY - state.viewport.panY) * (newZoom / state.viewport.zoom);
+        state.viewport.zoom = newZoom;
+        render();
+      }, { passive: false });
+
+      canvas.addEventListener('click', e => {
+        const hit = findHitDocument(e);
+        if (hit) {
+          selectDocument(hit.id);
+        }
+      });
+
+      // Viewport Control Buttons
+      document.getElementById('btn-zoom-in').addEventListener('click', () => {
+        const rect = container.getBoundingClientRect();
+        state.viewport.zoom *= 1.25;
+        state.viewport.panX = rect.width / 2 - (rect.width / 2 - state.viewport.panX) * 1.25;
+        state.viewport.panY = rect.height / 2 - (rect.height / 2 - state.viewport.panY) * 1.25;
+        render();
+      });
+      document.getElementById('btn-zoom-out').addEventListener('click', () => {
+        const rect = container.getBoundingClientRect();
+        state.viewport.zoom *= 0.8;
+        state.viewport.panX = rect.width / 2 - (rect.width / 2 - state.viewport.panX) * 0.8;
+        state.viewport.panY = rect.height / 2 - (rect.height / 2 - state.viewport.panY) * 0.8;
+        render();
+      });
+      document.getElementById('btn-zoom-reset').addEventListener('click', resetView);
+      document.getElementById('btn-toggle-ellipses').addEventListener('click', () => {
+        state.showEllipses = !state.showEllipses;
+        render();
+      });
+
+      // Sidebar Tab Switching
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById(btn.dataset.tab).classList.add('active');
+        });
+      });
+
+      // Coloring Mode Selector
+      document.getElementById('select-color-mode').addEventListener('change', e => {
+        state.colorMode = e.target.value;
+        document.getElementById('focus-cluster-group').style.display = state.colorMode === 'soft_focus' ? 'block' : 'none';
+        if (state.colorMode === 'soft_focus' && state.focusedClusterId === null) {
+          state.focusedClusterId = 0;
+        }
+        populateClustersList();
+        render();
+      });
+
+      document.getElementById('select-focus-cluster').addEventListener('change', e => {
+        state.focusedClusterId = parseInt(e.target.value, 10);
+        populateClustersList();
+        render();
+      });
+
+      // Filter Inputs
+      document.getElementById('input-search').addEventListener('input', e => {
+        state.searchQuery = e.target.value;
+        render();
+      });
+      document.getElementById('select-collection-filter').addEventListener('change', e => {
+        state.collectionFilter = e.target.value;
+        render();
+      });
+      document.getElementById('range-conf-filter').addEventListener('input', e => {
+        const val = e.target.value;
+        state.minConfidence = val / 100;
+        document.getElementById('val-conf-filter').textContent = `${val}%`;
+        render();
+      });
+      document.getElementById('range-entropy-filter').addEventListener('input', e => {
+        const val = (e.target.value / 100).toFixed(2);
+        state.minEntropy = parseFloat(val);
+        document.getElementById('val-entropy-filter').textContent = val;
+        render();
+      });
+      document.getElementById('range-point-size').addEventListener('input', e => {
+        state.pointRadius = parseInt(e.target.value, 10);
+        document.getElementById('val-point-size').textContent = `${state.pointRadius}px`;
+        render();
+      });
+
+      // Load JSON File Picker
+      const fileInput = document.getElementById('file-input');
+      document.getElementById('btn-load-json').addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          try {
+            const parsed = JSON.parse(ev.target.result);
+            loadArtifact(parsed);
+          } catch (err) {
+            alert("Error parsing JSON file: " + err);
+          }
+        };
+        reader.readAsText(file);
+      });
+
+      // Export PNG Screenshot
+      document.getElementById('btn-export-png').addEventListener('click', () => {
+        const link = document.createElement('a');
+        link.download = 'qmd-manifold-clusters.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      });
+    }
+
+    function findHitDocument(e) {
+      const rect = container.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const threshold = Math.max(8, state.pointRadius + 4);
+
+      for (let i = state.documents.length - 1; i >= 0; i--) {
+        const doc = state.documents[i];
+        const { sx, sy } = worldToScreen(doc.x, doc.y);
+        const dist = Math.hypot(sx - mx, sy - my);
+        if (dist <= threshold) return doc;
+      }
+      return null;
+    }
+
+    function handleCanvasHover(e) {
+      const rect = container.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const doc = findHitDocument(e);
+
+      if (doc) {
+        hoverCard.style.display = 'block';
+        hoverCard.style.left = Math.min(rect.width - 340, mx + 15) + 'px';
+        hoverCard.style.top = Math.min(rect.height - 180, my + 15) + 'px';
+
+        document.getElementById('hover-title').textContent = doc.title;
+        document.getElementById('hover-meta').textContent = `${doc.collection || 'Default'} • Primary Cluster ${doc.primary_cluster} (${(doc.confidence * 100).toFixed(0)}%)`;
+
+        const membEl = document.getElementById('hover-memberships');
+        membEl.innerHTML = '';
+        (doc.memberships || []).slice(0, 3).forEach(m => {
+          const color = CLUSTER_COLORS[m.cluster % CLUSTER_COLORS.length];
+          const pct = (m.prob * 100).toFixed(0);
+          membEl.innerHTML += `
+            <div class="membership-row">
+              <span class="membership-label">Cluster ${m.cluster}</span>
+              <div class="membership-bar-bg">
+                <div class="membership-bar-fill" style="width:${pct}%; background:${color};"></div>
+              </div>
+              <span class="membership-percent">${pct}%</span>
+            </div>
+          `;
+        });
+      } else {
+        hoverCard.style.display = 'none';
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
