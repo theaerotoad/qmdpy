@@ -728,7 +728,7 @@ When requested to perform research or retrieve data using QMD, emit 1 to 5 comma
 </qmd_commands>
   </batch_execution_format>
   <workflow>
-    <step num="1" name="Discovery">Use `qmd discover "natural language question?"` for top-level SERP results (1 hit per document), or `qmd collections` / `qmd tree` to explore paths.</step>
+    <step num="1" name="Discovery">Use `qmd discover "natural language question?"` for top-level SERP results (1 hit per document), or `qmd map "question?"` to view a semantic density tree of results across folders.</step>
     <step num="2" name="Search">Use `qmd search "natural language question?"` for comprehensive document-grouped results.</step>
     <step num="3" name="Orient">Use `qmd outline "<target>"` to inspect heading hierarchies and chunk sequence spans.</step>
     <step num="4" name="Read">Use `qmd read "<target>"` to fetch chunks/ranges, or execute exact `read="..."` / `expand="..."` attributes from search results.</step>
@@ -755,6 +755,7 @@ When requested to perform research or retrieve data using QMD, emit 1 to 5 comma
 {CYAN}## Workflow & Decision Matrix{RESET}
 1. {BOLD}Triage & Discovery:{RESET}
    - `qmd discover "question?"` - Single top hit per document SERP view (use natural language questions)
+   - `qmd map "question?"` - Semantic directory tree mapping (density clustering)
    - `qmd collections` - List indexed collections and paths
    - `qmd tree [collection] [-p pattern]` - Explore document directory trees
 
