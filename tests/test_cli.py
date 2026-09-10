@@ -42,7 +42,6 @@ def test_arg_parsing_search_with_inline_cheatcodes(monkeypatch):
         
         mock_store_inst = MockStore.return_value
         mock_store_inst.hybrid_search.return_value = []
-        mock_store_inst.history_conn = None
         
         main()
         
