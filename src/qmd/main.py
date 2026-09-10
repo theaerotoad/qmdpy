@@ -236,7 +236,13 @@ def handle_discover(args, store: Store):
     is_w2n = getattr(args, "w2n", False) or getattr(args, "broad", False)
 
     query = " ".join(args.query)
+    from qmd.utils import parse_query_directives
+    query, directives = parse_query_directives(query)
+
     limit = args.limit if getattr(args, "limit", None) is not None else getattr(store.config, "default_limit", 10)
+    if "limit" in directives:
+        limit = directives["limit"]
+
     fts_limit = getattr(args, "fts_limit", None)
     vec_limit = getattr(args, "vec_limit", None)
     rerank_candidates = getattr(args, "rerank_candidates", None)
@@ -247,10 +253,15 @@ def handle_discover(args, store: Store):
         session_id = secrets.token_hex(4)
 
     include_seen = getattr(args, "include_seen", False)
-    if has_explicit_session:
+    if "exclude_seen" in directives:
+        exclude_seen = directives["exclude_seen"]
+    elif has_explicit_session:
         exclude_seen = not include_seen
     else:
         exclude_seen = getattr(args, "exclude_seen", False) and not include_seen
+
+    if "rerank" in directives:
+        rerank = directives["rerank"]
 
     exclude_seen_set = set()
     seen_chunks_count = 0
@@ -266,10 +277,10 @@ def handle_discover(args, store: Store):
         "verbose": args.verbose,
         "rerank": rerank,
         "reranker_only": getattr(args, "rerank_only", False),
-        "collection": args.collection,
-        "lexical_query": args.lex,
-        "title": args.title,
-        "path": args.path,
+        "collection": directives.get("collection", args.collection),
+        "lexical_query": directives.get("lex", args.lex),
+        "title": directives.get("title", args.title),
+        "path": directives.get("path", args.path),
         "fts_limit": fts_limit,
         "vec_limit": vec_limit,
         "rerank_candidates": rerank_candidates,
@@ -281,7 +292,8 @@ def handle_discover(args, store: Store):
 
     results = store.discover(**search_kwargs)
 
-    if getattr(args, "redact_pii", False):
+    redact_pii_flag = directives.get("redact_pii", getattr(args, "redact_pii", False))
+    if redact_pii_flag:
         for r in results:
             r.text = redact_pii(r.text)
             if hasattr(r, "title") and r.title:
@@ -294,7 +306,7 @@ def handle_discover(args, store: Store):
         session_id,
         event_type,
         query,
-        getattr(args, "lex", None),
+        directives.get("lex", getattr(args, "lex", None)),
         str(store.config.db_path),
         db_last_updated
     )
@@ -335,7 +347,13 @@ def handle_search(args, store: Store):
     is_w2n = getattr(args, "w2n", False) or getattr(args, "broad", False)
 
     query = " ".join(args.query)
+    from qmd.utils import parse_query_directives
+    query, directives = parse_query_directives(query)
+
     limit = args.limit if getattr(args, "limit", None) is not None else getattr(store.config, "default_limit", 10)
+    if "limit" in directives:
+        limit = directives["limit"]
+
     fts_limit = getattr(args, "fts_limit", None)
     vec_limit = getattr(args, "vec_limit", None)
     rerank_candidates = getattr(args, "rerank_candidates", None)
@@ -346,10 +364,15 @@ def handle_search(args, store: Store):
         session_id = secrets.token_hex(4)
 
     include_seen = getattr(args, "include_seen", False)
-    if has_explicit_session:
+    if "exclude_seen" in directives:
+        exclude_seen = directives["exclude_seen"]
+    elif has_explicit_session:
         exclude_seen = not include_seen
     else:
         exclude_seen = getattr(args, "exclude_seen", False) and not include_seen
+
+    if "rerank" in directives:
+        rerank = directives["rerank"]
 
     exclude_seen_set = set()
     seen_chunks_count = 0
@@ -363,11 +386,11 @@ def handle_search(args, store: Store):
         "limit": limit,
         "verbose": args.verbose,
         "rerank": rerank,
-        "reranker_only": args.rerank_only,
-        "collection": args.collection,
-        "lexical_query": args.lex,
-        "title": args.title,
-        "path": args.path,
+        "reranker_only": getattr(args, "rerank_only", False),
+        "collection": directives.get("collection", args.collection),
+        "lexical_query": directives.get("lex", args.lex),
+        "title": directives.get("title", args.title),
+        "path": directives.get("path", args.path),
         "fts_limit": fts_limit,
         "vec_limit": vec_limit,
         "rerank_candidates": rerank_candidates,
@@ -387,7 +410,8 @@ def handle_search(args, store: Store):
             **search_kwargs
         )
     
-    if getattr(args, "redact_pii", False):
+    redact_pii_flag = directives.get("redact_pii", getattr(args, "redact_pii", False))
+    if redact_pii_flag:
         for r in results:
             r.text = redact_pii(r.text)
             if hasattr(r, "title") and r.title:
@@ -400,7 +424,7 @@ def handle_search(args, store: Store):
         session_id,
         event_type,
         query,
-        getattr(args, "lex", None),
+        directives.get("lex", getattr(args, "lex", None)),
         str(store.config.db_path),
         db_last_updated
     )
