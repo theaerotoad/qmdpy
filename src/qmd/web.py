@@ -7,9 +7,12 @@ import secrets
 import argparse
 import mimetypes
 import subprocess
+import shutil
 from pathlib import Path
 from typing import Union, List, Optional
 from flask import Flask, request, jsonify, render_template, g, send_file
+
+HAS_WSLPATH = shutil.which("wslpath") is not None
 
 from qmd.config import load_config
 from qmd.store import Store
@@ -635,7 +638,10 @@ def open_document_system():
         return jsonify({"error": "File not found"}), 404
 
     try:
-        if hasattr(os, 'startfile'):
+        if HAS_WSLPATH:
+            win_path = subprocess.check_output(['wslpath', '-w', str(target_path)]).decode('utf-8').strip()
+            subprocess.Popen(['explorer.exe', win_path])
+        elif hasattr(os, 'startfile'):
             os.startfile(str(target_path))
         elif sys.platform == 'darwin':
             subprocess.Popen(['open', str(target_path)])
