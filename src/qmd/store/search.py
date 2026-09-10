@@ -1,7 +1,7 @@
 import time
 import re
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Union
+from typing import List, Tuple, Optional, Dict, Union, Any
 
 from qmd.db import get_cached_search_results, save_cached_search_results
 from qmd.utils import build_spacy_fts_queries
