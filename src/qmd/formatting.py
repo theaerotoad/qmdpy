@@ -836,6 +836,98 @@ def format_collection_tree_json(tree_data: Union[Dict, List[Dict]]):
     """Outputs collection folder directory tree as JSON."""
     print(json.dumps(tree_data, indent=2))
 
+def format_map_cli(tree_data: List[Dict], query: str = ""):
+    """Prints the semantic relevance map tree in ASCII format."""
+    if not tree_data:
+        print(f"\n{RED}No matching regions found.{RESET}")
+        return
+
+    print(f"\n{DIM}Semantic density map for:{RESET} {query}\n")
+
+    for item_idx, item in enumerate(tree_data):
+        if item_idx > 0:
+            print()
+        coll_name = item.get("collection", "")
+        root_node = item.get("tree", {})
+        coll_score = item.get("score", 0.0)
+        if not root_node:
+            continue
+
+        print(f"{BOLD}{CYAN}{coll_name}/{RESET} {YELLOW}[Score: {coll_score:.2f}]{RESET}")
+
+        def _render_node(node: Dict, prefix: str = ""):
+            children = node.get("children", [])
+            count = len(children)
+            for i, child in enumerate(children):
+                is_last = (i == count - 1)
+                connector = "└── " if is_last else "├── "
+                sub_prefix = "    " if is_last else "│   "
+
+                c_type = child.get("type", "file")
+                c_name = child.get("name", "")
+                score = child.get("score", 0.0)
+                score_str = f" {YELLOW}[{score:.2f}]{RESET}"
+                
+                if c_type == "directory":
+                    print(f"{prefix}{DIM}{connector}{RESET}{BOLD}{CYAN}{c_name}/{RESET}{score_str}")
+                    _render_node(child, prefix + sub_prefix)
+                else:
+                    title = child.get("title")
+                    title_str = f" {DIM}({title}){RESET}" if title and title != c_name else ""
+                    print(f"{prefix}{DIM}{connector}{RESET}{GREEN}{c_name}{RESET}{title_str}{score_str}")
+
+        _render_node(root_node, "")
+    print()
+
+def format_map_xml(tree_data: List[Dict], query: str = "", print_output: bool = True):
+    """Outputs semantic map tree as XML for LLM context."""
+    if not tree_data:
+        output = '<map_results>\n</map_results>'
+        if print_output:
+            print(output)
+        return output
+
+    query_attr = escape_xml_attr(query)
+    lines = [f'<map_results query="{query_attr}">']
+
+    def _node_to_xml(node: Dict, indent_level: int):
+        indent = "  " * indent_level
+        children = node.get("children", [])
+        for child in children:
+            c_type = child.get("type", "file")
+            c_name = escape_xml_attr(child.get("name", ""))
+            score = child.get("score", 0.0)
+            
+            if c_type == "directory":
+                c_children = child.get("children", [])
+                if c_children:
+                    lines.append(f'{indent}<directory name="{c_name}" score="{score:.4f}">')
+                    _node_to_xml(child, indent_level + 1)
+                    lines.append(f'{indent}</directory>')
+                else:
+                    lines.append(f'{indent}<directory name="{c_name}" score="{score:.4f}" />')
+            else:
+                title_attr = f' title="{escape_xml_attr(child.get("title", ""))}"' if child.get("title") else ""
+                path_attr = f' path="{escape_xml_attr(child.get("path", ""))}"' if child.get("path") else ""
+                lines.append(f'{indent}<file name="{c_name}"{title_attr}{path_attr} score="{score:.4f}" />')
+
+    for item in tree_data:
+        coll_name = escape_xml_attr(item.get("collection", ""))
+        coll_score = item.get("score", 0.0)
+        indent_base = 1
+        indent = "  " * indent_base
+        root_node = item.get("tree", {})
+        lines.append(f'{indent}<collection_tree collection="{coll_name}" score="{coll_score:.4f}">')
+        _node_to_xml(root_node, indent_base + 1)
+        lines.append(f'{indent}</collection_tree>')
+
+    lines.append('</map_results>')
+
+    output = "\n".join(lines)
+    if print_output:
+        print(output)
+    return output
+
 def format_collection_tree_xml(tree_data: Union[Dict, List[Dict]], print_output: bool = True):
     """Outputs collection folder tree as XML for LLM context."""
     if not tree_data:

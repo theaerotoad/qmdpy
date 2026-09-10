@@ -16,6 +16,7 @@ from qmd.formatting import (
     format_discover_cli, format_discover_json, format_discover_xml,
     format_outline_cli, format_chunks_cli, format_results_xml, format_doc_results_xml,
     format_chunks_xml, format_outline_xml, format_collection_tree_cli, format_collection_tree_xml,
+    format_map_cli, format_map_xml,
     set_plain_mode, strip_ansi, BOLD, CYAN, GREEN, RED, RESET, YELLOW
 )
 from qmd.utils import redact_pii, parse_target_spec, parse_int_ranges
@@ -332,6 +333,55 @@ def handle_discover(args, store: Store):
         format_discover_xml(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, seen_chunks=seen_chunks_count, truncation_info=truncation_info)
     else:
         format_discover_cli(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)
+
+def handle_map(args, store: Store):
+    is_xml = _is_xml_output(args)
+    if getattr(args, "plain", False) or is_xml:
+        set_plain_mode(True)
+
+    env_deep = os.environ.get("QMD_DEEP", "").strip().lower() in ("1", "true", "yes", "on")
+    is_deep = getattr(args, "deep", False) or env_deep
+    rerank = getattr(args, "rerank", False) or is_deep
+
+    query = " ".join(args.query)
+    from qmd.utils import parse_query_directives
+    query, directives = parse_query_directives(query)
+
+    limit = args.limit if getattr(args, "limit", None) is not None else getattr(store.config, "default_limit", 100)
+    if "limit" in directives:
+        limit = directives["limit"]
+
+    fts_limit = getattr(args, "fts_limit", None)
+    vec_limit = getattr(args, "vec_limit", None)
+    rerank_candidates = getattr(args, "rerank_candidates", None)
+
+    search_kwargs = {
+        "query": query,
+        "limit": limit,
+        "verbose": args.verbose,
+        "rerank": rerank,
+        "reranker_only": getattr(args, "rerank_only", False),
+        "collection": directives.get("collection", args.collection),
+        "lexical_query": directives.get("lex", args.lex),
+        "title": directives.get("title", args.title),
+        "path": directives.get("path", args.path),
+        "fts_limit": fts_limit,
+        "vec_limit": vec_limit,
+        "rerank_candidates": rerank_candidates,
+        "exclude_seen_set": set(),
+    }
+    if getattr(args, "no_cache", False):
+        search_kwargs["use_cache"] = False
+
+    tree_results = store.map_search(**search_kwargs)
+
+    if args.json:
+        import json
+        print(json.dumps(tree_results, indent=2))
+    elif is_xml:
+        format_map_xml(tree_results, query=query)
+    else:
+        format_map_cli(tree_results, query=query)
 
 def handle_search(args, store: Store):
     is_xml = _is_xml_output(args)
@@ -891,6 +941,32 @@ def build_parser():
     d_output_group.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
     d_output_group.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
 
+    map_parser = subparsers.add_parser("map", aliases=["m"], help="Semantic directory tree mapping (Wide-to-Narrow density clustering)", parents=[parent_parser])
+    map_parser.add_argument("query", nargs="+", help="The natural language question or search terms")
+
+    m_filter_group = map_parser.add_argument_group("Target & Filters")
+    m_filter_group.add_argument("-c", "--collection", type=str, help="Filter results by a specific collection")
+    m_filter_group.add_argument("-p", "--path", type=str, help="Filter results by a specific path (substring match)")
+    m_filter_group.add_argument("-t", "--title", type=str, help="Filter results by a specific title (substring match)")
+    m_filter_group.add_argument("--lex", type=str, help="Override the lexical (FTS) search terms")
+
+    m_mode_group = map_parser.add_argument_group("Search Mode & Quality")
+    m_mode_group.add_argument("--deep", action="store_true", help="Deep map: enable LLM reranking")
+    m_mode_group.add_argument("-r", "--rerank", action="store_true", help="Use LLM to rerank results")
+    m_mode_group.add_argument("--rerank-only", action="store_true", help="Sort results purely by reranker score (implies --rerank)")
+    m_mode_group.add_argument("--limit", type=int, default=100, help="Number of final documents to sample for density map (default: 100)")
+    m_mode_group.add_argument("--no-cache", action="store_true", help="Bypass and do not write to search result cache")
+    m_mode_group.add_argument("--fts-limit", type=int, default=None, help="Max number of FTS (lexical) matches to retrieve")
+    m_mode_group.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
+    m_mode_group.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")
+
+    m_output_group = map_parser.add_argument_group("Output & Formatting")
+    m_output_group.add_argument("--xml", action="store_true", help="Output results in XML format for LLM context")
+    m_output_group.add_argument("--llm", action="store_true", help="Alias for --xml (optimizes output for LLM agent context)")
+    m_output_group.add_argument("--json", action="store_true", help="Output results in JSON format")
+    m_output_group.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
+    m_output_group.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
+
     search_parser = subparsers.add_parser("search", aliases=["query", "q"], help="Hybrid vector + lexical search (document-ordered by default)", parents=[parent_parser])
     search_parser.add_argument("query", nargs="+", help="The natural language question or search terms")
 
@@ -1006,6 +1082,8 @@ def build_parser():
 def execute_command(args, store):
     if args.command in ["discover", "find", "disc"]:
         handle_discover(args, store)
+    elif args.command in ["map", "m"]:
+        handle_map(args, store)
     elif args.command in ["search", "query", "q"]:
         handle_search(args, store)
     elif args.command == "outline":

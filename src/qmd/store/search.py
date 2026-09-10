@@ -625,3 +625,115 @@ class SearchMixin:
             print(f"{CYAN}---------------------------------{RESET}\n")
 
         return final_results
+
+    def map_search(
+        self,
+        query: str,
+        limit: int = 100,
+        verbose: bool = False,
+        rerank: bool = False,
+        reranker_only: bool = False,
+        collection: Optional[str] = None,
+        lexical_query: Optional[str] = None,
+        title: Optional[str] = None,
+        path: Optional[Union[str, List[str]]] = None,
+        fts_limit: Optional[int] = None,
+        vec_limit: Optional[int] = None,
+        rerank_candidates: Optional[int] = None,
+        exclude_seen_set: Optional[set] = None,
+        use_cache: Optional[bool] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Executes a broad discover search and builds a scored, hierarchical directory tree
+        representing the semantic density of the results across the filesystem.
+        """
+        results = self.discover(
+            query=query,
+            limit=limit,
+            verbose=verbose,
+            rerank=rerank,
+            reranker_only=reranker_only,
+            collection=collection,
+            lexical_query=lexical_query,
+            title=title,
+            path=path,
+            fts_limit=fts_limit,
+            vec_limit=vec_limit,
+            rerank_candidates=rerank_candidates,
+            exclude_seen_set=exclude_seen_set,
+            w2n=True, # Map always benefits from Wide-to-Narrow density aggregation
+            use_cache=use_cache
+        )
+
+        if not results:
+            return []
+
+        # Group by collection
+        coll_map = {}
+        for r in results:
+            c_name = r.collection or ""
+            if c_name not in coll_map:
+                coll_map[c_name] = []
+            coll_map[c_name].append(r)
+
+        trees = []
+        for coll_name, docs in coll_map.items():
+            dir_tree = {"dirs": {}, "files": [], "score": 0.0}
+
+            for doc in docs:
+                norm_path = doc.path.replace("\\", "/").strip("/")
+                parts = norm_path.split("/") if norm_path else []
+                if not parts:
+                    continue
+
+                dir_parts = parts[:-1]
+                file_name = parts[-1]
+
+                # Bubble up score to collection root
+                dir_tree["score"] += doc.score
+
+                curr = dir_tree
+                current_path = []
+                for d in dir_parts:
+                    current_path.append(d)
+                    if d not in curr["dirs"]:
+                        curr["dirs"][d] = {"dirs": {}, "files": [], "score": 0.0, "path": "/".join(current_path)}
+                    curr["dirs"][d]["score"] += doc.score
+                    curr = curr["dirs"][d]
+
+                curr["files"].append({
+                    "name": file_name,
+                    "type": "file",
+                    "title": doc.title or file_name,
+                    "path": doc.path,
+                    "score": doc.score,
+                    "rank": doc.rank,
+                    "match_count": getattr(doc, "match_count", 1)
+                })
+
+            def _convert_node(name: str, node_data: Dict[str, Any]) -> Dict[str, Any]:
+                children = []
+                for dir_name in sorted(node_data["dirs"].keys(), key=lambda k: node_data["dirs"][k]["score"], reverse=True):
+                    sub_dict = node_data["dirs"][dir_name]
+                    children.append(_convert_node(dir_name, sub_dict))
+
+                sorted_files = sorted(node_data["files"], key=lambda f: f["score"], reverse=True)
+                children.extend(sorted_files)
+
+                return {
+                    "name": name,
+                    "type": "directory",
+                    "score": node_data["score"],
+                    "path": node_data.get("path", ""),
+                    "children": children
+                }
+
+            root_node = _convert_node(coll_name, dir_tree)
+            trees.append({
+                "collection": coll_name,
+                "score": dir_tree["score"],
+                "tree": root_node
+            })
+
+        trees.sort(key=lambda x: x["score"], reverse=True)
+        return trees
