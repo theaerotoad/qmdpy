@@ -14,7 +14,7 @@ from flask import Flask, request, jsonify, render_template, g, send_file
 from qmd.config import load_config
 from qmd.store import Store
 from qmd.main import group_results_by_doc, handle_guide
-from qmd.formatting import format_results_xml, format_doc_results_xml, format_discover_xml, format_grep_xml, escape_xml_attr
+from qmd.formatting import format_results_xml, format_doc_results_xml, format_discover_xml, escape_xml_attr
 from qmd.mcp_server import execute_qmd_command
 from qmd.utils import decompress_text, redact_pii, parse_query_directives
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
@@ -687,65 +687,6 @@ def collections():
             "can_reindex": not is_fed
         })
     return jsonify(colls)
-
-@app.route('/api/grep', methods=['POST'])
-def grep():
-    try:
-        t0 = time.time()
-        data = request.json or {}
-        raw_pattern = data.get('pattern', '')
-        clean_pattern, directives = parse_query_directives(raw_pattern)
-        pattern = clean_pattern if clean_pattern else raw_pattern
-        if not pattern:
-            return jsonify({"error": "Missing 'pattern' parameter"}), 400
-
-        is_regex = directives.get('regex') if directives.get('regex') is not None else bool(data.get('regex', False))
-        case_sensitive = directives.get('case_sensitive') if directives.get('case_sensitive') is not None else bool(data.get('case_sensitive', False))
-        collection = directives.get('collection') or data.get('collection') or None
-        paths_input = data.get('paths') if data.get('paths') is not None else data.get('path')
-        if directives.get('path'):
-            if paths_input:
-                if isinstance(paths_input, list):
-                    if directives['path'] not in paths_input:
-                        paths_input = paths_input + [directives['path']]
-                else:
-                    paths_input = [paths_input, directives['path']]
-            else:
-                paths_input = directives['path']
-        limit = directives.get('limit') if directives.get('limit') is not None else int(data.get('limit', 50))
-
-        store = get_store()
-        try:
-            results = store.grep_search(
-                pattern=pattern,
-                is_regex=is_regex,
-                case_sensitive=case_sensitive,
-                collection=collection,
-                path=paths_input if paths_input else None,
-                limit=limit
-            )
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 400
-
-        time_taken = round(time.time() - t0, 3)
-        full_xml = format_grep_xml(
-            results=results,
-            pattern=pattern,
-            is_regex=is_regex,
-            case_sensitive=case_sensitive,
-            print_output=False
-        )
-        return jsonify({
-            "results": results,
-            "total_matches": len(results),
-            "pattern": pattern,
-            "regex": is_regex,
-            "case_sensitive": case_sensitive,
-            "time_taken": time_taken,
-            "xml": full_xml
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/collections/tree', methods=['GET'])
 def get_collections_tree():

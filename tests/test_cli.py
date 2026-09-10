@@ -277,7 +277,6 @@ def test_helpall_flag(monkeypatch, capsys):
     assert "discover" in out
     assert "search" in out
     assert "outline" in out
-    assert "grep" in out
     assert "chunk" in out
     assert "update" in out
     assert "collection" in out
@@ -294,7 +293,6 @@ def test_helpall_subcommand_flag(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Query Multiple Documents" in out
     assert "outline" in out
-    assert "grep" in out
 
 def test_format_help_all_direct():
     """Test format_help_all helper function directly."""
@@ -304,7 +302,6 @@ def test_format_help_all_direct():
     assert "Query Multiple Documents" in help_text
     assert "usage: qmd discover" in help_text
     assert "usage: qmd search" in help_text
-    assert "usage: qmd grep" in help_text
     assert "Target & Filters:" in help_text
     assert "Search Mode & Quality:" in help_text
     assert "Session & History:" in help_text
