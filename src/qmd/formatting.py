@@ -837,50 +837,86 @@ def format_collection_tree_json(tree_data: Union[Dict, List[Dict]]):
     print(json.dumps(tree_data, indent=2))
 
 def format_map_cli(tree_data: List[Dict], query: str = ""):
-    """Prints the semantic relevance map tree in ASCII format."""
+    """Prints the semantic relevance map tree in ASCII format, scaled to a Density Score."""
     if not tree_data:
         print(f"\n{RED}No matching regions found.{RESET}")
         return
 
     print(f"\n{DIM}Semantic density map for:{RESET} {query}\n")
 
+    # 1. Collect and rank directories
+    all_dirs = []
+    def _collect_dirs(node, coll_name):
+        path_val = node.get('path', '')
+        path_str = f"qmd://{coll_name}/{path_val}".rstrip('/')
+        
+        # Count files directly inside this directory
+        file_count = sum(1 for c in node.get("children", []) if c.get("type") == "file")
+        
+        all_dirs.append({
+            "path": path_str,
+            "score": node.get("score", 0.0) * 100.0,
+            "file_count": file_count
+        })
+        
+        for child in node.get("children", []):
+            if child.get("type") == "directory":
+                _collect_dirs(child, coll_name)
+
+    for item in tree_data:
+        _collect_dirs(item.get("tree", {}), item.get("collection", ""))
+
+    # Deduplicate and sort
+    unique_dirs = list({d["path"]: d for d in all_dirs}.values())
+    top_dirs = sorted(unique_dirs, key=lambda x: x["score"], reverse=True)
+    top_dirs = [d for d in top_dirs if d["score"] > 0]
+
+    if top_dirs:
+        print(f"{BOLD}{YELLOW}Top 10 Directories by Relevance Density:{RESET}")
+        for i, d in enumerate(top_dirs[:10]):
+            rank_str = f"{i+1}."
+            score_str = f"[{d['score']:.1f}]"
+            file_str = f"({d['file_count']} matching files)" if d['file_count'] > 0 else ""
+            print(f"  {GREEN}{rank_str:<3}{RESET} {YELLOW}{score_str:>6}{RESET} {CYAN}{d['path']}{RESET} {DIM}{file_str}{RESET}")
+        print("\n" + DIM + "-" * 60 + RESET + "\n")
+
+    # 2. Render Tree (Directories only)
     for item_idx, item in enumerate(tree_data):
         if item_idx > 0:
             print()
         coll_name = item.get("collection", "")
         root_node = item.get("tree", {})
-        coll_score = item.get("score", 0.0)
+        coll_score = item.get("score", 0.0) * 100.0
         if not root_node:
             continue
 
-        print(f"{BOLD}{CYAN}{coll_name}/{RESET} {YELLOW}[Score: {coll_score:.2f}]{RESET}")
+        print(f"{BOLD}{CYAN}{coll_name}/{RESET} {YELLOW}[Density: {coll_score:.1f}]{RESET}")
 
         def _render_node(node: Dict, prefix: str = ""):
-            children = node.get("children", [])
+            # Filter to only directories to make the map scannable
+            children = [c for c in node.get("children", []) if c.get("type") == "directory"]
             count = len(children)
+            
             for i, child in enumerate(children):
                 is_last = (i == count - 1)
                 connector = "└── " if is_last else "├── "
                 sub_prefix = "    " if is_last else "│   "
 
-                c_type = child.get("type", "file")
                 c_name = child.get("name", "")
-                score = child.get("score", 0.0)
-                score_str = f" {YELLOW}[{score:.2f}]{RESET}"
+                score_val = child.get("score", 0.0) * 100.0
+                score_str = f" {YELLOW}[{score_val:.1f}]{RESET}"
                 
-                if c_type == "directory":
-                    print(f"{prefix}{DIM}{connector}{RESET}{BOLD}{CYAN}{c_name}/{RESET}{score_str}")
-                    _render_node(child, prefix + sub_prefix)
-                else:
-                    title = child.get("title")
-                    title_str = f" {DIM}({title}){RESET}" if title and title != c_name else ""
-                    print(f"{prefix}{DIM}{connector}{RESET}{GREEN}{c_name}{RESET}{title_str}{score_str}")
+                child_direct_files = sum(1 for c in child.get("children", []) if c.get("type") == "file")
+                file_str = f" {DIM}({child_direct_files} files){RESET}" if child_direct_files > 0 else ""
+                
+                print(f"{prefix}{DIM}{connector}{RESET}{BOLD}{CYAN}{c_name}/{RESET}{score_str}{file_str}")
+                _render_node(child, prefix + sub_prefix)
 
         _render_node(root_node, "")
     print()
 
 def format_map_xml(tree_data: List[Dict], query: str = "", print_output: bool = True):
-    """Outputs semantic map tree as XML for LLM context."""
+    """Outputs semantic map tree as XML for LLM context, focusing on density scores."""
     if not tree_data:
         output = '<map_results>\n</map_results>'
         if print_output:
@@ -890,34 +926,62 @@ def format_map_xml(tree_data: List[Dict], query: str = "", print_output: bool = 
     query_attr = escape_xml_attr(query)
     lines = [f'<map_results query="{query_attr}">']
 
+    all_dirs = []
+    def _collect_dirs(node, coll_name):
+        path_val = node.get('path', '')
+        path_str = f"qmd://{coll_name}/{path_val}".rstrip('/')
+        file_count = sum(1 for c in node.get("children", []) if c.get("type") == "file")
+        
+        all_dirs.append({
+            "path": path_str,
+            "score": node.get("score", 0.0) * 100.0,
+            "file_count": file_count
+        })
+        for child in node.get("children", []):
+            if child.get("type") == "directory":
+                _collect_dirs(child, coll_name)
+
+    for item in tree_data:
+        _collect_dirs(item.get("tree", {}), item.get("collection", ""))
+
+    unique_dirs = list({d["path"]: d for d in all_dirs}.values())
+    top_dirs = sorted(unique_dirs, key=lambda x: x["score"], reverse=True)
+    top_dirs = [d for d in top_dirs if d["score"] > 0]
+    
+    if top_dirs:
+        lines.append('  <top_directories>')
+        for d in top_dirs[:10]:
+            lines.append(f'    <directory path="{escape_xml_attr(d["path"])}" density_score="{d["score"]:.1f}" matching_files="{d["file_count"]}" />')
+        lines.append('  </top_directories>')
+
     def _node_to_xml(node: Dict, indent_level: int):
         indent = "  " * indent_level
         children = node.get("children", [])
         for child in children:
             c_type = child.get("type", "file")
             c_name = escape_xml_attr(child.get("name", ""))
-            score = child.get("score", 0.0)
+            score = child.get("score", 0.0) * 100.0
             
             if c_type == "directory":
                 c_children = child.get("children", [])
                 if c_children:
-                    lines.append(f'{indent}<directory name="{c_name}" score="{score:.4f}">')
+                    lines.append(f'{indent}<directory name="{c_name}" density_score="{score:.1f}">')
                     _node_to_xml(child, indent_level + 1)
                     lines.append(f'{indent}</directory>')
                 else:
-                    lines.append(f'{indent}<directory name="{c_name}" score="{score:.4f}" />')
+                    lines.append(f'{indent}<directory name="{c_name}" density_score="{score:.1f}" />')
             else:
                 title_attr = f' title="{escape_xml_attr(child.get("title", ""))}"' if child.get("title") else ""
                 path_attr = f' path="{escape_xml_attr(child.get("path", ""))}"' if child.get("path") else ""
-                lines.append(f'{indent}<file name="{c_name}"{title_attr}{path_attr} score="{score:.4f}" />')
+                lines.append(f'{indent}<file name="{c_name}"{title_attr}{path_attr} density_score="{score:.1f}" />')
 
     for item in tree_data:
         coll_name = escape_xml_attr(item.get("collection", ""))
-        coll_score = item.get("score", 0.0)
+        coll_score = item.get("score", 0.0) * 100.0
         indent_base = 1
         indent = "  " * indent_base
         root_node = item.get("tree", {})
-        lines.append(f'{indent}<collection_tree collection="{coll_name}" score="{coll_score:.4f}">')
+        lines.append(f'{indent}<collection_tree collection="{coll_name}" density_score="{coll_score:.1f}">')
         _node_to_xml(root_node, indent_base + 1)
         lines.append(f'{indent}</collection_tree>')
 

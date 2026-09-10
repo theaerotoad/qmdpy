@@ -246,8 +246,11 @@ def test_cli_map_command(monkeypatch, capsys):
         out = capsys.readouterr().out
         assert "Semantic density map for" in out
         assert "space/" in out
-        assert "[Score: 1.50]" in out
-        assert "helios.md" in out
+        assert "[Density: 150.0]" in out
+        assert "Top 10 Directories by Relevance Density" in out
+        
+        # Files are intentionally omitted from the tree, check they don't appear in the tree
+        assert "├── helios.md" not in out
         
         # Check kwargs routing
         mock_store.map_search.assert_called_once()
