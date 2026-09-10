@@ -25,15 +25,14 @@ class IndexingMixin:
 
     def _get_collection_files(self, base_path: Path, collection_cfg: CollectionConfig) -> List[Path]:
         if collection_cfg.file_extensions is not None:
-            exts = [
+            exts = {
                 e.lower() if e.startswith('.') else f".{e.lower()}"
                 for e in collection_cfg.file_extensions
-            ]
+            }
             files = []
-            for ext in exts:
-                for f in base_path.glob(f"**/*{ext}"):
-                    if f.is_file() and f.suffix.lower() in exts:
-                        files.append(f)
+            for f in base_path.glob("**/*"):
+                if f.is_file() and f.suffix.lower() in exts:
+                    files.append(f)
             seen = set()
             unique_files = []
             for f in files:
@@ -42,7 +41,12 @@ class IndexingMixin:
                     unique_files.append(f)
             return unique_files
         else:
-            candidates = list(base_path.glob(collection_cfg.glob))
+            glob_pattern = collection_cfg.glob
+            if glob_pattern in ("**/*.md", "**/*"):
+                candidates = list(base_path.glob("**/*"))
+            else:
+                candidates = list(base_path.glob(glob_pattern))
+            seen = set()
             unique_files = []
             for f in candidates:
                 if not f.is_file():
@@ -51,7 +55,9 @@ class IndexingMixin:
                 if not collection_cfg.convert_non_md and ext not in {".md", ".markdown", ".txt"}:
                     continue
                 if ext in SUPPORTED_EXTENSIONS or ext in {".md", ".markdown", ".txt"}:
-                    unique_files.append(f)
+                    if f not in seen:
+                        seen.add(f)
+                        unique_files.append(f)
             return unique_files
 
     def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False, verbose: bool = False):
@@ -311,7 +317,7 @@ class IndexingMixin:
             cursor.execute("SELECT body FROM content WHERE hash = ?", (file_hash,))
             content_row = cursor.fetchone()
 
-            if content_row and not has_prior_error:
+            if not force and content_row and not has_prior_error:
                 content_exists = True
                 markdown_body = decompress_text(content_row[0])
             else:

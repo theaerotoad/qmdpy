@@ -9,7 +9,7 @@ DEFAULT_CONFIG_PATH = Path.home() / ".config" / "qmd" / "index.yml"
 @dataclass
 class CollectionConfig:
     path: str
-    glob: str = "**/*.md"
+    glob: str = "**/*"
     contexts: Optional[Dict[str, str]] = None
     file_extensions: Optional[List[str]] = None
     convert_non_md: bool = True
@@ -77,9 +77,18 @@ class Config:
             exts = cfg.get('file_extensions') or cfg.get('formats')
             if isinstance(exts, str):
                 exts = [exts]
+            coll_path_raw = cfg.get('path', '')
+            if coll_path_raw:
+                p = Path(coll_path_raw).expanduser()
+                if not p.is_absolute() and config_path:
+                    coll_path = str((config_path.parent / p).resolve())
+                else:
+                    coll_path = str(p.resolve())
+            else:
+                coll_path = ''
             collections[name] = CollectionConfig(
-                path=cfg.get('path', ''),
-                glob=cfg.get('glob', '**/*.md'),
+                path=coll_path,
+                glob=cfg.get('glob', '**/*'),
                 contexts=cfg.get('contexts'),
                 file_extensions=exts,
                 convert_non_md=cfg.get('convert_non_md', True)
