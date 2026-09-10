@@ -16,7 +16,6 @@ from qmd.formatting import (
     format_discover_cli, format_discover_json, format_discover_xml,
     format_outline_cli, format_chunks_cli, format_results_xml, format_doc_results_xml,
     format_chunks_xml, format_outline_xml, format_collection_tree_cli, format_collection_tree_xml,
-    format_grep_cli, format_grep_json, format_grep_xml,
     set_plain_mode, strip_ansi, BOLD, CYAN, GREEN, RED, RESET, YELLOW
 )
 from qmd.utils import redact_pii, parse_target_spec, parse_int_ranges
@@ -539,49 +538,6 @@ def handle_outline(args, store: Store):
     else:
         format_outline_cli(outline)
 
-def handle_grep(args, store: Store):
-    is_xml = _is_xml_output(args)
-    if getattr(args, "plain", False) or is_xml:
-        set_plain_mode(True)
-
-    pattern = args.pattern
-    is_regex = getattr(args, "regex", False)
-    case_sensitive = getattr(args, "case_sensitive", False) and not getattr(args, "ignore_case", False)
-    limit = getattr(args, "limit", 50) or 50
-
-    coll = getattr(args, "collection", None)
-    path = getattr(args, "path", None)
-    if path:
-        spec = parse_target_spec(path, default_collection=coll)
-        if spec["collection"]:
-            coll = spec["collection"]
-        if spec["path"]:
-            path = spec["path"]
-
-    try:
-        results = store.grep_search(
-            pattern=pattern,
-            is_regex=is_regex,
-            case_sensitive=case_sensitive,
-            collection=coll,
-            path=path,
-            limit=limit
-        )
-    except ValueError as e:
-        if args.json:
-            import json
-            print(json.dumps({"error": str(e)}, indent=2))
-        else:
-            print(f"{RED}Error: {e}{RESET}")
-        sys.exit(1)
-
-    if args.json:
-        format_grep_json(results)
-    elif is_xml:
-        format_grep_xml(results, pattern=pattern, is_regex=is_regex, case_sensitive=case_sensitive)
-    else:
-        format_grep_cli(results, pattern=pattern)
-
 def handle_chunk(args, store: Store):
     is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
@@ -982,19 +938,6 @@ def build_parser():
     outline_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
     outline_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
-    grep_parser = subparsers.add_parser("grep", help="[Deprecated: use discover or search] Direct pattern search across raw document bodies", parents=[parent_parser])
-    grep_parser.add_argument("pattern", help="Search pattern or regular expression")
-    grep_parser.add_argument("-r", "--regex", action="store_true", help="Treat pattern as a regular expression")
-    grep_parser.add_argument("-s", "--case-sensitive", action="store_true", help="Perform case-sensitive matching")
-    grep_parser.add_argument("-i", "--ignore-case", action="store_true", help="Perform case-insensitive matching (default)")
-    grep_parser.add_argument("-c", "--collection", type=str, default=None, help="Filter by collection name")
-    grep_parser.add_argument("-p", "--path", type=str, default=None, help="Filter by file path substring")
-    grep_parser.add_argument("--limit", type=int, default=50, help="Maximum number of matching lines to return")
-    grep_parser.add_argument("--json", action="store_true", help="Output results in JSON format")
-    grep_parser.add_argument("--xml", action="store_true", help="Output results in XML format for LLM context")
-    grep_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
-    grep_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
-
     read_parser = subparsers.add_parser("read", aliases=["chunk", "get", "view"], help="Fetch specific chunk by rowid, path, or URI with surrounding context window", parents=[parent_parser])
     read_parser.add_argument("target", help="Document path, URI (qmd://...), shorthand (coll:path:seq), OR chunk rowid/ranges")
     read_parser.add_argument("--seq", type=str, default=None, help="Sequence ID or range of chunk(s) (when target is a document path, e.g. 0, 1-5, 2,4,6-8)")
@@ -1067,8 +1010,6 @@ def execute_command(args, store):
         handle_search(args, store)
     elif args.command == "outline":
         handle_outline(args, store)
-    elif args.command == "grep":
-        handle_grep(args, store)
     elif args.command in ["read", "chunk", "get", "view"]:
         handle_chunk(args, store)
     elif args.command == "tree":
