@@ -297,6 +297,27 @@ def _convert_xlsx(path: Path, config=None, errors_out: Optional[List[dict]] = No
                     if vision_md:
                         md_lines.append(vision_md + "\n")
 
+        if not hasattr(sheet, "iter_rows"):
+            md_lines.append("*[Chart Sheet]*\n")
+            try:
+                charts = getattr(sheet, "charts", getattr(sheet, "_charts", []))
+                for chart in charts:
+                    if hasattr(chart, "title") and chart.title is not None:
+                        title_text = ""
+                        if hasattr(chart.title, "tx") and hasattr(chart.title.tx, "rich") and chart.title.tx.rich:
+                            for p in getattr(chart.title.tx.rich, "p", []):
+                                for r in getattr(p, "r", []):
+                                    if hasattr(r, "t"):
+                                        title_text += str(r.t)
+                        else:
+                            title_text = str(chart.title)
+                        
+                        if title_text and title_text != "None":
+                            md_lines.append(f"- Chart Title: {title_text.strip()}\n")
+            except Exception:
+                pass
+            continue
+
         matrix = []
         for row in sheet.iter_rows(values_only=True):
             if not row or all(v is None for v in row):
