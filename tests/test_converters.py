@@ -39,8 +39,8 @@ def test_format_matrix_to_md_table_compression():
     md = _format_matrix_to_md_table(matrix)
     assert "<3 empty cols>" in md
     assert "<3 empty rows skipped>" in md
-    assert "| <3 empty cols> | Col4 | |" in md
-    assert "| ... | <3 empty rows skipped> | |" in md
+    assert "| <3 empty cols> | Col4 |  |" in md
+    assert "| ... | <3 empty rows skipped> |  |" in md
     
     # Check that completely empty matrices return empty string
     empty_matrix = [["", ""], ["", ""]]
