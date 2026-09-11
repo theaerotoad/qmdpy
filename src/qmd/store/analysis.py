@@ -93,7 +93,7 @@ class AnalysisMixin:
 
             # Call LLM
             try:
-                analysis_res = self.llm.analyze_document(doc_title, text_content)
+                analysis_res = self.llm.analyze_document(doc_title, text_content, path=doc_path)
             except Exception as e:
                 if verbose:
                     tqdm.write(f"Error analyzing {doc_path}: {e}")

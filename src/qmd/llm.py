@@ -375,7 +375,7 @@ Final Output:
         
         return valid_lines
 
-    def analyze_document(self, title: str, content: str) -> Dict:
+    def analyze_document(self, title: str, content: str, path: str = "") -> Dict:
         """
         Uses the generation model to extract metadata and a summary from document text.
         """
@@ -383,6 +383,8 @@ Final Output:
 You are an expert document analysis AI.
 Analyze the following document text (which may be truncated).
 Extract the following metadata and return ONLY a valid JSON object. Do not include markdown codeblocks or preamble.
+
+Rules for Dates: Focus on finding the publication, release, or primary creation date of the document. If the date is missing from the text, you may infer it from the Document Path.
 
 Required JSON structure:
 {{
@@ -394,6 +396,7 @@ Required JSON structure:
 Use empty arrays or strings if information is not present.
 
 Document Title: {title}
+Document Path: {path}
 Document Content:
 {content}
 '''

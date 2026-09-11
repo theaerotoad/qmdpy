@@ -13,7 +13,7 @@ class MockLLMForAnalysis:
     def embed_batch(self, *args, **kwargs):
         return []
 
-    def analyze_document(self, title, content):
+    def analyze_document(self, title, content, path=""):
         return {
             "summary": f"Mock summary for {title}",
             "authors": ["Mock Author"],
