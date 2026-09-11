@@ -1172,9 +1172,9 @@ def main():
         return
 
     config = load_config(config_path)
-    is_write = args.command in ["update"]
+    is_write = args.command in ["update", "analyze", "analysis"]
     if is_write and getattr(config, "is_federated", False):
-        print(f"{RED}Error: Updating/indexing is disabled in federated include mode. Update individual collection configurations directly.{RESET}")
+        print(f"{RED}Error: Modifying databases (update/analyze) is disabled in federated include mode. Run against individual collections directly.{RESET}")
         sys.exit(1)
     store = Store(config, read_only=not is_write)
 
