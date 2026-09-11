@@ -2,6 +2,8 @@ import json
 from datetime import datetime
 from typing import List, Optional, Union, Dict, Any
 
+from tqdm import tqdm
+
 from qmd.utils import decompress_text
 from .models import _build_collection_sql_filter
 
@@ -64,9 +66,16 @@ class AnalysisMixin:
         docs_to_analyze = cursor.fetchall()
 
         results = []
-        for doc_hash, doc_path, doc_title, doc_coll in docs_to_analyze:
+        if not docs_to_analyze:
+            return results
+
+        pbar = tqdm(docs_to_analyze, desc="Analyzing documents", unit="doc")
+        for doc_hash, doc_path, doc_title, doc_coll in pbar:
+            disp_path = doc_path if len(doc_path) <= 35 else "..." + doc_path[-32:]
+            pbar.set_postfix_str(disp_path)
+
             if verbose:
-                print(f"Analyzing {doc_path}...")
+                tqdm.write(f"Analyzing {doc_path}...")
 
             # Fetch only the first 5 chunks chronologically
             cursor.execute("""
@@ -87,7 +96,7 @@ class AnalysisMixin:
                 analysis_res = self.llm.analyze_document(doc_title, text_content)
             except Exception as e:
                 if verbose:
-                    print(f"Error analyzing {doc_path}: {e}")
+                    tqdm.write(f"Error analyzing {doc_path}: {e}")
                 continue
 
             # Store in DB
