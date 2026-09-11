@@ -44,7 +44,7 @@ def mock_store(tmp_path):
 
 def test_analyze_target(mock_store):
     # 1. First run, should successfully analyze the document
-    results = mock_store.analyze_target(limit=5, verbose=True)
+    results = mock_store.analyze_target(limit=5, time_limit=1.0, verbose=True)
     
     assert len(results) == 1
     res = results[0]

@@ -865,6 +865,7 @@ def handle_analyze(args, store: Store):
         set_plain_mode(True)
 
     limit = getattr(args, "limit", 100)
+    time_limit = getattr(args, "time_limit", None)
     force = getattr(args, "force", False)
     verbose = getattr(args, "verbose", False)
     
@@ -877,6 +878,7 @@ def handle_analyze(args, store: Store):
         path=path,
         title=title,
         limit=limit,
+        time_limit=time_limit,
         force=force,
         verbose=verbose
     )
@@ -1099,6 +1101,7 @@ def build_parser():
     analyze_parser.add_argument("-p", "--path", type=str, help="Filter documents by path (substring match)")
     analyze_parser.add_argument("-t", "--title", type=str, help="Filter documents by title (substring match)")
     analyze_parser.add_argument("--limit", type=int, default=100, help="Maximum number of documents to analyze in this run")
+    analyze_parser.add_argument("--time-limit", type=float, default=None, help="Maximum execution time in hours (e.g., 0.5 for 30 mins)")
     analyze_parser.add_argument("-f", "--force", action="store_true", help="Force re-analysis even if document is already analyzed")
     analyze_parser.add_argument("--json", action="store_true", help="Output results as JSON")
     analyze_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")

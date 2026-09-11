@@ -1,3 +1,4 @@
+import time
 import json
 from datetime import datetime
 from typing import List, Optional, Union, Dict, Any
@@ -16,6 +17,7 @@ class AnalysisMixin:
         path: Optional[Union[str, List[str]]] = None,
         title: Optional[str] = None,
         limit: int = 100,
+        time_limit: Optional[float] = None,
         force: bool = False,
         verbose: bool = False
     ) -> List[Dict[str, Any]]:
@@ -69,8 +71,15 @@ class AnalysisMixin:
         if not docs_to_analyze:
             return results
 
+        start_time = time.time()
         pbar = tqdm(docs_to_analyze, desc="Analyzing documents", unit="doc")
         for doc_hash, doc_path, doc_title, doc_coll in pbar:
+            if time_limit is not None:
+                elapsed_hours = (time.time() - start_time) / 3600.0
+                if elapsed_hours >= time_limit:
+                    tqdm.write(f"\nTime limit of {time_limit} hours reached. Stopping analysis.")
+                    break
+
             disp_path = doc_path if len(doc_path) <= 35 else "..." + doc_path[-32:]
             pbar.set_postfix_str(disp_path)
 
