@@ -1,4 +1,3 @@
-import sqlite3
 import json
 from datetime import datetime
 from typing import List, Optional, Union, Dict, Any
@@ -23,7 +22,6 @@ class AnalysisMixin:
 
         cursor = self.conn.cursor()
 
-        # 1. Build the query to find target documents
         query_sql = """
             SELECT d.hash, d.path, d.title, d.collection
             FROM documents d
