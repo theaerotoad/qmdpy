@@ -860,6 +860,44 @@ def handle_update(args, store: Store):
     else:
         print(f"{GREEN}✓ All files indexed cleanly with zero errors.{RESET}")
 
+def handle_analyze(args, store: Store):
+    if getattr(args, "plain", False):
+        set_plain_mode(True)
+
+    limit = getattr(args, "limit", 100)
+    force = getattr(args, "force", False)
+    verbose = getattr(args, "verbose", False)
+    
+    collection = getattr(args, "collection", None)
+    path = getattr(args, "path", None)
+    title = getattr(args, "title", None)
+
+    results = store.analyze_target(
+        collection=collection,
+        path=path,
+        title=title,
+        limit=limit,
+        force=force,
+        verbose=verbose
+    )
+
+    if getattr(args, "json", False):
+        import json
+        print(json.dumps(results, indent=2))
+    else:
+        if not results:
+            print(f"{YELLOW}No documents found to analyze or all matched documents are already analyzed.{RESET}")
+            return
+        print(f"\n{CYAN}--- Document Analysis Results ---{RESET}")
+        for res in results:
+            print(f"\n{GREEN}File: {res['path']}{RESET} (Collection: {res.get('collection', 'None')})")
+            analysis = res.get('analysis', {})
+            print(f"  {BOLD}Summary:{RESET} {analysis.get('summary', '')}")
+            print(f"  {BOLD}Authors:{RESET} {', '.join(analysis.get('authors', []))}")
+            print(f"  {BOLD}Tags:{RESET} {', '.join(analysis.get('tags', []))}")
+            print(f"  {BOLD}Dates:{RESET} {', '.join(analysis.get('dates', []))}")
+        print(f"\n{CYAN}---------------------------------{RESET}")
+
 class HelpAllAction(argparse.Action):
     root_parser: Optional[argparse.ArgumentParser] = None
 
@@ -1056,6 +1094,16 @@ def build_parser():
     update_parser.add_argument("--no-ann", action="store_true", help="Skip automatic HNSW ANN index build/update")
     update_parser.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info during update")
 
+    analyze_parser = subparsers.add_parser("analyze", aliases=["analysis"], help="Run LLM document summarization and metadata extraction", parents=[parent_parser])
+    analyze_parser.add_argument("-c", "--collection", type=str, help="Filter documents by collection name")
+    analyze_parser.add_argument("-p", "--path", type=str, help="Filter documents by path (substring match)")
+    analyze_parser.add_argument("-t", "--title", type=str, help="Filter documents by title (substring match)")
+    analyze_parser.add_argument("--limit", type=int, default=100, help="Maximum number of documents to analyze in this run")
+    analyze_parser.add_argument("-f", "--force", action="store_true", help="Force re-analysis even if document is already analyzed")
+    analyze_parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    analyze_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
+    analyze_parser.add_argument("-v", "--verbose", action="store_true", help="Show verbose output during analysis")
+
     coll_parser = subparsers.add_parser("collection", help="Manage collections", parents=[parent_parser])
     coll_sub = coll_parser.add_subparsers(dest="subcommand", required=True)
     coll_list = coll_sub.add_parser("list", help="List all configured collections", parents=[parent_parser])
@@ -1099,6 +1147,8 @@ def execute_command(args, store):
         handle_guide(args, store)
     elif args.command == "update":
         handle_update(args, store)
+    elif args.command in ["analyze", "analysis"]:
+        handle_analyze(args, store)
     elif args.command == "collection":
         if args.subcommand == "list":
             handle_collections_list(args, store)
