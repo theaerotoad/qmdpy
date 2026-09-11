@@ -63,7 +63,7 @@ Do not omit task 2 merely because text was successfully transcribed.
 - Identify every meaningful visual region, including charts, plots, timelines, diagrams, flowcharts, photographs, illustrations, maps, and interface elements.
 - After transcribing the text associated with a visual region, add:
 
-  `**Visual description:**`
+  `**Visual description:**`
 
 - Under that label, provide one or more concise bullet points describing what is visibly represented.
 - A transcription of labels, axes, or legends is not a substitute for the visual description.
@@ -96,7 +96,7 @@ For the visual description:
 - Do not enumerate colors unless color is needed to connect marks with a clearly readable legend.
 - If individual marks are too numerous or small to enumerate, describe their density and distribution.
 - If the graphical content cannot be interpreted reliably, write:
-  `- Graphical marks are present, but their values or associations cannot be determined reliably from the image.`
+  `- Graphical marks are present, but their values or associations cannot be determined reliably from the image.`
 
 Use this structure for each chart when applicable:
 
@@ -139,7 +139,7 @@ Use this structure for each chart when applicable:
 - Do not speculate about identities, locations, purposes, or events not visually established.
 - If the entire input is primarily a photograph or illustration, use:
 
-  `![Factual visual description](image.png)`
+  `![Factual visual description](image.png)`
 
 **Mathematics**
 
@@ -374,6 +374,43 @@ Final Output:
                 valid_lines.append(clean_line)
         
         return valid_lines
+
+    def analyze_document(self, title: str, content: str) -> Dict:
+        """
+        Uses the generation model to extract metadata and a summary from document text.
+        """
+        prompt = f'''
+You are an expert document analysis AI.
+Analyze the following document text (which may be truncated).
+Extract the following metadata and return ONLY a valid JSON object. Do not include markdown codeblocks or preamble.
+
+Required JSON structure:
+{{
+    "summary": "A concise 2-3 sentence summary of the document",
+    "authors": ["author 1", "author 2"],
+    "tags": ["tag1", "tag2"],
+    "dates": ["YYYY-MM-DD"]
+}}
+Use empty arrays or strings if information is not present.
+
+Document Title: {title}
+Document Content:
+{content}
+'''
+        try:
+            response = self.client.post("/v1/chat/completions", json={
+                "model": self.generate_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+                "max_tokens": 1024
+            })
+            response.raise_for_status()
+            text = response.json()["choices"][0]["message"]["content"].strip()
+            text = re.sub(r'^```(?:json)?\s*\n([\s\S]*?)\n```$', r'\1', text, flags=re.IGNORECASE).strip()
+            return json.loads(text)
+        except Exception as e:
+            print(f"LLM analysis failed: {e}")
+            return {"summary": "", "authors": [], "tags": [], "dates": []}
 
     def process_image(
         self,

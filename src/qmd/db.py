@@ -628,7 +628,19 @@ def init_schema(conn: sqlite3.Connection):
     except Exception:
         pass
 
-    # 8. Essential Join & Filter Indexes for High-Scale Vector / Metadata Queries
+    # 8. LLM Document Analysis Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS document_analysis (
+        doc_hash TEXT PRIMARY KEY REFERENCES content(hash) ON DELETE CASCADE,
+        summary TEXT,
+        authors TEXT,
+        tags TEXT,
+        dates TEXT,
+        analyzed_at TEXT NOT NULL
+    );
+    """)
+
+    # 9. Essential Join & Filter Indexes for High-Scale Vector / Metadata Queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(hash);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunk_metadata_doc_hash ON chunk_metadata(doc_hash);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents(collection);")
