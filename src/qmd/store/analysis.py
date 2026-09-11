@@ -134,6 +134,8 @@ class AnalysisMixin:
                 "hash": doc_hash,
                 "analysis": analysis_res
             })
+            
+            # Commit after each document to save progress in case of interruption
+            self.conn.commit()
 
-        self.conn.commit()
         return results
