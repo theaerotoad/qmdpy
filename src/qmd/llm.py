@@ -402,11 +402,25 @@ Document Content:
                 "model": self.generate_model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.0,
-                "max_tokens": 1024
+                "max_tokens": 8192
             })
             response.raise_for_status()
-            text = response.json()["choices"][0]["message"]["content"].strip()
-            text = re.sub(r'^```(?:json)?\s*\n([\s\S]*?)\n```$', r'\1', text, flags=re.IGNORECASE).strip()
+            message = response.json()["choices"][0]["message"]
+            text = message.get("content", "") or ""
+            
+            # Strip out <think> blocks if the API mixes reasoning into content
+            text = re.sub(r'<think>.*?</think>', '', text, flags=re.IGNORECASE | re.DOTALL).strip()
+            
+            # Extract JSON from markdown fences or bare curly braces
+            match = re.search(r'```(?:json)?\s*\n([\s\S]*?)\n```', text, flags=re.IGNORECASE)
+            if match:
+                text = match.group(1).strip()
+            else:
+                start = text.find('{')
+                end = text.rfind('}')
+                if start != -1 and end != -1:
+                    text = text[start:end+1]
+                    
             return json.loads(text)
         except Exception as e:
             print(f"LLM analysis failed: {e}")
