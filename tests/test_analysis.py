@@ -15,10 +15,13 @@ class MockLLMForAnalysis:
 
     def analyze_document(self, title, content, path=""):
         return {
+            "altTitle": f"Better {title}",
+            "doc_type": "academicPaper",
             "summary": f"Mock summary for {title}",
             "authors": ["Mock Author"],
             "tags": ["mock", "test"],
-            "dates": ["2026-09-11"]
+            "dates": ["2026-09-11"],
+            "questions": ["Q1 in?", "Q2 in?", "Q3 in?", "Q4 out?", "Q5 out?"]
         }
 
 @pytest.fixture
@@ -53,6 +56,9 @@ def test_analyze_target(mock_store):
     
     analysis = res["analysis"]
     assert analysis["summary"] == "Mock summary for Test Doc"
+    assert analysis["altTitle"] == "Better Test Doc"
+    assert analysis["doc_type"] == "academicPaper"
+    assert len(analysis["questions"]) == 5
     assert "Mock Author" in analysis["authors"]
     
     # 2. Run again without force, should return empty because it's already analyzed

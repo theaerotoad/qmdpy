@@ -894,10 +894,17 @@ def handle_analyze(args, store: Store):
         for res in results:
             print(f"\n{GREEN}File: {res['path']}{RESET} (Collection: {res.get('collection', 'None')})")
             analysis = res.get('analysis', {})
+            print(f"  {BOLD}Alt Title:{RESET} {analysis.get('altTitle', '')}")
+            print(f"  {BOLD}Type:{RESET} {analysis.get('doc_type', '')}")
             print(f"  {BOLD}Summary:{RESET} {analysis.get('summary', '')}")
             print(f"  {BOLD}Authors:{RESET} {', '.join(analysis.get('authors', []))}")
             print(f"  {BOLD}Tags:{RESET} {', '.join(analysis.get('tags', []))}")
             print(f"  {BOLD}Dates:{RESET} {', '.join(analysis.get('dates', []))}")
+            questions = analysis.get('questions', [])
+            if questions:
+                print(f"  {BOLD}Questions:{RESET}")
+                for q in questions:
+                    print(f"    - {q}")
         print(f"\n{CYAN}---------------------------------{RESET}")
 
 class HelpAllAction(argparse.Action):

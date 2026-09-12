@@ -111,13 +111,16 @@ class AnalysisMixin:
             # Store in DB
             now = datetime.utcnow().isoformat() + "Z"
             cursor.execute("""
-                INSERT INTO document_analysis (doc_hash, summary, authors, tags, dates, analyzed_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO document_analysis (doc_hash, summary, authors, tags, dates, questions, doc_type, alt_title, analyzed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(doc_hash) DO UPDATE SET
                     summary = excluded.summary,
                     authors = excluded.authors,
                     tags = excluded.tags,
                     dates = excluded.dates,
+                    questions = excluded.questions,
+                    doc_type = excluded.doc_type,
+                    alt_title = excluded.alt_title,
                     analyzed_at = excluded.analyzed_at
             """, (
                 doc_hash,
@@ -125,6 +128,9 @@ class AnalysisMixin:
                 json.dumps(analysis_res.get("authors", [])),
                 json.dumps(analysis_res.get("tags", [])),
                 json.dumps(analysis_res.get("dates", [])),
+                json.dumps(analysis_res.get("questions", [])),
+                analysis_res.get("doc_type", ""),
+                analysis_res.get("altTitle", ""),
                 now
             ))
 

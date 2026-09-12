@@ -385,13 +385,34 @@ Analyze the following document text (which may be truncated).
 Extract the following metadata and return ONLY a valid JSON object. Do not include markdown codeblocks or preamble.
 
 Rules for Dates: Focus on finding the publication, release, or primary creation date of the document. If the date is missing from the text, you may infer it from the Document Path.
+Rules for Questions: Generate exactly 3 inward-facing questions that the text is likely to address or answer, and exactly 2 outward-facing questions ("what next?" or broader implications) that might be asked after reading the paper.
+Rules for Document Type: Characterize the document type by picking EXACTLY ONE from this list:
+  - academicPaper: Peer-reviewed studies, preprints, and conference proceedings with formal citations.
+  - technicalDoc: API references, RFCs, architecture overviews, and system specifications.
+  - technicalTutorial: Step-by-step how-to guides, engineering blog posts, and code walkthroughs.
+  - nonFictionWork: Long-form factual works, biographies, histories, and chapter-based monographs.
+  - fictionWork: Novels, short stories, and creative prose driven by narrative and dialogue.
+  - marketReport: Industry white papers, quarterly earnings, equity research, and financial forecasts.
+  - legalDocument: Contracts, NDAs, regulatory filings, terms of service, and patent disclosures.
+  - internalMemo: Meeting minutes, decision logs, post-mortems, and executive strategy notes.
+  - newsArticle: Current affairs reporting, breaking dispatches, and corporate press releases.
+  - opinionEssay: Op-eds, cultural critiques, philosophical arguments, and thesis-driven columns.
+  - educationalText: Textbook excerpts, course syllabi, problem sets, and instructional modules.
+  - spokenTranscript: Verbatim text from podcasts, speeches, depositions, and video caption tracks.
+  - correspondence: Email threads, curated subscriber newsletters, and formal circular letters.
+  - referenceGuide: Glossaries, cheat sheets, indexing tables, and quick-lookup FAQ compilations.
+  - marketingCopy: Product landing pages, sales one-pagers, pitch deck scripts, and case studies.
+  - dramaticScript: Screenplays, teleplays, and theatrical scripts with sluglines and dialogue tags.
 
 Required JSON structure:
 {{
+    "altTitle": "A better, more accurate full document title based on the text",
+    "doc_type": "One exact type from the list above",
     "summary": "A concise 2-3 sentence summary of the document",
     "authors": ["author 1", "author 2"],
     "tags": ["tag1", "tag2"],
-    "dates": ["YYYY-MM-DD"]
+    "dates": ["YYYY-MM-DD"],
+    "questions": ["inward q1", "inward q2", "inward q3", "outward q1", "outward q2"]
 }}
 Use empty arrays or strings if information is not present.
 
@@ -427,7 +448,7 @@ Document Content:
             return json.loads(text)
         except Exception as e:
             print(f"LLM analysis failed: {e}")
-            return {"summary": "", "authors": [], "tags": [], "dates": []}
+            return {"summary": "", "authors": [], "tags": [], "dates": [], "questions": [], "doc_type": "", "altTitle": ""}
 
     def process_image(
         self,
