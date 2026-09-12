@@ -175,7 +175,7 @@ class LLMClient:
         multimodal_api_key: Optional[str] = None,
         multimodal_model: Optional[str] = None,
         multimodal_prompt: Optional[str] = None,
-        timeout: float = 120.0
+        timeout: float = 600.0
     ):
         # Default to local server if not set. 
         self.base_url = base_url or os.environ.get("QMD_LLM_URL", "http://127.0.0.1:8888")
@@ -385,7 +385,7 @@ Analyze the following document text (which may be truncated).
 Extract the following metadata and return ONLY a valid JSON object. Do not include markdown codeblocks or preamble.
 
 Rules for Dates: Focus on finding the publication, release, or primary creation date of the document. If the date is missing from the text, you may infer it from the Document Path.
-Rules for Questions: Generate exactly 3 inward-facing questions that the text is likely to address or answer, and exactly 2 outward-facing questions ("what next?" or broader implications) that might be asked after reading the paper.
+Rules for Questions: Generate exactly 3 inward-facing questions that the text is likely to address or answer, and exactly 2 outward-facing questions ("what next?" or broader implications) that might be asked after reading the paper.  The questions should stand on their own independent of the paper and should not refer explicitly to the specific document.  Questions should be no more than 12 words.
 Rules for Document Type: Characterize the document type by picking EXACTLY ONE from this list:
   - academicPaper: Peer-reviewed studies, preprints, and conference proceedings with formal citations.
   - technicalDoc: API references, RFCs, architecture overviews, and system specifications.
@@ -422,12 +422,14 @@ Document Content:
 {content}
 '''
         try:
+            # Reasoning models can take a significant amount of time to analyze documents.
+            # We explicitly set timeout=None for this specific request so the connection doesn't drop.
             response = self.client.post("/v1/chat/completions", json={
                 "model": self.generate_model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.0,
-                "max_tokens": 8192
-            })
+                "max_tokens": 20000,
+            }, timeout=None)
             response.raise_for_status()
             message = response.json()["choices"][0]["message"]
             text = message.get("content", "") or ""
