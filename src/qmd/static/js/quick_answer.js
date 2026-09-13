@@ -331,6 +331,11 @@
    * Main entry point: begins streaming the Quick Answer for a query using search XML.
    */
   async function triggerQuickAnswer(query, xmlContext, results = []) {
+    if (typeof featureStates !== "undefined" && !featureStates.offer_llm) {
+      hideQuickAnswer();
+      return;
+    }
+
     if (!query || !xmlContext || xmlContext.trim().length === 0) {
       hideQuickAnswer();
       return;

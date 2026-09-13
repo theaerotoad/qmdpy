@@ -230,6 +230,12 @@
                             </select>
                         </div>
 
+                        <!-- Offer LLM Responses Toggle -->
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" id="filter-offer-llm" onchange="toggleFeature('offer_llm', this.checked)" class="rounded text-blue-600 focus:ring-0 w-3.5 h-3.5" />
+                            <span class="text-gray-700 dark:text-gray-300">Offer LLM Responses</span>
+                        </label>
+
                         <!-- Rerank Toggle -->
                         <label class="flex items-center gap-1.5 cursor-pointer">
                             <input type="checkbox" id="filter-rerank" onchange="toggleFeature('rerank', this.checked)" class="rounded text-blue-600 focus:ring-0 w-3.5 h-3.5" />

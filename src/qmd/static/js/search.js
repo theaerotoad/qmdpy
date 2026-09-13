@@ -124,7 +124,7 @@ async function handleFormSubmit(e, source) {
             statsEl.innerHTML = `About <strong class="text-gray-700 dark:text-gray-200">${data.results.length} documents</strong> across indexed repositories (<span class="font-mono">${data.time_taken || 0} seconds</span>)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
             renderResults(data.results, 'discover', parsed.cleanQuery || rawVal);
 
-            if (data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
+            if (featureStates.offer_llm && data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
                 window.QuickAnswer.trigger(parsed.cleanQuery || rawVal, lastRawXml, data.results);
             }
         } else {
@@ -157,7 +157,7 @@ async function handleFormSubmit(e, source) {
             statsEl.innerHTML = `About <strong class="text-gray-700 dark:text-gray-200">${data.results.length} ${data.type === 'doc' ? 'documents' : 'passages'}</strong> across indexed repositories (<span class="font-mono">${data.time_taken || 0} seconds</span>)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
             renderResults(data.results, data.type, parsed.cleanQuery || rawVal);
 
-            if (data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
+            if (featureStates.offer_llm && data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
                 window.QuickAnswer.trigger(parsed.cleanQuery || rawVal, lastRawXml, data.results);
             }
         }

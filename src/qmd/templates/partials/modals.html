@@ -198,20 +198,48 @@
                     </div>
                 </div>
 
-                <div class="bg-gray-50 dark:bg-[#202124] p-3.5 rounded-lg border border-gray-200 dark:border-gray-700 space-y-2.5">
+                <div class="bg-gray-50 dark:bg-[#202124] p-3.5 rounded-lg border border-gray-200 dark:border-gray-700 space-y-3">
                     <div class="font-medium text-gray-700 dark:text-gray-300">Default Toggle Behaviors</div>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="setting-default-rerank" onchange="saveDefaults()" class="rounded text-blue-600 focus:ring-0">
-                        <span>Enable LLM Semantic Reranker by default</span>
-                    </label>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="setting-default-seen" onchange="saveDefaults()" class="rounded text-blue-600 focus:ring-0">
-                        <span>Exclude seen chunks by default</span>
-                    </label>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="setting-default-pii" onchange="saveDefaults()" class="rounded text-blue-600 focus:ring-0">
-                        <span>Redact PII (emails/numbers) by default</span>
-                    </label>
+                    <div class="flex items-center justify-between py-1">
+                        <div class="pr-4">
+                            <label for="setting-default-llm" class="font-medium text-gray-800 dark:text-gray-200 cursor-pointer block">Offer LLM Responses</label>
+                            <div class="text-[11px] text-gray-500">Stream AI Quick Answers alongside search results</div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                            <input type="checkbox" id="setting-default-llm" onchange="saveDefaults()" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between py-1 border-t border-gray-200 dark:border-gray-700 pt-2.5">
+                        <div class="pr-4">
+                            <label for="setting-default-rerank" class="font-medium text-gray-800 dark:text-gray-200 cursor-pointer block">LLM Semantic Reranker</label>
+                            <div class="text-[11px] text-gray-500">Enable cross-encoder reranking by default</div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                            <input type="checkbox" id="setting-default-rerank" onchange="saveDefaults()" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between py-1 border-t border-gray-200 dark:border-gray-700 pt-2.5">
+                        <div class="pr-4">
+                            <label for="setting-default-seen" class="font-medium text-gray-800 dark:text-gray-200 cursor-pointer block">Exclude Seen Chunks</label>
+                            <div class="text-[11px] text-gray-500">Filter out previously viewed chunks in active session</div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                            <input type="checkbox" id="setting-default-seen" onchange="saveDefaults()" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between py-1 border-t border-gray-200 dark:border-gray-700 pt-2.5">
+                        <div class="pr-4">
+                            <label for="setting-default-pii" class="font-medium text-gray-800 dark:text-gray-200 cursor-pointer block">Redact PII</label>
+                            <div class="text-[11px] text-gray-500">Mask sensitive personal data (emails, phone numbers)</div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                            <input type="checkbox" id="setting-default-pii" onchange="saveDefaults()" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -272,6 +300,7 @@
                             <tr><td class="p-2 font-semibold text-blue-600">col:...</td><td class="p-2 font-sans">Target Collection</td><td class="p-2"><code>col:Books propulsion</code></td></tr>
                             <tr><td class="p-2 font-semibold text-blue-600">lex:"..."</td><td class="p-2 font-sans">Strict BM25 Lexical Term</td><td class="p-2"><code>lex:"vector math" similarity</code></td></tr>
                             <tr><td class="p-2 font-semibold text-blue-600">limit:N</td><td class="p-2 font-sans">Result Limit Count</td><td class="p-2"><code>limit:25 telemetry</code></td></tr>
+                            <tr><td class="p-2 font-semibold text-blue-600">llm:on|off</td><td class="p-2 font-sans">Offer LLM Quick Answers</td><td class="p-2"><code>llm:on orbital mechanics</code></td></tr>
                         </tbody>
                     </table>
                 </div>

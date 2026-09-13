@@ -15,7 +15,7 @@ let lastSearchType = 'discover';
 let currentSessionId = null;
 let currentExcludedCount = 0;
 let selectedScopes = [];
-let featureStates = { rerank: true, exclude_seen: false, redact_pii: false };
+let featureStates = { offer_llm: false, rerank: false, exclude_seen: false, redact_pii: false };
 let treeFilterTimer = null, scopeFilterTimer = null;
 
 const DEFAULTS_KEY = 'qmd_search_defaults';
@@ -102,9 +102,13 @@ function applyDefaultPreferences(customDefaults = null) {
             activeMode = 'search';
         }
     }
-    featureStates.rerank = defaults.rerank !== undefined ? !!defaults.rerank : true;
+    featureStates.offer_llm = defaults.offer_llm !== undefined ? !!defaults.offer_llm : false;
+    featureStates.rerank = defaults.rerank !== undefined ? !!defaults.rerank : false;
     featureStates.exclude_seen = defaults.exclude_seen !== undefined ? !!defaults.exclude_seen : false;
     featureStates.redact_pii = defaults.redact_pii !== undefined ? !!defaults.redact_pii : false;
+    if (!featureStates.offer_llm && window.QuickAnswer && typeof window.QuickAnswer.hide === 'function') {
+        window.QuickAnswer.hide();
+    }
     updateFeatureButtonsUI();
     updateHeroDefaultButtonUI(defaults.mode || 'discover');
 }
@@ -113,12 +117,14 @@ function loadSettingsModalValues() {
     const defaults = JSON.parse(localStorage.getItem(DEFAULTS_KEY) || '{}');
     const limEl = document.getElementById('setting-default-limit');
     const modEl = document.getElementById('setting-default-mode');
+    const llmEl = document.getElementById('setting-default-llm');
     const rkEl = document.getElementById('setting-default-rerank');
     const snEl = document.getElementById('setting-default-seen');
     const piEl = document.getElementById('setting-default-pii');
     if (limEl) limEl.value = defaults.limit || '10';
     if (modEl) modEl.value = defaults.mode || 'discover';
-    if (rkEl) rkEl.checked = defaults.rerank !== undefined ? !!defaults.rerank : true;
+    if (llmEl) llmEl.checked = defaults.offer_llm !== undefined ? !!defaults.offer_llm : false;
+    if (rkEl) rkEl.checked = defaults.rerank !== undefined ? !!defaults.rerank : false;
     if (snEl) snEl.checked = !!defaults.exclude_seen;
     if (piEl) piEl.checked = !!defaults.redact_pii;
 }
@@ -127,9 +133,10 @@ function saveDefaults() {
     const defaults = {
         limit: document.getElementById('setting-default-limit').value,
         mode: document.getElementById('setting-default-mode').value,
-        rerank: document.getElementById('setting-default-rerank').checked,
-        exclude_seen: document.getElementById('setting-default-seen').checked,
-        redact_pii: document.getElementById('setting-default-pii').checked
+        offer_llm: document.getElementById('setting-default-llm') ? document.getElementById('setting-default-llm').checked : false,
+        rerank: document.getElementById('setting-default-rerank') ? document.getElementById('setting-default-rerank').checked : false,
+        exclude_seen: document.getElementById('setting-default-seen') ? document.getElementById('setting-default-seen').checked : false,
+        redact_pii: document.getElementById('setting-default-pii') ? document.getElementById('setting-default-pii').checked : false
     };
     localStorage.setItem(DEFAULTS_KEY, JSON.stringify(defaults));
     applyDefaultPreferences(defaults);
@@ -139,12 +146,25 @@ function saveDefaults() {
 function toggleFeature(name, forceVal = null) {
     featureStates[name] = forceVal !== null ? forceVal : !featureStates[name];
     updateFeatureButtonsUI();
+    if (name === 'offer_llm') {
+        if (!featureStates.offer_llm) {
+            if (window.QuickAnswer && typeof window.QuickAnswer.hide === 'function') {
+                window.QuickAnswer.hide();
+            }
+        } else if (lastRawJson && lastRawJson.length > 0 && lastRawXml && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
+            const q = (document.getElementById('serp-query') ? document.getElementById('serp-query').value : '') || '';
+            const parsed = parseQueryDirectives(q);
+            window.QuickAnswer.trigger(parsed.cleanQuery || q, lastRawXml, lastRawJson);
+        }
+    }
 }
 
 function updateFeatureButtonsUI() {
+    const llmEl = document.getElementById('filter-offer-llm');
     const rerankEl = document.getElementById('filter-rerank');
     const seenEl = document.getElementById('filter-exclude-seen');
     const redactEl = document.getElementById('filter-redact');
+    if (llmEl) llmEl.checked = !!featureStates.offer_llm;
     if (rerankEl) rerankEl.checked = !!featureStates.rerank;
     if (seenEl) seenEl.checked = !!featureStates.exclude_seen;
     if (redactEl) redactEl.checked = !!featureStates.redact_pii;
@@ -185,6 +205,9 @@ function parseQueryDirectives(rawText) {
 
     const rrMatch = text.match(/(?:rerank|rr):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false))/i);
     if (rrMatch) { toggleFeature('rerank', ['on', 'true'].includes((rrMatch[1]||rrMatch[2]||rrMatch[3]).toLowerCase())); text = text.replace(rrMatch[0], ' '); }
+
+    const llmMatch = text.match(/(?:llm|qa|answer):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false))/i);
+    if (llmMatch) { toggleFeature('offer_llm', ['on', 'true'].includes((llmMatch[1]||llmMatch[2]||llmMatch[3]).toLowerCase())); text = text.replace(llmMatch[0], ' '); }
 
     directives.cleanQuery = text.replace(/\s+/g, ' ').trim();
     return directives;
@@ -289,7 +312,8 @@ function onToolsLimitChange(val) {
 
 function resetToolsFilters() {
     document.querySelectorAll('.limit-select').forEach(sel => sel.value = "10");
-    toggleFeature('rerank', true);
+    toggleFeature('offer_llm', false);
+    toggleFeature('rerank', false);
     toggleFeature('exclude_seen', false);
     toggleFeature('redact_pii', false);
     showToast("Filters reset to default");
