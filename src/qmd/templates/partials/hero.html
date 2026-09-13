@@ -37,36 +37,45 @@
         <!-- Active Scope Filter Chips -->
         <div id="hero-scope-chips" class="hidden flex flex-wrap items-center justify-center gap-2 pt-2"></div>
 
-        <!-- Mid-2010s Style Dual Action Buttons -->
+        <!-- Mid-2010s Style Dual Action Buttons (Replaced with Search Mode Toggles) -->
         <div class="flex items-center justify-center gap-3 mt-7">
             <button 
                 type="button"
-                onclick="triggerSearchWithMode('search', 'hero')" 
-                class="bg-[#f8f9fa] dark:bg-[#303134] hover:bg-[#f1f3f4] dark:hover:bg-[#3c4043] border border-[#f8f9fa] dark:border-[#303134] hover:border-[#dadce0] dark:hover:border-[#5f6368] text-sm text-[#3c4043] dark:text-[#e8eaed] px-5 py-2.5 rounded font-medium shadow-none hover:shadow-sm transition-all"
+                title="Best chunk per doc"
+                onclick="triggerSearchWithTab('documents', 'hero')" 
+                class="bg-[#f8f9fa] dark:bg-[#303134] hover:bg-[#f1f3f4] dark:hover:bg-[#3c4043] border border-[#f8f9fa] dark:border-[#303134] hover:border-[#dadce0] dark:hover:border-[#5f6368] text-sm text-purple-700 dark:text-purple-300 px-5 py-2.5 rounded font-medium shadow-none hover:shadow-sm transition-all flex items-center gap-1.5"
             >
-                Corpus Search
+                <span>✨ Discover</span>
             </button>
             <button 
                 type="button"
-                onclick="triggerSearchWithMode('discover', 'hero')" 
-                class="bg-[#f8f9fa] dark:bg-[#303134] hover:bg-[#f1f3f4] dark:hover:bg-[#3c4043] border border-[#f8f9fa] dark:border-[#303134] hover:border-[#dadce0] dark:hover:border-[#5f6368] text-sm text-purple-700 dark:text-purple-300 px-5 py-2.5 rounded font-medium shadow-none hover:shadow-sm transition-all flex items-center gap-1.5"
+                title="Best chunks ordered by docs"
+                onclick="triggerSearchWithTab('all', 'hero')" 
+                class="bg-[#f8f9fa] dark:bg-[#303134] hover:bg-[#f1f3f4] dark:hover:bg-[#3c4043] border border-[#f8f9fa] dark:border-[#303134] hover:border-[#dadce0] dark:hover:border-[#5f6368] text-sm text-[#3c4043] dark:text-[#e8eaed] px-5 py-2.5 rounded font-medium shadow-none hover:shadow-sm transition-all"
             >
-                <span>✨ I'm Feeling Inquisitive</span>
+                Search
+            </button>
+            <button 
+                type="button"
+                title="Best chunks ordered by match"
+                onclick="triggerSearchWithTab('passages', 'hero')" 
+                class="bg-[#f8f9fa] dark:bg-[#303134] hover:bg-[#f1f3f4] dark:hover:bg-[#3c4043] border border-[#f8f9fa] dark:border-[#303134] hover:border-[#dadce0] dark:hover:border-[#5f6368] text-sm text-[#3c4043] dark:text-[#e8eaed] px-5 py-2.5 rounded font-medium shadow-none hover:shadow-sm transition-all"
+            >
+                Passages
             </button>
         </div>
 
         <!-- Sample Query Suggestions -->
-        <div class="mt-8 text-center text-xs text-gray-400 flex flex-wrap justify-center items-center gap-1">
-            <span>Try:</span>
+        <div class="mt-8 text-center text-sm text-gray-500 flex flex-col items-center gap-3">
+            <span class="text-xs uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500">Suggested Questions</span>
             {% if sample_questions and sample_questions|length > 0 %}
                 {% for sq in sample_questions %}
-                    <button type="button" onclick="runSampleQuery({{ sq.question | tojson | forceescape }})" title="From: {{ sq.title | e }}" class="text-blue-600 dark:text-blue-400 hover:underline mx-1 truncate max-w-[200px] sm:max-w-xs">{{ sq.question | e }}</button>
-                    {% if not loop.last %}<span class="text-gray-300 dark:text-gray-600">•</span>{% endif %}
+                    <button type="button" onclick="runSampleQuery({{ sq.question | tojson | forceescape }})" title="From: {{ sq.title | e }}" class="text-blue-600 dark:text-blue-400 hover:underline max-w-full text-left">{{ sq.question | e }}</button>
                 {% endfor %}
             {% else %}
-                <button type="button" onclick="runSampleQuery('winston churchill habits')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">winston churchill habits</button> <span class="text-gray-300 dark:text-gray-600">•</span>
-                <button type="button" onclick="runSampleQuery('quantum entanglement notes')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">quantum entanglement notes</button> <span class="text-gray-300 dark:text-gray-600">•</span>
-                <button type="button" onclick="runSampleQuery('project roadmap Q3')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">project roadmap Q3</button>
+                <button type="button" onclick="runSampleQuery('winston churchill habits')" class="text-blue-600 dark:text-blue-400 hover:underline">winston churchill habits</button>
+                <button type="button" onclick="runSampleQuery('quantum entanglement notes')" class="text-blue-600 dark:text-blue-400 hover:underline">quantum entanglement notes</button>
+                <button type="button" onclick="runSampleQuery('project roadmap Q3')" class="text-blue-600 dark:text-blue-400 hover:underline">project roadmap Q3</button>
             {% endif %}
         </div>
     </div>

@@ -40,6 +40,14 @@ function triggerSearchWithMode(mode, source) {
     }
 }
 
+function triggerSearchWithTab(tab, source) {
+    setSearchTab(tab);
+    const form = document.getElementById(`${source}-search-form`);
+    if (form) {
+        handleFormSubmit(new Event('submit'), source);
+    }
+}
+
 // Form Submit & Search Execution
 async function handleFormSubmit(e, source) {
     if (e && e.preventDefault) e.preventDefault();
