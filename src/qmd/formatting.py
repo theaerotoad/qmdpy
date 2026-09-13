@@ -42,7 +42,16 @@ def escape_xml_attr(val: Any) -> str:
     if val is None:
         return ""
     clean = strip_ansi(str(val))
+    clean = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', clean)
     return clean.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
+def escape_xml_text(val: Any) -> str:
+    """Escapes strings for safe inclusion in XML text nodes, strips ANSI and invalid XML chars."""
+    if val is None:
+        return ""
+    clean = strip_ansi(str(val))
+    clean = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', clean)
+    return clean.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 def extract_lexical_terms(query: str) -> List[str]:
     """Extracts lexical (FTS) search terms from query or FTS expression."""
@@ -388,7 +397,7 @@ def format_discover_xml(results: List, query: str = "", verbose: bool = False, s
         res_tag += '>'
 
         lines.append(res_tag)
-        lines.append(clean_text)
+        lines.append(escape_xml_text(clean_text))
         lines.append('  </document>')
 
     if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
@@ -490,7 +499,7 @@ def format_results_xml(results: List, query: str = "", verbose: bool = False, se
         res_tag += '>'
 
         lines.append(res_tag)
-        lines.append(clean_text)
+        lines.append(escape_xml_text(clean_text))
         lines.append('  </result>')
 
     if truncation_info and truncation_info.get("omitted_remaining", 0) > 0:
@@ -582,7 +591,7 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
             outline_attr = f' outline="{escape_xml_attr(doc_outline_cmd)}"'
 
             lines.append(f'    <chunk seq="{seq}"{rank_attr}{score_attr}{chars_attr}{section_attr}{read_attr}{outline_attr}>')
-            lines.append(chunk_text)
+            lines.append(escape_xml_text(chunk_text))
             lines.append('    </chunk>')
             prev_end_seq = seq
 
@@ -644,7 +653,7 @@ def format_chunks_xml(results: List, window: int = 0, truncation_info: Optional[
             chars_attr = f' chars="{chars}"'
             sec_attr = f' section="{escape_xml_attr(res.headers)}"' if getattr(res, 'headers', None) else ""
             lines.append(f'  <chunk seq="{seq}"{chars_attr}{sec_attr}>')
-            lines.append(clean_text)
+            lines.append(escape_xml_text(clean_text))
             lines.append('  </chunk>')
             prev_seq = seq
 

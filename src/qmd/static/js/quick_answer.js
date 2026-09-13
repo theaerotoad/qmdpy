@@ -51,6 +51,33 @@
     accumulatedText = "";
   }
 
+  function unescapeXml(str) {
+    if (!str) return "";
+    return str
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&#39;/g, "'")
+      .replace(/&#039;/g, "'")
+      .replace(/&#34;/g, '"')
+      .replace(/&#034;/g, '"')
+      .replace(/&#(\d+);/g, function (_, dec) { return String.fromCharCode(parseInt(dec, 10)); })
+      .replace(/&#x([0-9a-fA-F]+);/g, function (_, hex) { return String.fromCharCode(parseInt(hex, 16)); })
+      .replace(/&amp;/g, "&");
+  }
+
+  function parseXmlAttrs(attrStr) {
+    const attrs = {};
+    if (!attrStr) return attrs;
+    const re = /([a-zA-Z_:][a-zA-Z0-9_:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+    let match;
+    while ((match = re.exec(attrStr)) !== null) {
+      attrs[match[1]] = unescapeXml(match[2] !== undefined ? match[2] : match[3]);
+    }
+    return attrs;
+  }
+
   /**
    * Builds a comprehensive lookup dictionary for all numeric citation keys (e.g. rank, seq, doc index)
    * from both the search results array and the raw search XML.
@@ -111,36 +138,119 @@
       });
     }
 
-    // 2. Parse raw XML context for complete rank/attribute resolution
-    if (xmlContext && typeof DOMParser !== "undefined") {
-      try {
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlContext, "text/xml");
-        const nodes = xmlDoc.querySelectorAll("chunk, result, document, doc, match");
-        nodes.forEach((node, nodeIdx) => {
-          const rank = node.getAttribute("rank");
-          const index = node.getAttribute("index");
-          const id = node.getAttribute("id");
-          const seq = node.getAttribute("seq") || node.getAttribute("seq_id");
+    // 2. Parse raw XML context for complete rank/attribute resolution without
+    // triggering browser DOMParser XML parsing error logs in Firefox.
+    if (xmlContext && typeof xmlContext === "string") {
+      let nodeIdx = 0;
 
-          const parentDoc = node.closest("document, doc");
-          const collection = node.getAttribute("collection") || (parentDoc && parentDoc.getAttribute("collection")) || "";
-          const path = node.getAttribute("path") || (parentDoc && parentDoc.getAttribute("path")) || "";
-          const title = node.getAttribute("title") || (parentDoc && parentDoc.getAttribute("title")) || path;
-          const text = node.textContent ? node.textContent.trim() : "";
+      // 2a. Match <document ...>...</document> structures (grouped doc mode or discover mode)
+      const docRegex = /<document\b([^>]*)>([\s\S]*?)<\/document>/gi;
+      let docMatch;
+      let docCount = 0;
 
-          const srcObj = { collection, path, title, text };
+      while ((docMatch = docRegex.exec(xmlContext)) !== null) {
+        docCount++;
+        const docAttrs = parseXmlAttrs(docMatch[1]);
+        const innerContent = docMatch[2];
+
+        const docCollection = docAttrs.collection || "";
+        const docPath = docAttrs.path || "";
+        const docTitle = docAttrs.title || docPath || `Document ${docCount}`;
+
+        // Look for nested <chunk ...>...</chunk> tags inside this document
+        const chunkRegex = /<chunk\b([^>]*)>([\s\S]*?)<\/chunk>/gi;
+        let chunkMatch;
+        let hasChunks = false;
+
+        while ((chunkMatch = chunkRegex.exec(innerContent)) !== null) {
+          hasChunks = true;
+          nodeIdx++;
+          const chunkAttrs = parseXmlAttrs(chunkMatch[1]);
+          const chunkText = unescapeXml(chunkMatch[2].trim());
+
+          const srcObj = {
+            collection: chunkAttrs.collection || docCollection,
+            path: chunkAttrs.path || docPath,
+            title: chunkAttrs.title || docTitle,
+            text: chunkText,
+          };
+
+          const rank = chunkAttrs.rank;
+          const seq = chunkAttrs.seq || chunkAttrs.seq_id;
+          const id = chunkAttrs.id;
+          const index = chunkAttrs.index;
 
           if (rank && (!map[rank] || !map[rank].text)) map[rank] = srcObj;
-          if (index && (!map[index] || !map[index].text)) map[index] = srcObj;
-          if (id && (!map[id] || !map[id].text)) map[id] = srcObj;
           if (seq && !map[seq]) map[seq] = srcObj;
+          if (id && (!map[id] || !map[id].text)) map[id] = srcObj;
+          if (index && (!map[index] || !map[index].text)) map[index] = srcObj;
 
-          const fallbackIdx = (nodeIdx + 1).toString();
+          const fallbackIdx = nodeIdx.toString();
           if (!map[fallbackIdx]) map[fallbackIdx] = srcObj;
-        });
-      } catch (e) {
-        console.warn("Could not parse XML for citations:", e);
+        }
+
+        if (!hasChunks) {
+          // Discover mode: <document ...>text</document>
+          nodeIdx++;
+          const docText = unescapeXml(innerContent.trim());
+          const srcObj = {
+            collection: docCollection,
+            path: docPath,
+            title: docTitle,
+            text: docText,
+          };
+
+          const rank = docAttrs.rank;
+          const seq = docAttrs.top_chunk_seq || docAttrs.seq || docAttrs.seq_id;
+          const id = docAttrs.id;
+
+          if (rank && (!map[rank] || !map[rank].text)) map[rank] = srcObj;
+          if (seq && !map[seq]) map[seq] = srcObj;
+          if (id && (!map[id] || !map[id].text)) map[id] = srcObj;
+
+          const docNum = docCount.toString();
+          if (!map[docNum]) map[docNum] = srcObj;
+          const fallbackIdx = nodeIdx.toString();
+          if (!map[fallbackIdx]) map[fallbackIdx] = srcObj;
+        }
+      }
+
+      // 2b. Match flat <result ...>...</result> tags (passages mode)
+      const resultRegex = /<result\b([^>]*)>([\s\S]*?)<\/result>/gi;
+      let resMatch;
+      let resCount = 0;
+
+      while ((resMatch = resultRegex.exec(xmlContext)) !== null) {
+        resCount++;
+        nodeIdx++;
+        const resAttrs = parseXmlAttrs(resMatch[1]);
+        const resText = unescapeXml(resMatch[2].trim());
+
+        const coll = resAttrs.collection || "";
+        const path = resAttrs.path || resAttrs.document || "";
+        const title = resAttrs.title || path || `Result ${resCount}`;
+
+        const srcObj = {
+          collection: coll,
+          path: path,
+          title: title,
+          text: resText,
+        };
+
+        const rank = resAttrs.rank;
+        const seq = resAttrs.seq || resAttrs.seq_id;
+        const id = resAttrs.id;
+        const index = resAttrs.index;
+
+        if (rank && (!map[rank] || !map[rank].text)) map[rank] = srcObj;
+        if (seq && !map[seq]) map[seq] = srcObj;
+        if (id && (!map[id] || !map[id].text)) map[id] = srcObj;
+        if (index && (!map[index] || !map[index].text)) map[index] = srcObj;
+
+        const resNum = resCount.toString();
+        if (!map[resNum]) map[resNum] = srcObj;
+        const fallbackIdx = nodeIdx.toString();
+        if (!map[fallbackIdx]) map[fallbackIdx] = srcObj;
       }
     }
 
