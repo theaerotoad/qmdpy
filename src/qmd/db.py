@@ -644,13 +644,11 @@ def init_schema(conn: sqlite3.Connection):
     );
     """)
 
-    try:
-        cursor.execute("ALTER TABLE document_analysis ADD COLUMN questions TEXT")
-        cursor.execute("ALTER TABLE document_analysis ADD COLUMN doc_type TEXT")
-        cursor.execute("ALTER TABLE document_analysis ADD COLUMN alt_title TEXT")
-        cursor.execute("ALTER TABLE document_analysis ADD COLUMN prompt_version TEXT")
-    except sqlite3.OperationalError:
-        pass
+    for col_def in ["questions TEXT", "doc_type TEXT", "alt_title TEXT", "prompt_version TEXT"]:
+        try:
+            cursor.execute(f"ALTER TABLE document_analysis ADD COLUMN {col_def}")
+        except sqlite3.OperationalError:
+            pass
 
     # 9. Essential Join & Filter Indexes for High-Scale Vector / Metadata Queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(hash);")
