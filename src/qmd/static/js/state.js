@@ -211,7 +211,7 @@ function setAppState(state) {
     }
 }
 
-function returnToHero() {
+async function returnToHero() {
     setAppState('hero');
     generateNewSession();
     document.getElementById('hero-query').value = '';
@@ -220,6 +220,21 @@ function returnToHero() {
     const footer = document.getElementById('results-footer');
     if (footer) footer.classList.add('hidden');
     document.getElementById('hero-query').focus();
+
+    try {
+        const res = await fetch(apiUrl('/api/questions/random?limit=3'));
+        if (res.ok) {
+            const data = await res.json();
+            const container = document.getElementById('hero-questions-container');
+            if (container && data.length > 0) {
+                container.innerHTML = data.map(sq => `
+                    <button type="button" onclick="runSampleQuery(${escapeXmlAttr(JSON.stringify(sq.question))})" title="From: ${escapeXmlAttr(sq.title)}" class="text-blue-600 dark:text-blue-400 hover:underline max-w-full text-left">${escapeHtml(sq.question)}</button>
+                `).join('');
+            }
+        }
+    } catch (e) {
+        console.error("Failed to refresh questions", e);
+    }
 }
 
 // Navigation Tabs

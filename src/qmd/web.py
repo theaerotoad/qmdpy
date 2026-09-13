@@ -167,10 +167,20 @@ def extract_batch_commands(input_data: Union[str, List[str]], max_commands: int 
 def index():
     try:
         store = get_store()
-        random_questions = store.get_random_analysis_questions(limit=2)
+        random_questions = store.get_random_analysis_questions(limit=3)
     except Exception:
         random_questions = []
     return render_template('index.html', sample_questions=random_questions)
+
+@app.route('/api/questions/random', methods=['GET'])
+def get_random_questions():
+    try:
+        store = get_store()
+        limit = int(request.args.get('limit', 3))
+        questions = store.get_random_analysis_questions(limit=limit)
+        return jsonify(questions)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/discover', methods=['POST'])
 def discover():

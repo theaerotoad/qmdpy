@@ -88,7 +88,7 @@ class AnalysisMixin:
 
         return results
 
-    def get_random_analysis_questions(self, limit: int = 2) -> List[Dict[str, str]]:
+    def get_random_analysis_questions(self, limit: int = 3) -> List[Dict[str, str]]:
         """Fetches random questions generated from document analysis to display as suggestions."""
         import random
         questions = []
