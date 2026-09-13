@@ -1109,26 +1109,29 @@ def build_parser():
     guide_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
     guide_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
-    update_parser = subparsers.add_parser("update", help="Update the index", parents=[parent_parser])
-    update_parser.add_argument("--pull", action="store_true", help="Run 'git pull' before indexing")
-    update_parser.add_argument("-f", "--force", action="store_true", help="Force re-indexing of all files, ignoring hash checks")
-    update_parser.add_argument("-c", "--collection", type=str, help="Only update a specific collection")
-    update_parser.add_argument("--build-ann", action="store_true", help="Build a usearch HNSW approximate nearest neighbor index from the existing vector table")
-    update_parser.add_argument("--no-ann", action="store_true", help="Skip automatic HNSW ANN index build/update")
-    update_parser.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info during update")
+    env_xml = os.environ.get("QMD_XML", "").strip().lower() in ("1", "true", "yes", "on")
 
-    analyze_parser = subparsers.add_parser("analyze", aliases=["analysis"], help="Run LLM document summarization and metadata extraction", parents=[parent_parser])
-    analyze_parser.add_argument("-c", "--collection", type=str, help="Filter documents by collection name")
-    analyze_parser.add_argument("-p", "--path", type=str, help="Filter documents by path (substring match)")
-    analyze_parser.add_argument("-t", "--title", type=str, help="Filter documents by title (substring match)")
-    analyze_parser.add_argument("--limit", type=int, default=100, help="Maximum number of documents to analyze in this run")
-    analyze_parser.add_argument("--time-limit", type=float, default=None, help="Maximum execution time in hours (e.g., 0.5 for 30 mins)")
-    analyze_parser.add_argument("-f", "--force", action="store_true", help="Force re-analysis even if document is already analyzed")
-    analyze_parser.add_argument("--outdated", action="store_true", help="Analyze missing documents AND re-analyze those processed with an older prompt version")
-    analyze_parser.add_argument("--report", action="store_true", help="Display existing analysis reports instead of generating new ones")
-    analyze_parser.add_argument("--json", action="store_true", help="Output results as JSON")
-    analyze_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
-    analyze_parser.add_argument("-v", "--verbose", action="store_true", help="Show verbose output during analysis")
+    if not env_xml:
+        update_parser = subparsers.add_parser("update", help="Update the index", parents=[parent_parser])
+        update_parser.add_argument("--pull", action="store_true", help="Run 'git pull' before indexing")
+        update_parser.add_argument("-f", "--force", action="store_true", help="Force re-indexing of all files, ignoring hash checks")
+        update_parser.add_argument("-c", "--collection", type=str, help="Only update a specific collection")
+        update_parser.add_argument("--build-ann", action="store_true", help="Build a usearch HNSW approximate nearest neighbor index from the existing vector table")
+        update_parser.add_argument("--no-ann", action="store_true", help="Skip automatic HNSW ANN index build/update")
+        update_parser.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info during update")
+
+        analyze_parser = subparsers.add_parser("analyze", aliases=["analysis"], help="Run LLM document summarization and metadata extraction", parents=[parent_parser])
+        analyze_parser.add_argument("-c", "--collection", type=str, help="Filter documents by collection name")
+        analyze_parser.add_argument("-p", "--path", type=str, help="Filter documents by path (substring match)")
+        analyze_parser.add_argument("-t", "--title", type=str, help="Filter documents by title (substring match)")
+        analyze_parser.add_argument("--limit", type=int, default=100, help="Maximum number of documents to analyze in this run")
+        analyze_parser.add_argument("--time-limit", type=float, default=None, help="Maximum execution time in hours (e.g., 0.5 for 30 mins)")
+        analyze_parser.add_argument("-f", "--force", action="store_true", help="Force re-analysis even if document is already analyzed")
+        analyze_parser.add_argument("--outdated", action="store_true", help="Analyze missing documents AND re-analyze those processed with an older prompt version")
+        analyze_parser.add_argument("--report", action="store_true", help="Display existing analysis reports instead of generating new ones")
+        analyze_parser.add_argument("--json", action="store_true", help="Output results as JSON")
+        analyze_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
+        analyze_parser.add_argument("-v", "--verbose", action="store_true", help="Show verbose output during analysis")
 
     coll_parser = subparsers.add_parser("collection", help="Manage collections", parents=[parent_parser])
     coll_sub = coll_parser.add_subparsers(dest="subcommand", required=True)
@@ -1147,10 +1150,11 @@ def build_parser():
     coll_tree.add_argument("--llm", action="store_true", help="Alias for --xml")
     coll_tree.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
-    serve_parser = subparsers.add_parser("serve", help="Start the web UI", parents=[parent_parser])
-    serve_parser.add_argument("--port", type=int, default=5000, help="Port to run the server on")
+    if not env_xml:
+        serve_parser = subparsers.add_parser("serve", help="Start the web UI", parents=[parent_parser])
+        serve_parser.add_argument("--port", type=int, default=5000, help="Port to run the server on")
 
-    mcp_parser = subparsers.add_parser("mcp", help="Start the stdio MCP server", parents=[parent_parser])
+        mcp_parser = subparsers.add_parser("mcp", help="Start the stdio MCP server", parents=[parent_parser])
 
     return parser
 
