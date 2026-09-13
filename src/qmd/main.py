@@ -868,29 +868,41 @@ def handle_analyze(args, store: Store):
     time_limit = getattr(args, "time_limit", None)
     force = getattr(args, "force", False)
     outdated = getattr(args, "outdated", False)
+    report = getattr(args, "report", False)
     verbose = getattr(args, "verbose", False)
     
     collection = getattr(args, "collection", None)
     path = getattr(args, "path", None)
     title = getattr(args, "title", None)
 
-    results = store.analyze_target(
-        collection=collection,
-        path=path,
-        title=title,
-        limit=limit,
-        time_limit=time_limit,
-        force=force,
-        outdated=outdated,
-        verbose=verbose
-    )
+    if report:
+        results = store.get_analysis_report(
+            collection=collection,
+            path=path,
+            title=title,
+            limit=limit
+        )
+    else:
+        results = store.analyze_target(
+            collection=collection,
+            path=path,
+            title=title,
+            limit=limit,
+            time_limit=time_limit,
+            force=force,
+            outdated=outdated,
+            verbose=verbose
+        )
 
     if getattr(args, "json", False):
         import json
         print(json.dumps(results, indent=2))
     else:
         if not results:
-            print(f"{YELLOW}No documents found to analyze or all matched documents are already analyzed.{RESET}")
+            if getattr(args, "report", False):
+                print(f"{YELLOW}No analysis reports found for the specified documents.{RESET}")
+            else:
+                print(f"{YELLOW}No documents found to analyze or all matched documents are already analyzed.{RESET}")
             return
         print(f"\n{CYAN}--- Document Analysis Results ---{RESET}")
         for res in results:
@@ -1113,6 +1125,7 @@ def build_parser():
     analyze_parser.add_argument("--time-limit", type=float, default=None, help="Maximum execution time in hours (e.g., 0.5 for 30 mins)")
     analyze_parser.add_argument("-f", "--force", action="store_true", help="Force re-analysis even if document is already analyzed")
     analyze_parser.add_argument("--outdated", action="store_true", help="Analyze missing documents AND re-analyze those processed with an older prompt version")
+    analyze_parser.add_argument("--report", action="store_true", help="Display existing analysis reports instead of generating new ones")
     analyze_parser.add_argument("--json", action="store_true", help="Output results as JSON")
     analyze_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
     analyze_parser.add_argument("-v", "--verbose", action="store_true", help="Show verbose output during analysis")

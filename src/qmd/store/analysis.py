@@ -11,6 +11,83 @@ from .models import _build_collection_sql_filter
 class AnalysisMixin:
     """Handles LLM-based metadata extraction and summarization on document subsets."""
 
+    def get_analysis_report(
+        self,
+        collection: Optional[str] = None,
+        path: Optional[Union[str, List[str]]] = None,
+        title: Optional[str] = None,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Fetches existing analysis reports from the database without invoking the LLM."""
+        cursor = self.conn.cursor()
+
+        query_sql = """
+            SELECT d.hash, d.path, d.title, d.collection,
+                   da.summary, da.authors, da.tags, da.dates, da.questions, da.doc_type, da.alt_title
+            FROM documents d
+            JOIN document_analysis da ON d.hash = da.doc_hash
+        """
+        where_clauses = []
+        params = []
+
+        coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
+        if coll_sql:
+            where_clauses.append(coll_sql[5:])  # Remove leading " AND "
+            params.extend(coll_params)
+
+        paths = []
+        if isinstance(path, str):
+            if path.strip():
+                paths = [p.strip() for p in path.split(',') if p.strip()]
+        elif isinstance(path, (list, tuple, set)):
+            paths = [str(p).strip() for p in path if str(p).strip()]
+
+        if paths:
+            where_clauses.append("(" + " OR ".join(["d.path LIKE ?" for _ in paths]) + ")")
+            for p_val in paths:
+                params.append(f"%{p_val}%")
+
+        if title:
+            where_clauses.append("d.title LIKE ?")
+            params.append(f"%{title}%")
+
+        if where_clauses:
+            query_sql += " WHERE " + " AND ".join(where_clauses)
+
+        query_sql += " ORDER BY da.analyzed_at DESC LIMIT ?"
+        params.append(limit)
+
+        cursor.execute(query_sql, tuple(params))
+        rows = cursor.fetchall()
+
+        results = []
+        for r in rows:
+            doc_hash, doc_path, doc_title, doc_coll, summary, authors_raw, tags_raw, dates_raw, questions_raw, doc_type, alt_title = r
+
+            def safe_json(val, default):
+                if not val: return default
+                try: return json.loads(val)
+                except: return default
+
+            analysis_res = {
+                "summary": summary or "",
+                "authors": safe_json(authors_raw, []),
+                "tags": safe_json(tags_raw, []),
+                "dates": safe_json(dates_raw, []),
+                "questions": safe_json(questions_raw, []),
+                "doc_type": doc_type or "",
+                "altTitle": alt_title or ""
+            }
+
+            results.append({
+                "path": doc_path,
+                "collection": doc_coll,
+                "hash": doc_hash,
+                "analysis": analysis_res
+            })
+
+        return results
+
     def analyze_target(
         self,
         collection: Optional[str] = None,
