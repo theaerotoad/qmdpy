@@ -63,7 +63,7 @@ def merge_overlapping_snippets(snippets: List[Tuple], doc_title: str = "") -> Li
     if not normalized:
         return []
 
-    chunk_snips = sorted([s for s in normalized if s[0] >= 0], key=lambda x: x[0])
+    chunk_snips = sorted([s for s in normalized if s[0] >= 0], key=lambda x: int(x[0]))
     fts_snips = [s for s in normalized if s[0] < 0]
 
     # Deduplicate chunk_snips with identical seq_id
@@ -484,36 +484,20 @@ def handle_search(args, store: Store):
         cfg_val = getattr(getattr(store, "config", None), "max_chunks_per_response", 30)
         max_chunks = cfg_val if isinstance(cfg_val, int) else 30
 
+    # Truncate flat results globally to strictly preserve ranking order
+    truncation_info = None
+    if isinstance(max_chunks, int) and max_chunks > 0 and len(results) > max_chunks:
+        omitted = len(results) - max_chunks
+        truncation_info = {
+            "omitted_remaining": omitted,
+            "limit": max_chunks
+        }
+        results = results[:max_chunks]
+
     if is_doc:
         grouped = group_results_by_doc(results)
         grouped = grouped[:limit]
 
-        # Enforce max_chunks cap across all grouped documents
-        truncation_info = None
-        if isinstance(max_chunks, int) and max_chunks > 0:
-            total_doc_chunks = sum(len(d.get("chunks", [])) for d in grouped)
-            if total_doc_chunks > max_chunks:
-                omitted = total_doc_chunks - max_chunks
-                truncation_info = {
-                    "omitted_remaining": omitted,
-                    "limit": max_chunks
-                }
-                curr_count = 0
-                new_grouped = []
-                for d in grouped:
-                    doc_chunks = d.get("chunks", [])
-                    if curr_count + len(doc_chunks) <= max_chunks:
-                        new_grouped.append(d)
-                        curr_count += len(doc_chunks)
-                    else:
-                        remaining_slots = max_chunks - curr_count
-                        if remaining_slots > 0:
-                            d["chunks"] = doc_chunks[:remaining_slots]
-                            new_grouped.append(d)
-                            curr_count += remaining_slots
-                        break
-                grouped = new_grouped
-        
         # Record session results at chunk level
         shown_chunks = []
         for doc in grouped:
@@ -534,15 +518,6 @@ def handle_search(args, store: Store):
         else:
             format_doc_results_cli(grouped, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)
     else:
-        truncation_info = None
-        if isinstance(max_chunks, int) and max_chunks > 0 and len(results) > max_chunks:
-            omitted = len(results) - max_chunks
-            truncation_info = {
-                "omitted_remaining": omitted,
-                "limit": max_chunks
-            }
-            results = results[:max_chunks]
-
         record_session_results(store.history_conn, session_id, event_id, results)
         if args.json:
             format_results_json(results, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)

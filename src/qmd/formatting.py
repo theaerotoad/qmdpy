@@ -537,7 +537,7 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
         doc_outline_cmd = f"qmd outline '{outline_ref}'"
 
         raw_chunks = doc.get("chunks", [])
-        sorted_chunks = sorted(raw_chunks, key=lambda x: x.get("seq_id", 0))
+        sorted_chunks = sorted(raw_chunks, key=lambda x: int(x.get("seq_id", 0)))
 
         unique_chunks = []
         seen_seq = set()
@@ -625,7 +625,7 @@ def format_chunks_xml(results: List, window: int = 0, truncation_info: Optional[
         path_attr = f' path="{escape_xml_attr(path)}"' if path else ""
         lines.append(f'<document uri="{escape_xml_attr(uri)}"{coll_attr}{path_attr} title="{escape_xml_attr(title)}">')
 
-        sorted_chunks = sorted(chunk_list, key=lambda x: x.seq_id)
+        sorted_chunks = sorted(chunk_list, key=lambda x: int(x.seq_id))
         prev_seq = None
         for res in sorted_chunks:
             seq = res.seq_id
