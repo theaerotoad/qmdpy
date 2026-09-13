@@ -222,7 +222,7 @@ async function returnToHero() {
     document.getElementById('hero-query').focus();
 
     try {
-        const res = await fetch(apiUrl('/api/questions/random?limit=3'));
+        const res = await fetch(apiUrl('api/questions/random?limit=3'));
         if (res.ok) {
             const data = await res.json();
             const container = document.getElementById('hero-questions-container');

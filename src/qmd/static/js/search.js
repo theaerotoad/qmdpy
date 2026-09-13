@@ -110,7 +110,7 @@ async function handleFormSubmit(e, source) {
                 paths: scopedPaths.length > 0 ? scopedPaths : undefined,
                 session_id: currentSessionId
             };
-            const res = await fetch(apiUrl('/api/discover'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const res = await fetch(apiUrl('api/discover'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Discovery failed");
             
@@ -143,7 +143,7 @@ async function handleFormSubmit(e, source) {
                 paths: scopedPaths.length > 0 ? scopedPaths : undefined,
                 session_id: currentSessionId
             };
-            const res = await fetch(apiUrl('/api/search'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const res = await fetch(apiUrl('api/search'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Search failed");
 
