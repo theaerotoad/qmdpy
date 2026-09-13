@@ -15,8 +15,11 @@
     </div>
 
     <div class="max-w-[1400px] mx-auto px-4 sm:pl-28 py-6">
-        <div class="max-w-5xl space-y-9" id="results">
+        <div class="flex flex-col lg:flex-row items-start gap-8">
+            <div class="flex-1 min-w-0 max-w-5xl space-y-9" id="results">
             </div>
+            {% include 'partials/quick_answer.html' %}
+        </div>
 
         <div id="results-footer" class="hidden mt-14 pt-6 border-t border-google-border dark:border-google-borderDark max-w-5xl flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
             <div class="flex items-center gap-2">

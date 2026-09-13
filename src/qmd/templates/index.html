@@ -281,6 +281,7 @@
     <!-- Scripts & Client Logic -->
     <script src="{{ url_for('static', filename='js/state.js') if request.script_root else 'static/js/state.js' }}"></script>
     <script src="{{ url_for('static', filename='js/modals.js') if request.script_root else 'static/js/modals.js' }}"></script>
+    <script src="{{ url_for('static', filename='js/quick_answer.js') if request.script_root else 'static/js/quick_answer.js' }}"></script>
     <script src="{{ url_for('static', filename='js/search.js') if request.script_root else 'static/js/search.js' }}"></script>
     <datalist id="past-queries-list"></datalist>
 </body>

@@ -21,6 +21,7 @@ from qmd.formatting import format_results_xml, format_doc_results_xml, format_di
 from qmd.mcp_server import execute_qmd_command
 from qmd.utils import decompress_text, redact_pii, parse_query_directives
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
+from qmd.quick_answer import quick_answer_bp
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Ensure correct MIME types are registered for static assets
@@ -72,6 +73,7 @@ class ReverseProxyPrefixMiddleware:
 
 app = Flask(__name__)
 app.wsgi_app = ReverseProxyPrefixMiddleware(ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1))
+app.register_blueprint(quick_answer_bp)
 
 def get_config():
     if 'CONFIG_PATH' in app.config and app.config.get('_current_config_path') != app.config['CONFIG_PATH']:
