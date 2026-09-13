@@ -639,6 +639,7 @@ def init_schema(conn: sqlite3.Connection):
         questions TEXT,
         doc_type TEXT,
         alt_title TEXT,
+        prompt_version TEXT,
         analyzed_at TEXT NOT NULL
     );
     """)
@@ -647,6 +648,7 @@ def init_schema(conn: sqlite3.Connection):
         cursor.execute("ALTER TABLE document_analysis ADD COLUMN questions TEXT")
         cursor.execute("ALTER TABLE document_analysis ADD COLUMN doc_type TEXT")
         cursor.execute("ALTER TABLE document_analysis ADD COLUMN alt_title TEXT")
+        cursor.execute("ALTER TABLE document_analysis ADD COLUMN prompt_version TEXT")
     except sqlite3.OperationalError:
         pass
 

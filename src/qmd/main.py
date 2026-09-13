@@ -867,6 +867,7 @@ def handle_analyze(args, store: Store):
     limit = getattr(args, "limit", 100)
     time_limit = getattr(args, "time_limit", None)
     force = getattr(args, "force", False)
+    outdated = getattr(args, "outdated", False)
     verbose = getattr(args, "verbose", False)
     
     collection = getattr(args, "collection", None)
@@ -880,6 +881,7 @@ def handle_analyze(args, store: Store):
         limit=limit,
         time_limit=time_limit,
         force=force,
+        outdated=outdated,
         verbose=verbose
     )
 
@@ -1110,6 +1112,7 @@ def build_parser():
     analyze_parser.add_argument("--limit", type=int, default=100, help="Maximum number of documents to analyze in this run")
     analyze_parser.add_argument("--time-limit", type=float, default=None, help="Maximum execution time in hours (e.g., 0.5 for 30 mins)")
     analyze_parser.add_argument("-f", "--force", action="store_true", help="Force re-analysis even if document is already analyzed")
+    analyze_parser.add_argument("--outdated", action="store_true", help="Analyze missing documents AND re-analyze those processed with an older prompt version")
     analyze_parser.add_argument("--json", action="store_true", help="Output results as JSON")
     analyze_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
     analyze_parser.add_argument("-v", "--verbose", action="store_true", help="Show verbose output during analysis")

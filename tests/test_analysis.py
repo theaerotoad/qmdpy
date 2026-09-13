@@ -4,6 +4,8 @@ from qmd.config import Config
 from qmd.db import get_connection, init_schema
 
 class MockLLMForAnalysis:
+    ANALYSIS_PROMPT_VERSION = "1.0"
+
     def __init__(self, *args, **kwargs):
         pass
 
@@ -68,3 +70,16 @@ def test_analyze_target(mock_store):
     # 3. Run with force, should override and re-analyze
     results_forced = mock_store.analyze_target(limit=5, force=True)
     assert len(results_forced) == 1
+
+    # 4. Bump the version, test --outdated flag
+    mock_store.llm.ANALYSIS_PROMPT_VERSION = "1.1"
+    
+    # Running without outdated should still yield 0 hits
+    assert len(mock_store.analyze_target(limit=5)) == 0
+    
+    # Running with outdated should yield 1 hit since version 1.1 != 1.0
+    results_outdated = mock_store.analyze_target(limit=5, outdated=True)
+    assert len(results_outdated) == 1
+    
+    # Running again with outdated should yield 0 hits (now it's 1.1)
+    assert len(mock_store.analyze_target(limit=5, outdated=True)) == 0

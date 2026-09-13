@@ -160,6 +160,8 @@ Before responding, verify:
 9. The response contains only the structured result."""
 
 class LLMClient:
+    ANALYSIS_PROMPT_VERSION = "1.0"
+
     def __init__(
         self, 
         base_url: Optional[str] = None, 
@@ -358,7 +360,6 @@ Final Output:
         response = self.client.post("/v1/chat/completions", json={
             "model": self.generate_model,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0,
             "max_tokens": 512
         })
         response.raise_for_status()
@@ -427,8 +428,8 @@ Document Content:
             response = self.client.post("/v1/chat/completions", json={
                 "model": self.generate_model,
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.0,
-                "max_tokens": 20000,
+                "max_tokens": 16000,
+                "thinking_budget_tokens": 4096,
             }, timeout=None)
             response.raise_for_status()
             message = response.json()["choices"][0]["message"]
@@ -514,7 +515,6 @@ Document Content:
             response = self.multimodal_client.post("/v1/chat/completions", json={
                 "model": self.multimodal_model,
                 "messages": messages,
-                "temperature": 0.0,
                 "max_tokens": 4096
             })
             response.raise_for_status()

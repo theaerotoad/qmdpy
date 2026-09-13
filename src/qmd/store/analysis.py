@@ -19,6 +19,7 @@ class AnalysisMixin:
         limit: int = 100,
         time_limit: Optional[float] = None,
         force: bool = False,
+        outdated: bool = False,
         verbose: bool = False
     ) -> List[Dict[str, Any]]:
         if getattr(self, "read_only", False):
@@ -35,7 +36,12 @@ class AnalysisMixin:
 
         if not force:
             query_sql += " LEFT JOIN document_analysis da ON d.hash = da.doc_hash"
-            where_clauses.append("da.doc_hash IS NULL")
+            if outdated:
+                prompt_ver = getattr(self.llm, "ANALYSIS_PROMPT_VERSION", "1.0")
+                where_clauses.append("(da.doc_hash IS NULL OR da.prompt_version IS NULL OR da.prompt_version != ?)")
+                params.append(prompt_ver)
+            else:
+                where_clauses.append("da.doc_hash IS NULL")
 
         coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
         if coll_sql:
@@ -109,10 +115,11 @@ class AnalysisMixin:
                 continue
 
             # Store in DB
+            prompt_version = getattr(self.llm, "ANALYSIS_PROMPT_VERSION", "1.0")
             now = datetime.utcnow().isoformat() + "Z"
             cursor.execute("""
-                INSERT INTO document_analysis (doc_hash, summary, authors, tags, dates, questions, doc_type, alt_title, analyzed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO document_analysis (doc_hash, summary, authors, tags, dates, questions, doc_type, alt_title, prompt_version, analyzed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(doc_hash) DO UPDATE SET
                     summary = excluded.summary,
                     authors = excluded.authors,
@@ -121,6 +128,7 @@ class AnalysisMixin:
                     questions = excluded.questions,
                     doc_type = excluded.doc_type,
                     alt_title = excluded.alt_title,
+                    prompt_version = excluded.prompt_version,
                     analyzed_at = excluded.analyzed_at
             """, (
                 doc_hash,
@@ -131,6 +139,7 @@ class AnalysisMixin:
                 json.dumps(analysis_res.get("questions", [])),
                 analysis_res.get("doc_type", ""),
                 analysis_res.get("altTitle", ""),
+                prompt_version,
                 now
             ))
 
