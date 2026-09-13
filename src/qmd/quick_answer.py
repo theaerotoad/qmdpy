@@ -1,12 +1,67 @@
 import json
 import logging
-from typing import Generator, Optional
+import threading
+from typing import Generator, Optional, Dict
 import httpx
-from flask import Blueprint, Response, request, stream_with_context
+from flask import Blueprint, Response, request, stream_with_context, jsonify
 
 logger = logging.getLogger(__name__)
 
 quick_answer_bp = Blueprint("quick_answer", __name__)
+
+
+class ActiveStreamHandle:
+    """Manages cancellation and immediate socket termination for an in-flight LLM request."""
+
+    def __init__(self):
+        self.cancel_event = threading.Event()
+        self.client: Optional[httpx.Client] = None
+        self.response: Optional[httpx.Response] = None
+        self.lock = threading.Lock()
+
+    def attach(self, client: httpx.Client, response: httpx.Response) -> bool:
+        with self.lock:
+            if self.cancel_event.is_set():
+                try:
+                    response.close()
+                except Exception:
+                    pass
+                try:
+                    client.close()
+                except Exception:
+                    pass
+                return False
+            self.client = client
+            self.response = response
+            return True
+
+    def abort(self):
+        with self.lock:
+            self.cancel_event.set()
+            if self.response:
+                try:
+                    self.response.close()
+                except Exception:
+                    pass
+            if self.client:
+                try:
+                    self.client.close()
+                except Exception:
+                    pass
+
+
+_active_handles: Dict[str, ActiveStreamHandle] = {}
+_handles_lock = threading.Lock()
+
+
+def abort_session_stream(session_id: str) -> bool:
+    """Aborts any active LLM generation for the specified session."""
+    with _handles_lock:
+        handle = _active_handles.pop(session_id, None)
+    if handle:
+        handle.abort()
+        return True
+    return False
 
 QUICK_ANSWER_SYSTEM_PROMPT = """You are a concise, factual document assistant. Your job is to answer the user's question directly using ONLY the provided search result XML context.
 
@@ -35,7 +90,9 @@ def _get_llm_endpoint_and_model():
     return base_url.rstrip("/"), model
 
 
-def generate_quick_answer_stream(query: str, xml_context: str) -> Generator[str, None, None]:
+def generate_quick_answer_stream(
+    query: str, xml_context: str, session_id: str, handle: ActiveStreamHandle
+) -> Generator[str, None, None]:
     """Streams LLM tokens for quick answer as Server-Sent Events (SSE)."""
     base_url, model = _get_llm_endpoint_and_model()
 
@@ -67,8 +124,14 @@ def generate_quick_answer_stream(query: str, xml_context: str) -> Generator[str,
     headers = {"Content-Type": "application/json"}
 
     try:
+        if handle.cancel_event.is_set():
+            return
+
         with httpx.Client(timeout=60.0) as client:
             with client.stream("POST", endpoint, json=payload, headers=headers) as response:
+                if not handle.attach(client, response):
+                    return
+
                 if response.status_code != 200:
                     # Try fallback to /chat/completions without /v1
                     fallback_endpoint = f"{base_url}/chat/completions"
@@ -76,59 +139,85 @@ def generate_quick_answer_stream(query: str, xml_context: str) -> Generator[str,
                         with client.stream(
                             "POST", fallback_endpoint, json=payload, headers=headers
                         ) as fb_response:
+                            if not handle.attach(client, fb_response):
+                                return
                             if fb_response.status_code != 200:
                                 err_msg = f"LLM error: HTTP {fb_response.status_code}"
                                 yield f"data: {json.dumps({'error': err_msg})}\n\n"
                                 return
-                            yield from _read_sse_stream(fb_response)
+                            yield from _read_sse_stream(fb_response, handle)
                             return
 
                     err_msg = f"LLM error: HTTP {response.status_code}"
                     yield f"data: {json.dumps({'error': err_msg})}\n\n"
                     return
 
-                yield from _read_sse_stream(response)
-    except GeneratorExit:
-        logger.debug("Quick answer stream cancelled by client.")
+                yield from _read_sse_stream(response, handle)
+    except (httpx.StreamClosed, httpx.RequestError, GeneratorExit):
+        logger.debug("Quick answer stream terminated/aborted.")
         return
     except Exception as exc:
+        if handle.cancel_event.is_set():
+            return
         logger.error(f"Quick answer streaming exception: {exc}")
         yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+    finally:
+        handle.abort()
+        with _handles_lock:
+            if _active_handles.get(session_id) is handle:
+                _active_handles.pop(session_id, None)
 
 
-def _read_sse_stream(response: httpx.Response) -> Generator[str, None, None]:
+def _read_sse_stream(
+    response: httpx.Response, handle: ActiveStreamHandle
+) -> Generator[str, None, None]:
     """Parses raw SSE lines from an OpenAI-compatible /chat/completions streaming response."""
-    for line in response.iter_lines():
-        if not line:
-            continue
-        line_str = line.strip()
-        if not line_str.startswith("data:"):
-            continue
-
-        data_payload = line_str[len("data:") :].strip()
-        if data_payload == "[DONE]":
-            yield "data: [DONE]\n\n"
-            break
-
-        try:
-            parsed = json.loads(data_payload)
-            choices = parsed.get("choices", [])
-            if not choices:
+    try:
+        for line in response.iter_lines():
+            if handle.cancel_event.is_set():
+                break
+            if not line:
                 continue
-            delta = choices[0].get("delta", {})
-            content = delta.get("content")
-            if content:
-                yield f"data: {json.dumps({'delta': content})}\n\n"
-        except json.JSONDecodeError:
-            continue
+            line_str = line.strip()
+            if not line_str.startswith("data:"):
+                continue
+
+            data_payload = line_str[len("data:") :].strip()
+            if data_payload == "[DONE]":
+                yield "data: [DONE]\n\n"
+                break
+
+            try:
+                parsed = json.loads(data_payload)
+                choices = parsed.get("choices", [])
+                if not choices:
+                    continue
+                delta = choices[0].get("delta", {})
+                content = delta.get("content")
+                if content:
+                    yield f"data: {json.dumps({'delta': content})}\n\n"
+            except json.JSONDecodeError:
+                continue
+    except (httpx.StreamClosed, httpx.RequestError):
+        pass
+
+
+@quick_answer_bp.route("/api/quick_answer/abort", methods=["POST"])
+def quick_answer_abort_endpoint():
+    """Immediately terminates the upstream LLM connection for a session."""
+    data = request.get_json(silent=True) or {}
+    session_id = data.get("session_id") or "default"
+    aborted = abort_session_stream(session_id)
+    return jsonify({"status": "ok", "aborted": aborted})
 
 
 @quick_answer_bp.route("/api/quick_answer", methods=["POST"])
 def quick_answer_endpoint():
-    """HTTP endpoint receiving {query: str, xml: str} and returning an SSE stream."""
+    """HTTP endpoint receiving {query: str, xml: str, session_id: str} and returning an SSE stream."""
     data = request.get_json(silent=True) or {}
     query = (data.get("query") or "").strip()
     xml_context = (data.get("xml") or "").strip()
+    session_id = data.get("session_id") or "default"
 
     if not query or not xml_context:
         return Response(
@@ -137,8 +226,15 @@ def quick_answer_endpoint():
             mimetype="application/json",
         )
 
+    # Immediately abort any previous generator / upstream LLM request for this session
+    abort_session_stream(session_id)
+
+    handle = ActiveStreamHandle()
+    with _handles_lock:
+        _active_handles[session_id] = handle
+
     return Response(
-        stream_with_context(generate_quick_answer_stream(query, xml_context)),
+        stream_with_context(generate_quick_answer_stream(query, xml_context, session_id, handle)),
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
