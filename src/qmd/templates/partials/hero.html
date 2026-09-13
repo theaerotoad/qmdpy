@@ -56,11 +56,18 @@
         </div>
 
         <!-- Sample Query Suggestions -->
-        <div class="mt-8 text-center text-xs text-gray-400">
-            Try: 
-            <button type="button" onclick="runSampleQuery('winston churchill habits')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">winston churchill habits</button> •
-            <button type="button" onclick="runSampleQuery('quantum entanglement notes')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">quantum entanglement notes</button> •
-            <button type="button" onclick="runSampleQuery('project roadmap Q3')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">project roadmap Q3</button>
+        <div class="mt-8 text-center text-xs text-gray-400 flex flex-wrap justify-center items-center gap-1">
+            <span>Try:</span>
+            {% if sample_questions and sample_questions|length > 0 %}
+                {% for sq in sample_questions %}
+                    <button type="button" onclick="runSampleQuery({{ sq.question | tojson | forceescape }})" title="From: {{ sq.title | e }}" class="text-blue-600 dark:text-blue-400 hover:underline mx-1 truncate max-w-[200px] sm:max-w-xs">{{ sq.question | e }}</button>
+                    {% if not loop.last %}<span class="text-gray-300 dark:text-gray-600">•</span>{% endif %}
+                {% endfor %}
+            {% else %}
+                <button type="button" onclick="runSampleQuery('winston churchill habits')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">winston churchill habits</button> <span class="text-gray-300 dark:text-gray-600">•</span>
+                <button type="button" onclick="runSampleQuery('quantum entanglement notes')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">quantum entanglement notes</button> <span class="text-gray-300 dark:text-gray-600">•</span>
+                <button type="button" onclick="runSampleQuery('project roadmap Q3')" class="text-blue-600 dark:text-blue-400 hover:underline mx-1">project roadmap Q3</button>
+            {% endif %}
         </div>
     </div>
 </main>

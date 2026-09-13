@@ -88,6 +88,44 @@ class AnalysisMixin:
 
         return results
 
+    def get_random_analysis_questions(self, limit: int = 2) -> List[Dict[str, str]]:
+        """Fetches random questions generated from document analysis to display as suggestions."""
+        import random
+        questions = []
+        
+        # Check all target stores in case of federation
+        target_stores = [self]
+        if hasattr(self, "collection_store_map") and self.collection_store_map:
+            target_stores = list(self.collection_store_map.values())
+            random.shuffle(target_stores)
+        
+        for ts in target_stores:
+            cursor = ts.conn.cursor()
+            try:
+                cursor.execute("""
+                    SELECT da.questions, d.title
+                    FROM document_analysis da
+                    JOIN documents d ON d.hash = da.doc_hash
+                    WHERE da.questions IS NOT NULL AND da.questions != '[]' AND da.questions != ''
+                    ORDER BY RANDOM()
+                    LIMIT 10
+                """)
+                rows = cursor.fetchall()
+                for q_raw, title in rows:
+                    try:
+                        q_list = json.loads(q_raw)
+                        if q_list:
+                            q = random.choice(q_list)
+                            questions.append({"question": q, "title": title})
+                            if len(questions) >= limit:
+                                return questions
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+                
+        return questions
+
     def analyze_target(
         self,
         collection: Optional[str] = None,

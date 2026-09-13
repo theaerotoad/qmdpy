@@ -165,7 +165,12 @@ def extract_batch_commands(input_data: Union[str, List[str]], max_commands: int 
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    try:
+        store = get_store()
+        random_questions = store.get_random_analysis_questions(limit=2)
+    except Exception:
+        random_questions = []
+    return render_template('index.html', sample_questions=random_questions)
 
 @app.route('/api/discover', methods=['POST'])
 def discover():
