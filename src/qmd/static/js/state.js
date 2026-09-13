@@ -72,18 +72,41 @@ function updateQueryHistoryDatalist() {
 }
 
 // Load & Apply Default Preferences
+function updateHeroDefaultButtonUI(mode) {
+    const buttons = document.querySelectorAll('.hero-search-btn');
+    buttons.forEach(btn => {
+        if (btn.dataset.mode === mode) {
+            btn.classList.remove('text-[#3c4043]', 'dark:text-[#e8eaed]');
+            btn.classList.add('text-purple-700', 'dark:text-purple-300');
+        } else {
+            btn.classList.add('text-[#3c4043]', 'dark:text-[#e8eaed]');
+            btn.classList.remove('text-purple-700', 'dark:text-purple-300');
+        }
+    });
+}
+
 function applyDefaultPreferences(customDefaults = null) {
     const defaults = customDefaults || JSON.parse(localStorage.getItem(DEFAULTS_KEY) || '{}');
     if (defaults.limit) {
         document.querySelectorAll('.limit-select').forEach(sel => sel.value = defaults.limit);
     }
     if (defaults.mode) {
-        setMode(defaults.mode);
+        if (defaults.mode === 'discover') {
+            activeTab = 'documents';
+            activeMode = 'discover';
+        } else if (defaults.mode === 'passages') {
+            activeTab = 'passages';
+            activeMode = 'search';
+        } else {
+            activeTab = 'all';
+            activeMode = 'search';
+        }
     }
     featureStates.rerank = defaults.rerank !== undefined ? !!defaults.rerank : true;
     featureStates.exclude_seen = defaults.exclude_seen !== undefined ? !!defaults.exclude_seen : false;
     featureStates.redact_pii = defaults.redact_pii !== undefined ? !!defaults.redact_pii : false;
     updateFeatureButtonsUI();
+    updateHeroDefaultButtonUI(defaults.mode || 'discover');
 }
 
 function loadSettingsModalValues() {
