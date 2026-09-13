@@ -27,6 +27,18 @@
       activeAbortController.abort();
       activeAbortController = null;
     }
+
+    // Proactively kill upstream LLM request on the backend
+    try {
+      const sid = (typeof currentSessionId !== "undefined" && currentSessionId) ? currentSessionId : "default";
+      fetch("/api/quick_answer/abort", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sid }),
+        keepalive: true,
+      }).catch(function () {});
+    } catch (e) {}
+
     const els = getElements();
     if (els.card) {
       els.card.classList.add("hidden");
@@ -237,6 +249,7 @@
     if (els.footer) els.footer.classList.add("hidden");
 
     try {
+      const sid = (typeof currentSessionId !== "undefined" && currentSessionId) ? currentSessionId : "default";
       const response = await fetch("/api/quick_answer", {
         method: "POST",
         headers: {
@@ -245,6 +258,7 @@
         body: JSON.stringify({
           query: query,
           xml: xmlContext,
+          session_id: sid,
         }),
         signal: activeAbortController.signal,
       });
