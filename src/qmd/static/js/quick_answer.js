@@ -37,45 +37,9 @@
     accumulatedText = "";
   }
 
-  /**
-   * Parses simple Markdown and transforms qmd:// citations into interactive slide-over triggers.
-   */
-  function renderMarkdownWithCitations(markdown) {
-    if (!markdown) return "";
-
-    let html = escapeHtmlText(markdown);
-
-    // Bold: **text**
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-zinc-900 dark:text-zinc-100">$1</strong>');
-    
-    // Italic: *text*
-    html = html.replace(/(^|[^\*])\*(?!\*)([^\*]+)\*(?!\*)/g, '$1<em>$2</em>');
-
-    // Inline code: `code`
-    html = html.replace(/`([^`]+)`/g, '<code class="rounded bg-zinc-100 px-1 py-0.5 text-[11px] font-mono text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">$1</code>');
-
-    // Numeric citations: [1], [2], [9] mapped directly to search results
-    html = html.replace(/\[(\d+)\]/g, function (match, numStr) {
-      return createNumericCitationBadge(numStr);
-    });
-
-    // Optional URL citations fallback: [Title](qmd://open?collection=...&path=...&text=...)
-    html = html.replace(
-      /\[(.*?)\]\((qmd:\/\/open\?[^\)]+)\)/g,
-      function (match, label, uri) {
-        return createCitationLink(label, uri);
-      }
-    );
-
-    // Newlines to line breaks
-    html = html.replace(/\n\n+/g, '<p class="my-1.5"></p>');
-    html = html.replace(/\n/g, "<br>");
-
-    return html;
-  }
-
   function escapeHtmlText(str) {
-    return str
+    if (!str) return "";
+    return String(str)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -83,61 +47,64 @@
       .replace(/'/g, "&#039;");
   }
 
-  function createNumericCitationBadge(numStr) {
-    const idx = parseInt(numStr, 10) - 1;
-    if (currentResults && currentResults[idx]) {
-      const item = currentResults[idx];
-      const collection = encodeURIComponent(item.collection || "");
-      const path = encodeURIComponent(item.path || "");
-      const textContent = (item.chunks && item.chunks.length > 0)
-        ? (item.chunks[0].text || "")
-        : (item.text || (item.snippets ? item.snippets[0] : ""));
-      const text = encodeURIComponent(textContent || "");
-      const title = item.title || item.path || `Source [${numStr}]`;
+  /**
+   * Parses Markdown and transforms numeric citations like [1], [2], [1, 2] into interactive badges.
+   */
+  function renderMarkdownWithCitations(markdown) {
+    if (!markdown) return "";
 
-      return `<a href="#" 
-                 onclick="window.quickAnswerOpenRef(event, '${collection}', '${path}', '${text}')" 
-                 class="inline-flex items-center justify-center font-mono font-semibold text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/80 rounded px-1.5 py-0.2 mx-0.5 align-baseline" 
-                 title="${escapeHtmlText(title)}">[${numStr}]</a>`;
+    let html = "";
+    if (typeof marked !== "undefined" && typeof marked.parse === "function") {
+      try {
+        html = marked.parse(markdown, { breaks: true, gfm: true });
+      } catch (e) {
+        html = escapeHtmlText(markdown).replace(/\n\n+/g, '<p class="my-1.5"></p>').replace(/\n/g, "<br>");
+      }
+    } else {
+      html = escapeHtmlText(markdown)
+        .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-zinc-900 dark:text-zinc-100">$1</strong>')
+        .replace(/(^|[^\*])\*(?!\*)([^\*]+)\*(?!\*)/g, '$1<em>$2</em>')
+        .replace(/`([^`]+)`/g, '<code class="rounded bg-zinc-100 px-1 py-0.5 text-[11px] font-mono text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">$1</code>')
+        .replace(/\n\n+/g, '<p class="my-1.5"></p>')
+        .replace(/\n/g, "<br>");
     }
-    return `<span class="font-mono text-[11px] text-zinc-500 font-semibold">[${numStr}]</span>`;
-  }
 
-  function createCitationLink(label, uri) {
-    try {
-      const parsedUrl = new URL(uri.replace("qmd://", "http://qmd.local/"));
-      const collection = encodeURIComponent(parsedUrl.searchParams.get("collection") || "");
-      const path = encodeURIComponent(parsedUrl.searchParams.get("path") || "");
-      const text = encodeURIComponent(parsedUrl.searchParams.get("text") || "");
+    // Replace citations like [1], [2], [1, 2] with interactive badges
+    html = html.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, function (match, group) {
+      const nums = group.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+      return nums.map(function (numStr) {
+        const idx = parseInt(numStr, 10) - 1;
+        if (currentResults && currentResults[idx]) {
+          const item = currentResults[idx];
+          const title = item.title || item.path || `Source [${numStr}]`;
+          return `<button type="button" data-citation-idx="${idx}" class="inline-flex items-center justify-center font-mono font-semibold text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200 dark:border-indigo-800/80 rounded px-1.5 py-0.2 mx-0.5 align-baseline cursor-pointer transition-colors" title="${escapeHtmlText(title)}">[${numStr}]</button>`;
+        }
+        return `<span class="font-mono text-[10px] text-zinc-400 dark:text-zinc-500 font-semibold">[${numStr}]</span>`;
+      }).join("");
+    });
 
-      return `<a href="#" 
-                 onclick="window.quickAnswerOpenRef(event, '${collection}', '${path}', '${text}')" 
-                 class="inline-flex items-center gap-0.5 rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 hover:underline dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-900/60" 
-                 title="Open in document viewer">
-                 <svg class="h-2.5 w-2.5 opacity-70" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                   <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                 </svg>
-                 ${label}
-              </a>`;
-    } catch (e) {
-      return `<span class="underline decoration-dotted">${label}</span>`;
-    }
+    return html;
   }
 
   /**
-   * Opens the slide-over document drawer using existing modals.js functions.
+   * Opens the slide-over document drawer for a given citation index.
    */
-  window.quickAnswerOpenRef = function (event, collectionEncoded, pathEncoded, textEncoded) {
+  window.quickAnswerOpenCitation = function (event, idx) {
     if (event) {
       event.preventDefault();
       event.stopPropagation();
     }
-    const collection = decodeURIComponent(collectionEncoded || "");
-    const path = decodeURIComponent(pathEncoded || "");
-    const text = decodeURIComponent(textEncoded || "");
+    if (!currentResults || !currentResults[idx]) return;
+
+    const item = currentResults[idx];
+    const collection = item.collection || "";
+    const path = item.path || "";
+    const targetText = (item.chunks && item.chunks.length > 0)
+      ? (item.chunks[0].text || "")
+      : (item.text || (item.snippets ? item.snippets[0] : ""));
 
     if (typeof window.openDocument === "function") {
-      window.openDocument(collection, path, text);
+      window.openDocument(collection, path, targetText);
     } else {
       console.warn("openDocument function not found on window object.");
     }
@@ -269,6 +236,38 @@
     const els = getElements();
     if (els.closeBtn) {
       els.closeBtn.addEventListener("click", hideQuickAnswer);
+    }
+
+    // Event delegation for citation clicks and qmd:// links
+    if (els.content) {
+      els.content.addEventListener("click", function (e) {
+        const btn = e.target.closest("[data-citation-idx]");
+        if (btn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const idx = parseInt(btn.getAttribute("data-citation-idx"), 10);
+          window.quickAnswerOpenCitation(e, idx);
+          return;
+        }
+
+        const qmdLink = e.target.closest('a[href^="qmd://"]');
+        if (qmdLink) {
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            const href = qmdLink.getAttribute("href");
+            const parsedUrl = new URL(href.replace("qmd://", "http://qmd.local/"));
+            const collection = parsedUrl.searchParams.get("collection") || "";
+            const path = parsedUrl.searchParams.get("path") || "";
+            const text = parsedUrl.searchParams.get("text") || "";
+            if (typeof window.openDocument === "function") {
+              window.openDocument(collection, path, text);
+            }
+          } catch (err) {
+            console.warn("Could not parse qmd link:", err);
+          }
+        }
+      });
     }
   });
 
