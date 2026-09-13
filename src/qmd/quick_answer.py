@@ -17,7 +17,7 @@ NOT RELEVANT
 3. If the results ARE relevant:
    - Provide a direct, clear answer in natural prose in LESS THAN 100 WORDS.
    - Do NOT guess or use outside knowledge.
-   - Cite sources inline using simple numeric citations like [1] or [2] referring to the 1-based index or rank of the results in the search XML.
+   - Cite sources inline using numeric citations like [1] or [2] referring to the 'rank' attribute of the chunk/result in the search XML.
 """
 
 
@@ -58,7 +58,7 @@ def generate_quick_answer_stream(query: str, xml_context: str) -> Generator[str,
         "stream": True,
         # Explicitly disable reasoning as requested for faster inference
         "enable_thinking": False,
-        "thinking_budget_tokens": 0,
+        "thinking_budget_tokens": 2048,
         "extra_body": {
             "enable_thinking": False,
         },

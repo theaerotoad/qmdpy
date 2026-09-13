@@ -7,6 +7,7 @@
   let activeAbortController = null;
   let accumulatedText = "";
   let isCheckingRelevance = true;
+  let citationSources = {};
   let currentResults = [];
 
   function getElements() {
@@ -34,7 +35,104 @@
       els.content.innerHTML = "";
     }
     currentResults = [];
+    citationSources = {};
     accumulatedText = "";
+  }
+
+  /**
+   * Builds a comprehensive lookup dictionary for all numeric citation keys (e.g. rank, seq, doc index)
+   * from both the search results array and the raw search XML.
+   */
+  function buildCitationSources(results, xmlContext) {
+    const map = {};
+
+    // 1. Traverse results object/array
+    if (Array.isArray(results)) {
+      results.forEach((item, docIdx) => {
+        const docNum = (docIdx + 1).toString();
+        const docTitle = item.title || item.path || `Document ${docNum}`;
+        const docCollection = item.collection || "";
+        const docPath = item.path || "";
+
+        // Grouped document view with multiple chunks
+        if (Array.isArray(item.chunks) && item.chunks.length > 0) {
+          item.chunks.forEach((chunk) => {
+            const chunkObj = {
+              collection: docCollection,
+              path: docPath,
+              title: docTitle,
+              text: chunk.text || "",
+            };
+
+            if (chunk.rank !== undefined && chunk.rank !== null) {
+              map[chunk.rank.toString()] = chunkObj;
+            }
+            if (chunk.seq_id !== undefined && chunk.seq_id !== null) {
+              const seqKey = chunk.seq_id.toString();
+              if (!map[seqKey]) map[seqKey] = chunkObj;
+            }
+          });
+
+          if (!map[docNum]) {
+            map[docNum] = {
+              collection: docCollection,
+              path: docPath,
+              title: docTitle,
+              text: item.chunks[0].text || "",
+            };
+          }
+        } else {
+          // Flat chunk or discover mode
+          const text = item.text || (item.snippets && item.snippets[0]) || "";
+          const itemObj = {
+            collection: docCollection,
+            path: docPath,
+            title: docTitle,
+            text: text,
+          };
+
+          map[docNum] = itemObj;
+          if (item.rank !== undefined && item.rank !== null) {
+            map[item.rank.toString()] = itemObj;
+          }
+        }
+      });
+    }
+
+    // 2. Parse raw XML context for complete rank/attribute resolution
+    if (xmlContext && typeof DOMParser !== "undefined") {
+      try {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlContext, "text/xml");
+        const nodes = xmlDoc.querySelectorAll("chunk, result, document, doc, match");
+        nodes.forEach((node, nodeIdx) => {
+          const rank = node.getAttribute("rank");
+          const index = node.getAttribute("index");
+          const id = node.getAttribute("id");
+          const seq = node.getAttribute("seq") || node.getAttribute("seq_id");
+
+          const parentDoc = node.closest("document, doc");
+          const collection = node.getAttribute("collection") || (parentDoc && parentDoc.getAttribute("collection")) || "";
+          const path = node.getAttribute("path") || (parentDoc && parentDoc.getAttribute("path")) || "";
+          const title = node.getAttribute("title") || (parentDoc && parentDoc.getAttribute("title")) || path;
+          const text = node.textContent ? node.textContent.trim() : "";
+
+          const srcObj = { collection, path, title, text };
+
+          if (rank && (!map[rank] || !map[rank].text)) map[rank] = srcObj;
+          if (index && (!map[index] || !map[index].text)) map[index] = srcObj;
+          if (id && (!map[id] || !map[id].text)) map[id] = srcObj;
+          if (seq && !map[seq]) map[seq] = srcObj;
+
+          const fallbackIdx = (nodeIdx + 1).toString();
+          if (!map[fallbackIdx]) map[fallbackIdx] = srcObj;
+        });
+      } catch (e) {
+        console.warn("Could not parse XML for citations:", e);
+      }
+    }
+
+    return map;
   }
 
   function escapeHtmlText(str) {
@@ -73,11 +171,10 @@
     html = html.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, function (match, group) {
       const nums = group.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
       return nums.map(function (numStr) {
-        const idx = parseInt(numStr, 10) - 1;
-        if (currentResults && currentResults[idx]) {
-          const item = currentResults[idx];
-          const title = item.title || item.path || `Source [${numStr}]`;
-          return `<button type="button" data-citation-idx="${idx}" class="inline-flex items-center justify-center font-mono font-semibold text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200 dark:border-indigo-800/80 rounded px-1.5 py-0.2 mx-0.5 align-baseline cursor-pointer transition-colors" title="${escapeHtmlText(title)}">[${numStr}]</button>`;
+        const src = citationSources[numStr];
+        if (src) {
+          const title = src.title || src.path || `Source [${numStr}]`;
+          return `<button type="button" data-citation-key="${escapeHtmlText(numStr)}" class="inline-flex items-center justify-center font-mono font-semibold text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200 dark:border-indigo-800/80 rounded px-1.5 py-0.2 mx-0.5 align-baseline cursor-pointer transition-colors" title="${escapeHtmlText(title)}">[${numStr}]</button>`;
         }
         return `<span class="font-mono text-[10px] text-zinc-400 dark:text-zinc-500 font-semibold">[${numStr}]</span>`;
       }).join("");
@@ -87,21 +184,19 @@
   }
 
   /**
-   * Opens the slide-over document drawer for a given citation index.
+   * Opens the slide-over document drawer for a given citation key.
    */
-  window.quickAnswerOpenCitation = function (event, idx) {
+  window.quickAnswerOpenCitation = function (event, citationKey) {
     if (event) {
       event.preventDefault();
       event.stopPropagation();
     }
-    if (!currentResults || !currentResults[idx]) return;
+    const src = citationSources[citationKey];
+    if (!src) return;
 
-    const item = currentResults[idx];
-    const collection = item.collection || "";
-    const path = item.path || "";
-    const targetText = (item.chunks && item.chunks.length > 0)
-      ? (item.chunks[0].text || "")
-      : (item.text || (item.snippets ? item.snippets[0] : ""));
+    const collection = src.collection || "";
+    const path = src.path || "";
+    const targetText = src.text || "";
 
     if (typeof window.openDocument === "function") {
       window.openDocument(collection, path, targetText);
@@ -120,6 +215,7 @@
     }
 
     currentResults = Array.isArray(results) ? results : [];
+    citationSources = buildCitationSources(currentResults, xmlContext);
 
     // Cancel any ongoing stream
     if (activeAbortController) {
@@ -241,12 +337,12 @@
     // Event delegation for citation clicks and qmd:// links
     if (els.content) {
       els.content.addEventListener("click", function (e) {
-        const btn = e.target.closest("[data-citation-idx]");
+        const btn = e.target.closest("[data-citation-key]");
         if (btn) {
           e.preventDefault();
           e.stopPropagation();
-          const idx = parseInt(btn.getAttribute("data-citation-idx"), 10);
-          window.quickAnswerOpenCitation(e, idx);
+          const key = btn.getAttribute("data-citation-key");
+          window.quickAnswerOpenCitation(e, key);
           return;
         }
 
