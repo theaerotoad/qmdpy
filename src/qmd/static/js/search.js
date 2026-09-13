@@ -68,6 +68,10 @@ async function handleFormSubmit(e, source) {
     const progressEl = document.getElementById('search-progress');
     const footerEl = document.getElementById('results-footer');
 
+    if (window.QuickAnswer && typeof window.QuickAnswer.hide === 'function') {
+        window.QuickAnswer.hide();
+    }
+
     if (progressEl) progressEl.classList.remove('hidden');
     resultsEl.innerHTML = `<div class="flex items-center justify-center py-20 text-gray-500 gap-3"><svg class="animate-spin h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg><span>Searching knowledge base...</span></div>`;
     statsEl.textContent = "Querying multi-corpus index...";
@@ -110,6 +114,10 @@ async function handleFormSubmit(e, source) {
 
             statsEl.innerHTML = `About <strong class="text-gray-700 dark:text-gray-200">${data.results.length} documents</strong> across indexed repositories (<span class="font-mono">${data.time_taken || 0} seconds</span>)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
             renderResults(data.results, 'discover', parsed.cleanQuery || rawVal);
+
+            if (data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
+                window.QuickAnswer.trigger(parsed.cleanQuery || rawVal, lastRawXml);
+            }
         } else {
             const payload = {
                 query: parsed.cleanQuery || rawVal,
@@ -139,9 +147,16 @@ async function handleFormSubmit(e, source) {
 
             statsEl.innerHTML = `About <strong class="text-gray-700 dark:text-gray-200">${data.results.length} ${data.type === 'doc' ? 'documents' : 'passages'}</strong> across indexed repositories (<span class="font-mono">${data.time_taken || 0} seconds</span>)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
             renderResults(data.results, data.type, parsed.cleanQuery || rawVal);
+
+            if (data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
+                window.QuickAnswer.trigger(parsed.cleanQuery || rawVal, lastRawXml);
+            }
         }
         if (footerEl) footerEl.classList.remove('hidden');
     } catch(e) {
+        if (window.QuickAnswer && typeof window.QuickAnswer.hide === 'function') {
+            window.QuickAnswer.hide();
+        }
         resultsEl.innerHTML = `<div class="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-5 text-red-700 dark:text-red-300 text-sm font-semibold">${escapeHtml(e.message)}</div>`;
         statsEl.textContent = "Search encountered an error";
     } finally {
