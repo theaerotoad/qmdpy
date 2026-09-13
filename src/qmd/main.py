@@ -182,11 +182,12 @@ def merge_overlapping_snippets(snippets: List[Tuple], doc_title: str = "") -> Li
 
 def group_results_by_doc(results: List[Result]) -> List[Dict]:
     """
-    Groups chunks by file path, keeps max score, and merges text into reading order.
+    Groups chunks by title (to merge duplicate files), keeps max score, and merges text into reading order.
     """
     docs = {}
     for r in results:
-        key = (r.collection, r.path)
+        # Group by title to seamlessly merge identical books across different collections/paths
+        key = r.title.strip().lower() if r.title else (r.collection, r.path)
         if key not in docs:
             docs[key] = {
                 "title": r.title,
