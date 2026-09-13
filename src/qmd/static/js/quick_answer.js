@@ -327,12 +327,82 @@
     activeAbortController = null;
   }
 
+  /**
+   * Hook global tab switching and query reset functions to immediately abort
+   * in-flight Quick Answer requests.
+   */
+  function setupSmartsHooks() {
+    if (typeof window.setSearchTab === "function" && !window.setSearchTab._qaHooked) {
+      const origSetSearchTab = window.setSearchTab;
+      window.setSearchTab = function (tabName) {
+        hideQuickAnswer();
+        return origSetSearchTab.apply(this, arguments);
+      };
+      window.setSearchTab._qaHooked = true;
+    }
+
+    if (typeof window.returnToHero === "function" && !window.returnToHero._qaHooked) {
+      const origReturnToHero = window.returnToHero;
+      window.returnToHero = function () {
+        hideQuickAnswer();
+        return origReturnToHero.apply(this, arguments);
+      };
+      window.returnToHero._qaHooked = true;
+    }
+
+    if (typeof window.clearQuery === "function" && !window.clearQuery._qaHooked) {
+      const origClearQuery = window.clearQuery;
+      window.clearQuery = function () {
+        hideQuickAnswer();
+        return origClearQuery.apply(this, arguments);
+      };
+      window.clearQuery._qaHooked = true;
+    }
+  }
+
+  // Attempt hooking immediately if state.js is already loaded
+  setupSmartsHooks();
+
   // Setup UI event handlers
   document.addEventListener("DOMContentLoaded", function () {
+    setupSmartsHooks();
     const els = getElements();
     if (els.closeBtn) {
       els.closeBtn.addEventListener("click", hideQuickAnswer);
     }
+
+    // Cancel in-flight quick answer when user clicks any tab button
+    document.querySelectorAll("#tab-all, #tab-passages, #tab-documents").forEach(function (tabEl) {
+      tabEl.addEventListener("click", function () {
+        hideQuickAnswer();
+      });
+    });
+
+    // Cancel in-flight quick answer when user starts typing a new query
+    ["serp-query", "hero-query"].forEach(function (id) {
+      const inputEl = document.getElementById(id);
+      if (inputEl) {
+        inputEl.addEventListener("input", function () {
+          if (activeAbortController) {
+            hideQuickAnswer();
+          }
+        });
+      }
+    });
+
+    const clearBtn = document.getElementById("clear-btn");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        hideQuickAnswer();
+      });
+    }
+
+    window.addEventListener("beforeunload", function () {
+      if (activeAbortController) {
+        activeAbortController.abort();
+        activeAbortController = null;
+      }
+    });
 
     // Event delegation for citation clicks and qmd:// links
     if (els.content) {
@@ -371,5 +441,6 @@
   window.QuickAnswer = {
     trigger: triggerQuickAnswer,
     hide: hideQuickAnswer,
+    abort: hideQuickAnswer,
   };
 })();

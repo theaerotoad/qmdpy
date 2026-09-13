@@ -88,6 +88,9 @@ def generate_quick_answer_stream(query: str, xml_context: str) -> Generator[str,
                     return
 
                 yield from _read_sse_stream(response)
+    except GeneratorExit:
+        logger.debug("Quick answer stream cancelled by client.")
+        return
     except Exception as exc:
         logger.error(f"Quick answer streaming exception: {exc}")
         yield f"data: {json.dumps({'error': str(exc)})}\n\n"

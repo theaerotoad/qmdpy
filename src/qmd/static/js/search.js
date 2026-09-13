@@ -28,6 +28,9 @@ function copySingleExcerpt(index, btnEl = null) {
 }
 
 function triggerSearchWithMode(mode, source) {
+    if (window.QuickAnswer && typeof window.QuickAnswer.abort === 'function') {
+        window.QuickAnswer.abort();
+    }
     activeMode = mode;
     if (mode === 'discover') {
         setSearchTab('documents');
@@ -41,6 +44,9 @@ function triggerSearchWithMode(mode, source) {
 }
 
 function triggerSearchWithTab(tab, source) {
+    if (window.QuickAnswer && typeof window.QuickAnswer.abort === 'function') {
+        window.QuickAnswer.abort();
+    }
     setSearchTab(tab);
     const form = document.getElementById(`${source}-search-form`);
     if (form) {
@@ -50,6 +56,9 @@ function triggerSearchWithTab(tab, source) {
 
 // Form Submit & Search Execution
 async function handleFormSubmit(e, source) {
+    if (window.QuickAnswer && typeof window.QuickAnswer.abort === 'function') {
+        window.QuickAnswer.abort();
+    }
     if (e && e.preventDefault) e.preventDefault();
     const rawVal = document.getElementById(`${source}-query`) 
         ? document.getElementById(`${source}-query`).value 
