@@ -7,6 +7,7 @@
   let activeAbortController = null;
   let accumulatedText = "";
   let isCheckingRelevance = true;
+  let currentResults = [];
 
   function getElements() {
     return {
@@ -32,6 +33,7 @@
     if (els.content) {
       els.content.innerHTML = "";
     }
+    currentResults = [];
     accumulatedText = "";
   }
 
@@ -52,7 +54,12 @@
     // Inline code: `code`
     html = html.replace(/`([^`]+)`/g, '<code class="rounded bg-zinc-100 px-1 py-0.5 text-[11px] font-mono text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">$1</code>');
 
-    // Citations: [Title](qmd://open?collection=...&path=...&text=...)
+    // Numeric citations: [1], [2], [9] mapped directly to search results
+    html = html.replace(/\[(\d+)\]/g, function (match, numStr) {
+      return createNumericCitationBadge(numStr);
+    });
+
+    // Optional URL citations fallback: [Title](qmd://open?collection=...&path=...&text=...)
     html = html.replace(
       /\[(.*?)\]\((qmd:\/\/open\?[^\)]+)\)/g,
       function (match, label, uri) {
@@ -74,6 +81,26 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  function createNumericCitationBadge(numStr) {
+    const idx = parseInt(numStr, 10) - 1;
+    if (currentResults && currentResults[idx]) {
+      const item = currentResults[idx];
+      const collection = encodeURIComponent(item.collection || "");
+      const path = encodeURIComponent(item.path || "");
+      const textContent = (item.chunks && item.chunks.length > 0)
+        ? (item.chunks[0].text || "")
+        : (item.text || (item.snippets ? item.snippets[0] : ""));
+      const text = encodeURIComponent(textContent || "");
+      const title = item.title || item.path || `Source [${numStr}]`;
+
+      return `<a href="#" 
+                 onclick="window.quickAnswerOpenRef(event, '${collection}', '${path}', '${text}')" 
+                 class="inline-flex items-center justify-center font-mono font-semibold text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/80 rounded px-1.5 py-0.2 mx-0.5 align-baseline" 
+                 title="${escapeHtmlText(title)}">[${numStr}]</a>`;
+    }
+    return `<span class="font-mono text-[11px] text-zinc-500 font-semibold">[${numStr}]</span>`;
   }
 
   function createCitationLink(label, uri) {
@@ -119,11 +146,13 @@
   /**
    * Main entry point: begins streaming the Quick Answer for a query using search XML.
    */
-  async function triggerQuickAnswer(query, xmlContext) {
+  async function triggerQuickAnswer(query, xmlContext, results = []) {
     if (!query || !xmlContext || xmlContext.trim().length === 0) {
       hideQuickAnswer();
       return;
     }
+
+    currentResults = Array.isArray(results) ? results : [];
 
     // Cancel any ongoing stream
     if (activeAbortController) {

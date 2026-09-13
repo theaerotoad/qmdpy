@@ -116,7 +116,7 @@ async function handleFormSubmit(e, source) {
             renderResults(data.results, 'discover', parsed.cleanQuery || rawVal);
 
             if (data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
-                window.QuickAnswer.trigger(parsed.cleanQuery || rawVal, lastRawXml);
+                window.QuickAnswer.trigger(parsed.cleanQuery || rawVal, lastRawXml, data.results);
             }
         } else {
             const payload = {
@@ -149,7 +149,7 @@ async function handleFormSubmit(e, source) {
             renderResults(data.results, data.type, parsed.cleanQuery || rawVal);
 
             if (data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
-                window.QuickAnswer.trigger(parsed.cleanQuery || rawVal, lastRawXml);
+                window.QuickAnswer.trigger(parsed.cleanQuery || rawVal, lastRawXml, data.results);
             }
         }
         if (footerEl) footerEl.classList.remove('hidden');

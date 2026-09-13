@@ -17,11 +17,7 @@ NOT RELEVANT
 3. If the results ARE relevant:
    - Provide a direct, clear answer in natural prose in LESS THAN 100 WORDS.
    - Do NOT guess or use outside knowledge.
-   - You MUST include Markdown links back to the source documents or chunks used, formatted as:
-     [Document Title](qmd://open?collection=COLLECTION&path=PATH)
-     or
-     [Snippet](qmd://open?collection=COLLECTION&path=PATH&text=SNIPPET_TEXT)
-     using the exact 'collection' and 'path' attributes from the XML.
+   - Cite sources inline using simple numeric citations like [1] or [2] referring to the 1-based index or rank of the results in the search XML.
 """
 
 
@@ -58,11 +54,11 @@ def generate_quick_answer_stream(query: str, xml_context: str) -> Generator[str,
                 "content": f"User Query: {query}\n\nSearch Results XML:\n{xml_context}",
             },
         ],
-        "temperature": 0.1,
-        "max_tokens": 250,
+        "max_tokens": 8192,
         "stream": True,
         # Explicitly disable reasoning as requested for faster inference
         "enable_thinking": False,
+        "thinking_budget_tokens": 0,
         "extra_body": {
             "enable_thinking": False,
         },
