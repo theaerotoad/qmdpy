@@ -4,6 +4,9 @@ from qmd.llm import LLMClient
 
 @pytest.fixture(scope="module")
 def live_client():
+    import os
+    os.environ["QMD_LLM_URL"] = "http://127.0.0.1:8888"
+    os.environ["GENERATE_MODEL"] = "Gemma4 26A4B"
     """
     Creates a client using defaults (or env vars) for live testing.
     """

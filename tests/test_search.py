@@ -493,6 +493,7 @@ def test_federated_multi_db_search(tmp_path):
     child_yaml.write_text(f"""
 db_path: "{child_db_path}"
 embed_model: "EmbeddingGemma 300m"
+llm_url: "http://127.0.0.1:8888"
 collections:
   child_coll:
     path: "{tmp_path}"
@@ -502,6 +503,7 @@ collections:
     master_yaml.write_text(f"""
 db_path: "{master_db_path}"
 embed_model: "EmbeddingGemma 300m"
+llm_url: "http://127.0.0.1:8888"
 include:
   - "{child_yaml.name}"
 collections:
