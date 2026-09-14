@@ -46,6 +46,18 @@
         })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- KaTeX Math Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked-katex-extension/lib/index.umd.js"></script>
+    <script>
+        if (typeof marked !== 'undefined' && typeof markedKatex !== 'undefined') {
+            // Integrate math parsing into Marked, failing gracefully to raw text on errors
+            marked.use(markedKatex({ throwOnError: false }));
+        }
+    </script>
+
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') if request.script_root else 'static/css/app.css' }}">
 </head>
 <body class="bg-white dark:bg-[#171717] text-[#202124] dark:text-[#e8eaed] min-h-full font-sans antialiased selection:bg-blue-600 selection:text-white transition-colors duration-150">
