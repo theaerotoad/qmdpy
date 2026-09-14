@@ -81,13 +81,15 @@ def _get_llm_endpoint_and_model():
     try:
         from qmd.web import get_config
         cfg = get_config()
-        base_url = getattr(cfg, "llm_url", None) or "http://127.0.0.1:9888"
-        model = getattr(cfg, "generate_model", None) or "Gemma4 26A4B"
+        base_url = getattr(cfg, "llm_url", None)
+        model = getattr(cfg, "generate_model", None)
     except Exception as e:
         logger.warning(f"Could not read config for quick answer LLM: {e}")
-        base_url = "http://127.0.0.1:9888"
-        model = "Gemma4 26A4B"
-    return base_url.rstrip("/"), model
+        base_url = None
+        model = None
+    if base_url:
+        base_url = base_url.rstrip("/")
+    return base_url, model
 
 
 def generate_quick_answer_stream(
@@ -95,6 +97,10 @@ def generate_quick_answer_stream(
 ) -> Generator[str, None, None]:
     """Streams LLM tokens for quick answer as Server-Sent Events (SSE)."""
     base_url, model = _get_llm_endpoint_and_model()
+    
+    if not base_url or not model:
+        yield f"data: {json.dumps({'error': 'LLM URL or generation model not configured.'})}\n\n"
+        return
 
     # Determine completions endpoint
     if base_url.endswith("/v1"):

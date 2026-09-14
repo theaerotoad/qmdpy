@@ -172,15 +172,15 @@ class LLMClient:
         rerank_api_key: Optional[str] = None,
         embed_model: str = "EmbeddingGemma 300m",
         rerank_model: str = "Qwen Rerank 0.6B",
-        generate_model: str = "Gemma4 26A4B",
+        generate_model: Optional[str] = None,
         multimodal_url: Optional[str] = None,
         multimodal_api_key: Optional[str] = None,
         multimodal_model: Optional[str] = None,
         multimodal_prompt: Optional[str] = None,
         timeout: float = 600.0
     ):
-        # Default to local server if not set. 
-        self.base_url = base_url or os.environ.get("QMD_LLM_URL", "http://127.0.0.1:8888")
+        # Must be provided via config/env if used.
+        self.base_url = base_url or os.environ.get("QMD_LLM_URL")
         self.api_key = api_key or os.environ.get("QMD_LLM_API_KEY", "sk-no-key-required")
         
         self.embed_url = embed_url or os.environ.get("QMD_EMBED_URL") or self.base_url
@@ -199,7 +199,7 @@ class LLMClient:
         self.timeout = timeout
         
         self.client = httpx.Client(
-            base_url=self.base_url,
+            base_url=self.base_url or "",
             headers={"Authorization": f"Bearer {self.api_key}"},
             timeout=httpx.Timeout(self.timeout, connect=10.0)
         )
@@ -208,7 +208,7 @@ class LLMClient:
             self.embed_client = self.client
         else:
             self.embed_client = httpx.Client(
-                base_url=self.embed_url,
+                base_url=self.embed_url or "",
                 headers={"Authorization": f"Bearer {self.embed_api_key}"},
                 timeout=httpx.Timeout(self.timeout, connect=10.0)
             )
@@ -219,7 +219,7 @@ class LLMClient:
             self.rerank_client = self.embed_client
         else:
             self.rerank_client = httpx.Client(
-                base_url=self.rerank_url,
+                base_url=self.rerank_url or "",
                 headers={"Authorization": f"Bearer {self.rerank_api_key}"},
                 timeout=httpx.Timeout(self.timeout, connect=10.0)
             )
@@ -232,7 +232,7 @@ class LLMClient:
             self.multimodal_client = self.rerank_client
         else:
             self.multimodal_client = httpx.Client(
-                base_url=self.multimodal_url,
+                base_url=self.multimodal_url or "",
                 headers={"Authorization": f"Bearer {self.multimodal_api_key}"},
                 timeout=httpx.Timeout(self.timeout, connect=10.0)
             )

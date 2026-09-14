@@ -25,7 +25,7 @@ class Config:
     included_configs: List['Config'] = field(default_factory=list)
     
     # Core LLM Settings
-    llm_url: str = "http://127.0.0.1:8888"
+    llm_url: Optional[str] = None
     api_key: Optional[str] = None
     embed_url: Optional[str] = None
     rerank_url: Optional[str] = None
@@ -46,7 +46,7 @@ class Config:
     # Model Configurations
     embed_model: str = "EmbeddingGemma 300m"
     rerank_model: str = "Qwen Rerank 0.6B"
-    generate_model: str = "Gemma4 26A4B"
+    generate_model: Optional[str] = None
 
     # Vector Storage Configurations
     vector_quantization: str = "none"  # Options: "none" (float32), "int8", "bit" (or "binary")
@@ -121,7 +121,7 @@ class Config:
             history_db_path = str((Path.home() / ".config" / "qmd" / "qmd-history.db").resolve())
 
         # Priority: Environment Var > YAML > Default
-        llm_url = os.environ.get("QMD_LLM_URL") or data.get("llm_url") or "http://127.0.0.1:8888"
+        llm_url = os.environ.get("QMD_LLM_URL") or data.get("llm_url")
         api_key = os.environ.get("QMD_LLM_API_KEY") or data.get("api_key")
 
         embed_url = os.environ.get("QMD_EMBED_URL") or data.get("embed_url")
@@ -169,7 +169,7 @@ class Config:
 
         embed_model = os.environ.get("EMBED_MODEL") or data.get("embed_model") or "EmbeddingGemma 300m"
         rerank_model = os.environ.get("RERANK_MODEL") or data.get("rerank_model") or "Qwen Rerank 0.6B"
-        generate_model = os.environ.get("GENERATE_MODEL") or data.get("generate_model") or "Gemma4 26A4B"
+        generate_model = os.environ.get("GENERATE_MODEL") or data.get("generate_model")
         vector_quantization = os.environ.get("QMD_VECTOR_QUANTIZATION") or data.get("vector_quantization") or "none"
         spacy_model = os.environ.get("SPACY_MODEL") or data.get("spacy_model") or "en_core_web_sm"
 
