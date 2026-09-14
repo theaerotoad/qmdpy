@@ -191,7 +191,7 @@ class LLMClient:
 
         self.embed_model = embed_model
         self.rerank_model = rerank_model
-        self.generate_model = generate_model
+        self.generate_model = generate_model or os.environ.get("GENERATE_MODEL")
         self.multimodal_url = multimodal_url or os.environ.get("QMD_MULTIMODAL_URL") or self.base_url
         self.multimodal_api_key = multimodal_api_key or os.environ.get("QMD_MULTIMODAL_API_KEY") or self.api_key
         self.multimodal_model = multimodal_model or os.environ.get("QMD_MULTIMODAL_MODEL") or os.environ.get("MULTIMODAL_MODEL") or self.generate_model
