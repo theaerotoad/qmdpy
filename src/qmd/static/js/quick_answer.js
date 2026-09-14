@@ -53,7 +53,8 @@
       els.collapseContainer.classList.remove("max-h-[2000px]");
     }
     if (els.fade) {
-      els.fade.style.display = "flex";
+      // Clear inline display style so Tailwind's lg:hidden can apply on desktop
+      els.fade.style.display = "";
     }
     currentResults = [];
     citationSources = {};
