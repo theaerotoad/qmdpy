@@ -15,6 +15,8 @@
       card: document.getElementById("quick-answer-card"),
       loading: document.getElementById("quick-answer-loading"),
       body: document.getElementById("quick-answer-body"),
+      collapseContainer: document.getElementById("quick-answer-collapse-container"),
+      fade: document.getElementById("quick-answer-fade"),
       content: document.getElementById("quick-answer-content"),
       pulse: document.getElementById("quick-answer-pulse"),
       footer: document.getElementById("quick-answer-footer"),
@@ -45,6 +47,13 @@
     }
     if (els.content) {
       els.content.innerHTML = "";
+    }
+    if (els.collapseContainer) {
+      els.collapseContainer.classList.add("max-h-[140px]", "cursor-pointer");
+      els.collapseContainer.classList.remove("max-h-[2000px]");
+    }
+    if (els.fade) {
+      els.fade.style.display = "flex";
     }
     currentResults = [];
     citationSources = {};
@@ -533,9 +542,9 @@
       }
     });
 
-    // Event delegation for citation clicks and qmd:// links
-    if (els.content) {
-      els.content.addEventListener("click", function (e) {
+    // Event delegation for citation clicks, qmd:// links, and mobile expand
+    if (els.collapseContainer) {
+      els.collapseContainer.addEventListener("click", function (e) {
         const btn = e.target.closest("[data-citation-key]");
         if (btn) {
           e.preventDefault();
@@ -561,6 +570,14 @@
           } catch (err) {
             console.warn("Could not parse qmd link:", err);
           }
+          return;
+        }
+
+        // Expand behavior on mobile if not clicking a link/citation
+        if (window.innerWidth < 1024 && els.collapseContainer.classList.contains("max-h-[140px]")) {
+          els.collapseContainer.classList.remove("max-h-[140px]", "cursor-pointer");
+          els.collapseContainer.classList.add("max-h-[2000px]");
+          if (els.fade) els.fade.style.display = "none";
         }
       });
     }
