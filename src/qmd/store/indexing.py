@@ -76,17 +76,25 @@ class IndexingMixin:
         found_rel_paths = {str(f.relative_to(base_path)) for f in files}
 
         file_pbar = tqdm(files, desc=f"Processing {name}", unit="file")
-        for file_path in file_pbar:
-            rel_path = str(file_path.relative_to(base_path))
-            disp_path = rel_path if len(rel_path) <= 30 else "..." + rel_path[-27:]
-            file_pbar.set_postfix_str(disp_path)
-            try:
-                if self._process_file(name, base_path, file_path, found_rel_paths, force=force, verbose=verbose, quick=quick):
-                    count_processed += 1
-                else:
-                    count_skipped += 1
-            except Exception as e:
-                tqdm.write(f"Error processing {file_path}: {e}")
+        try:
+            for file_path in file_pbar:
+                rel_path = str(file_path.relative_to(base_path))
+                disp_path = rel_path if len(rel_path) <= 30 else "..." + rel_path[-27:]
+                file_pbar.set_postfix_str(disp_path)
+                try:
+                    if self._process_file(name, base_path, file_path, found_rel_paths, force=force, verbose=verbose, quick=quick):
+                        count_processed += 1
+                    else:
+                        count_skipped += 1
+                except Exception as e:
+                    tqdm.write(f"Error processing {file_path}: {e}")
+        except KeyboardInterrupt:
+            tqdm.write(f"\n{YELLOW}Indexing interrupted by user. Safely committing {count_processed} new files to vector index...{RESET}")
+            if count_processed > 0:
+                update_db_last_updated(self.conn)
+                if getattr(self, 'usearch_index', None) is not None and not self.read_only:
+                    self.usearch_index.save(self.usearch_path)
+            sys.exit(130)
 
         cursor = self.conn.cursor()
         cursor.execute("SELECT path FROM documents WHERE collection = ?", (name,))
