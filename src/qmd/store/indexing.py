@@ -1,12 +1,8 @@
 import sys
 import re
 import sqlite3
-import faulthandler
 from datetime import datetime
 from pathlib import Path
-
-# Enable faulthandler to dump Python traceback on Segmentation Fault
-faulthandler.enable()
 from typing import List, Optional, Dict, Any, Union
 
 from tqdm import tqdm
@@ -228,11 +224,6 @@ class IndexingMixin:
 
     def _process_file(self, collection_name: str, base_path: Path, file_path: Path, current_paths: set, force: bool = False, verbose: bool = False) -> bool:
         rel_path = str(file_path.relative_to(base_path))
-        
-        # Hard flush to stderr to trace segfaults immediately, bypassing tqdm buffering
-        sys.stderr.write(f"\n[DEBUG-SEGFAULT-TRACE] Starting to process: {file_path}\n")
-        sys.stderr.flush()
-
         if verbose:
             tqdm.write(f"\n[Verbose] Processing file: {file_path}")
             sys.stdout.flush()
@@ -334,27 +325,13 @@ class IndexingMixin:
                 if verbose:
                     tqdm.write(f"[Verbose] Converting to markdown: {file_path}")
                     sys.stdout.flush()
-                
-                sys.stderr.write(f"[DEBUG-SEGFAULT-TRACE] Running converter for {file_path}...\n")
-                sys.stderr.flush()
-                
                 markdown_body = conv_fn(file_path, config=self.config, errors_out=conversion_errors)
-                
-                sys.stderr.write(f"[DEBUG-SEGFAULT-TRACE] Converter finished. Compressing and saving content...\n")
-                sys.stderr.flush()
-                
                 cursor.execute("""
                     INSERT INTO content (hash, body, created_at) VALUES (?, ?, ?)
                     ON CONFLICT(hash) DO UPDATE SET body = excluded.body, created_at = excluded.created_at
                 """, (file_hash, compress_text(markdown_body), now))
 
-            sys.stderr.write(f"[DEBUG-SEGFAULT-TRACE] Running date extraction for {file_path}...\n")
-            sys.stderr.flush()
-
             doc_date = date_fn(file_path, markdown_body)
-
-            sys.stderr.write(f"[DEBUG-SEGFAULT-TRACE] Date extraction finished. Updating DB...\n")
-            sys.stderr.flush()
 
             if existing_doc:
                 cursor.execute("""
@@ -488,9 +465,6 @@ class IndexingMixin:
             """, (vector_rowid, collection_name, rel_path, title, chunk_text, context_str))
 
         if getattr(self, 'usearch_index', None) is not None and not self.read_only:
-            sys.stderr.write(f"[DEBUG-SEGFAULT-TRACE] Adding {len(new_rowids)} vectors to usearch index...\n")
-            sys.stderr.flush()
-
             import numpy as np
             valid_rids = []
             valid_vecs = []
@@ -502,6 +476,3 @@ class IndexingMixin:
                 keys = np.array(valid_rids, dtype=np.uint64)
                 vectors_arr = np.array(valid_vecs, dtype=np.float32)
                 self.usearch_index.add(keys, vectors_arr)
-            
-            sys.stderr.write(f"[DEBUG-SEGFAULT-TRACE] usearch index addition complete.\n")
-            sys.stderr.flush()

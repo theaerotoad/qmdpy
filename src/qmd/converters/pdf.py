@@ -13,6 +13,19 @@ from typing import List, Optional, Union
 
 from .images import _is_image_processing_enabled, _process_images_concurrently
 
+try:
+    import pymupdf
+    import pymupdf4llm
+    HAS_PYMUPDF = True
+    
+    # Silence PyMuPDF C-level warnings globally
+    if hasattr(pymupdf, "TOOLS"):
+        pymupdf.TOOLS.mupdf_display_errors(False)
+except ImportError:
+    HAS_PYMUPDF = False
+    pymupdf = None
+    pymupdf4llm = None
+
 
 def _get_converter_fn(name: str, fallback):
     mod = sys.modules.get("qmd.converters")
@@ -163,15 +176,8 @@ def build_header_detector(doc, max_levels=5):
 def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = None) -> str:
     verbose = os.environ.get("QMD_VERBOSE") == "1"
     
-    try:
-        import pymupdf
-        import pymupdf4llm
-    except ImportError:
+    if not HAS_PYMUPDF:
         raise ImportError("pymupdf and pymupdf4llm are required for converting .pdf files. Install with `pip install pymupdf pymupdf4llm`.")
-
-    # Silence PyMuPDF C-level warnings globally before doing anything
-    if hasattr(pymupdf, "TOOLS"):
-        pymupdf.TOOLS.mupdf_display_errors(False)
 
     if verbose:
         print(f"[Verbose PDF] Attempting to open {path} with pymupdf...", flush=True)
