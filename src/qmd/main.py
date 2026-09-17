@@ -815,7 +815,7 @@ def handle_update(args, store: Store):
             else:
                 print(f"Skipping git pull: {name} is not a git repository.")
         
-        store.index_collection(name, coll_cfg, force=args.force, verbose=getattr(args, "verbose", False))
+        store.index_collection(name, coll_cfg, force=args.force, verbose=getattr(args, "verbose", False), quick=getattr(args, "quick", False))
 
     # 2. Prune removed collections
     active_collections = list(config.collections.keys())
@@ -1091,6 +1091,7 @@ def build_parser():
         update_parser = subparsers.add_parser("update", help="Update the index", parents=[parent_parser])
         update_parser.add_argument("--pull", action="store_true", help="Run 'git pull' before indexing")
         update_parser.add_argument("-f", "--force", action="store_true", help="Force re-indexing of all files, ignoring hash checks")
+        update_parser.add_argument("-q", "--quick", action="store_true", help="Quick update: skip hashing for files with unchanged size and modification time")
         update_parser.add_argument("-c", "--collection", type=str, help="Only update a specific collection")
         update_parser.add_argument("--build-ann", action="store_true", help="Build a usearch HNSW approximate nearest neighbor index from the existing vector table")
         update_parser.add_argument("--no-ann", action="store_true", help="Skip automatic HNSW ANN index build/update")

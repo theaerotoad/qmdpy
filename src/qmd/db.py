@@ -497,6 +497,14 @@ def init_schema(conn: sqlite3.Connection):
         cursor.execute("ALTER TABLE documents ADD COLUMN doc_date TEXT")
     except sqlite3.OperationalError:
         pass
+    try:
+        cursor.execute("ALTER TABLE documents ADD COLUMN file_size INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE documents ADD COLUMN file_mtime REAL")
+    except sqlite3.OperationalError:
+        pass
 
     # 3. View for FTS5 External Content
     cursor.execute("DROP VIEW IF EXISTS document_search_view;")
