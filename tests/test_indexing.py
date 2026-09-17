@@ -699,3 +699,54 @@ def test_legacy_pdf_fallback_errors_filtered_and_purged(db_conn, temp_db_path, t
     init_schema(db_conn)
     cursor.execute("SELECT count(*) FROM indexing_errors WHERE error_type='pdf_fallback_used'")
     assert cursor.fetchone()[0] == 0
+
+
+def test_quick_update(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test the --quick mode skips hashing for files with unchanged size and mtime."""
+    from qmd.utils import compute_hash
+    import os
+    
+    notes_dir = tmp_path / "quick_notes"
+    notes_dir.mkdir()
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+
+    file1 = notes_dir / "quick_doc.md"
+    content = "Quick test content."
+    file1.write_text(content)
+
+    # 1. Initial index
+    store.index_collection("test", config.collections["test"], quick=False)
+
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT file_size, file_mtime FROM documents WHERE path='quick_doc.md'")
+    row = cursor.fetchone()
+    assert row is not None
+    assert row[0] == len(content)
+    assert row[1] > 0
+
+    # 2. Re-index with quick=True. Should skip hashing entirely.
+    with patch("qmd.store.indexing.compute_hash") as mock_hash:
+        store.index_collection("test", config.collections["test"], quick=True)
+        mock_hash.assert_not_called()
+
+    # 3. Modify mtime but keep same content (simulate touch). Quick=True should hash it, but skip embedding.
+    new_mtime = row[1] + 10.0
+    os.utime(file1, (new_mtime, new_mtime))
+
+    with patch("qmd.store.indexing.compute_hash", wraps=compute_hash) as mock_hash:
+        store.index_collection("test", config.collections["test"], quick=True)
+        mock_hash.assert_called_once()
+    
+    # Mtime should be updated in DB
+    cursor.execute("SELECT file_mtime FROM documents WHERE path='quick_doc.md'")
+    assert cursor.fetchone()[0] == pytest.approx(new_mtime, abs=1.0)
+    
+    # 4. Modify content. Quick=True should hash and re-embed.
+    mock_llm_client.embed_batch.reset_mock()
+    file1.write_text("Quick test content modified.")
+    store.index_collection("test", config.collections["test"], quick=True)
+    mock_llm_client.embed_batch.assert_called_once()

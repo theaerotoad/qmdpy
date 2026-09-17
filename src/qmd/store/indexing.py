@@ -60,7 +60,7 @@ class IndexingMixin:
                         unique_files.append(f)
             return unique_files
 
-    def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False, verbose: bool = False):
+    def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False, verbose: bool = False, quick: bool = False):
         """Scans files, detects changes, chunks, embeds, and updates DB."""
         if self.read_only or getattr(self.config, "is_federated", False):
             raise RuntimeError("Cannot index collection in read-only or federated include mode.")
@@ -81,7 +81,7 @@ class IndexingMixin:
             disp_path = rel_path if len(rel_path) <= 30 else "..." + rel_path[-27:]
             file_pbar.set_postfix_str(disp_path)
             try:
-                if self._process_file(name, base_path, file_path, found_rel_paths, force=force, verbose=verbose):
+                if self._process_file(name, base_path, file_path, found_rel_paths, force=force, verbose=verbose, quick=quick):
                     count_processed += 1
                 else:
                     count_skipped += 1
@@ -222,11 +222,48 @@ class IndexingMixin:
                 all_errors.extend(store.get_indexing_errors(collection=collection, path=path))
         return all_errors
 
-    def _process_file(self, collection_name: str, base_path: Path, file_path: Path, current_paths: set, force: bool = False, verbose: bool = False) -> bool:
+    def _process_file(self, collection_name: str, base_path: Path, file_path: Path, current_paths: set, force: bool = False, verbose: bool = False, quick: bool = False) -> bool:
         rel_path = str(file_path.relative_to(base_path))
         if verbose:
             tqdm.write(f"\n[Verbose] Processing file: {file_path}")
             sys.stdout.flush()
+
+        try:
+            stat = file_path.stat()
+            file_size = stat.st_size
+            file_mtime = stat.st_mtime
+        except Exception as e:
+            record_indexing_error(
+                self.conn,
+                collection=collection_name,
+                path=rel_path,
+                doc_hash=None,
+                error_type="file_read_error",
+                error_message=str(e)
+            )
+            return False
+
+        title = file_path.stem.replace('_', ' ').title()
+        check_cursor = self.conn.cursor()
+        check_cursor.execute(
+            "SELECT hash, file_size, file_mtime FROM documents WHERE collection = ? AND path = ?",
+            (collection_name, rel_path)
+        )
+        row = check_cursor.fetchone()
+
+        has_prior_error = False
+        if not force:
+            check_cursor.execute(
+                "SELECT count(*) FROM indexing_errors WHERE collection = ? AND path = ?",
+                (collection_name, rel_path)
+            )
+            has_prior_error = (check_cursor.fetchone()[0] > 0)
+        check_cursor.close()
+
+        if not force and row and not has_prior_error:
+            db_hash, db_size, db_mtime = row
+            if quick and db_size == file_size and db_mtime == file_mtime:
+                return False
 
         try:
             raw_bytes = file_path.read_bytes()
@@ -242,26 +279,15 @@ class IndexingMixin:
             return False
 
         file_hash = compute_hash(raw_bytes)
-        title = file_path.stem.replace('_', ' ').title()
 
-        has_prior_error = False
-        if not force:
-            check_cursor = self.conn.cursor()
-            check_cursor.execute(
-                "SELECT hash FROM documents WHERE collection = ? AND path = ?",
-                (collection_name, rel_path)
-            )
-            row = check_cursor.fetchone()
-            if row:
-                check_cursor.execute(
-                    "SELECT count(*) FROM indexing_errors WHERE collection = ? AND path = ?",
-                    (collection_name, rel_path)
-                )
-                err_count = check_cursor.fetchone()[0]
-                has_prior_error = (err_count > 0)
-            check_cursor.close()
-
-            if row and row[0] == file_hash and not has_prior_error:
+        if not force and row and not has_prior_error:
+            db_hash, db_size, db_mtime = row
+            if db_hash == file_hash:
+                if db_size != file_size or db_mtime != file_mtime:
+                    self.conn.execute(
+                        "UPDATE documents SET file_size = ?, file_mtime = ? WHERE collection = ? AND path = ?",
+                        (file_size, file_mtime, collection_name, rel_path)
+                    )
                 return False
 
         conversion_errors: List[dict] = []
@@ -286,9 +312,9 @@ class IndexingMixin:
                         doc_date = date_fn(file_path, markdown_body)
 
                         cursor.execute("""
-                            UPDATE documents SET path = ?, title = ?, modified_at = ?, doc_date = ?
+                            UPDATE documents SET path = ?, title = ?, modified_at = ?, doc_date = ?, file_size = ?, file_mtime = ?
                             WHERE id = ?
-                        """, (rel_path, title, now, doc_date, doc_id))
+                        """, (rel_path, title, now, doc_date, file_size, file_mtime, doc_id))
 
                         cursor.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
 
@@ -335,14 +361,14 @@ class IndexingMixin:
 
             if existing_doc:
                 cursor.execute("""
-                    UPDATE documents SET hash = ?, modified_at = ?, title = ?, doc_date = ?
+                    UPDATE documents SET hash = ?, modified_at = ?, title = ?, doc_date = ?, file_size = ?, file_mtime = ?
                     WHERE id = ?
-                """, (file_hash, now, title, doc_date, doc_id))
+                """, (file_hash, now, title, doc_date, file_size, file_mtime, doc_id))
             else:
                 cursor.execute("""
-                    INSERT INTO documents (collection, path, title, hash, modified_at, doc_date)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (collection_name, rel_path, title, file_hash, now, doc_date))
+                    INSERT INTO documents (collection, path, title, hash, modified_at, doc_date, file_size, file_mtime)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (collection_name, rel_path, title, file_hash, now, doc_date, file_size, file_mtime))
                 doc_id = cursor.lastrowid
 
             cursor.execute(
