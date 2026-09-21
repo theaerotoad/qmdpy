@@ -638,18 +638,42 @@ def format_extraction_cli(data: Dict):
 
     print(f"{BOLD}Extracted Content:{RESET}\n")
     
-    prev_seq = None
+    blocks = []
+    current_block = []
     for res in chunks:
-        seq = res.seq_id
-        if prev_seq is not None:
-            gap = seq - prev_seq - 1
+        if not current_block:
+            current_block.append(res)
+        elif res.seq_id == current_block[-1].seq_id + 1:
+            current_block.append(res)
+        else:
+            blocks.append(current_block)
+            current_block = [res]
+    if current_block:
+        blocks.append(current_block)
+        
+    prev_end_seq = None
+    for block in blocks:
+        start_seq = block[0].seq_id
+        end_seq = block[-1].seq_id
+        
+        if prev_end_seq is not None:
+            gap = start_seq - prev_end_seq - 1
             if gap > 0:
                 print(f"{YELLOW}[... {gap} chunks omitted ...]{RESET}\n")
                 
-        hdr_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
-        print(f"{GREEN}Chunk {seq}{RESET}{hdr_str}")
-        print(f"{res.text}\n")
-        prev_seq = seq
+        headers = []
+        for c in block:
+            h = getattr(c, 'headers', '')
+            if h and (not headers or headers[-1] != h):
+                headers.append(h)
+                
+        hdr_str = f" {CYAN}[{' | '.join(headers)}]{RESET}" if headers else ""
+        seq_label = f"Chunks {start_seq}-{end_seq}" if start_seq != end_seq else f"Chunk {start_seq}"
+        
+        print(f"{GREEN}{seq_label}{RESET}{hdr_str}")
+        print("\n\n".join(c.text for c in block) + "\n")
+        
+        prev_end_seq = end_seq
 
 
 def format_extraction_xml(data: Dict, print_output: bool = True) -> str:
@@ -688,26 +712,52 @@ def format_extraction_xml(data: Dict, print_output: bool = True) -> str:
         
     lines.append('  <content>')
     
-    prev_seq = None
+    blocks = []
+    current_block = []
     for res in chunks:
-        seq = res.seq_id
-        if prev_seq is not None:
-            gap = seq - prev_seq - 1
+        if not current_block:
+            current_block.append(res)
+        elif res.seq_id == current_block[-1].seq_id + 1:
+            current_block.append(res)
+        else:
+            blocks.append(current_block)
+            current_block = [res]
+    if current_block:
+        blocks.append(current_block)
+
+    prev_end_seq = None
+    for block in blocks:
+        start_seq = block[0].seq_id
+        end_seq = block[-1].seq_id
+        
+        if prev_end_seq is not None:
+            gap = start_seq - prev_end_seq - 1
             if gap > 0:
-                gap_from = prev_seq + 1
-                gap_to = seq - 1
+                gap_from = prev_end_seq + 1
+                gap_to = start_seq - 1
                 gap_range = f"{gap_from}-{gap_to}" if gap_from != gap_to else f"{gap_from}"
                 gap_ref = f"{coll}:{path}:{gap_range}" if coll else f"{path}:{gap_range}"
                 expand_attr = f' expand="qmd read \'{escape_xml_attr(gap_ref)}\'"' if gap <= MAX_GAP_EXPAND_CHUNKS else ""
                 lines.append(f'    <gap omitted_chunks="{gap}" from_seq="{gap_from}" to_seq="{gap_to}"{expand_attr} />')
                 
-        clean_text = strip_ansi(res.text).strip()
-        chars = len(clean_text)
-        sec_attr = f' section="{escape_xml_attr(res.headers)}"' if getattr(res, 'headers', None) else ""
-        lines.append(f'    <chunk seq="{seq}" chars="{chars}"{sec_attr}>')
-        lines.append(escape_xml_text(clean_text))
+        clean_texts = [strip_ansi(c.text).strip() for c in block]
+        combined_text = "\n\n".join(clean_texts)
+        chars = len(combined_text)
+        
+        headers = []
+        for c in block:
+            h = getattr(c, 'headers', '')
+            if h and (not headers or headers[-1] != h):
+                headers.append(h)
+        sec_attr = f' section="{escape_xml_attr(" | ".join(headers))}"' if headers else ""
+        
+        seq_attr = f' seq="{start_seq}-{end_seq}"' if start_seq != end_seq else f' seq="{start_seq}"'
+        
+        lines.append(f'    <chunk{seq_attr} chars="{chars}"{sec_attr}>')
+        lines.append(escape_xml_text(combined_text))
         lines.append('    </chunk>')
-        prev_seq = seq
+        
+        prev_end_seq = end_seq
         
     lines.append('  </content>')
     lines.append('</extracted_document>')
