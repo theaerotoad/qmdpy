@@ -69,6 +69,9 @@ def execute_qmd_command(command_str: str, config_path: Optional[str] = None, sto
     if not args_list:
         return "Error: no subcommand provided."
 
+    if args_list[0] in ("mcp", "serve"):
+        return f"Error: Cannot run '{args_list[0]}' from within the MCP server."
+
     parser = build_parser()
     f = io.StringIO()
     
