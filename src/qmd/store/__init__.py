@@ -33,9 +33,10 @@ from .indexing import IndexingMixin
 from .search import SearchMixin
 from .retrieval import RetrievalMixin
 from .analysis import AnalysisMixin
+from .extraction import ExtractionMixin
 
 
-class Store(VectorIndexMixin, InspectionMixin, IndexingMixin, RetrievalMixin, SearchMixin, AnalysisMixin):
+class Store(VectorIndexMixin, InspectionMixin, IndexingMixin, RetrievalMixin, SearchMixin, AnalysisMixin, ExtractionMixin):
     def __init__(self, config: Config, connection: Optional[sqlite3.Connection] = None, read_only: bool = False):
         self.config = config
         self.read_only = read_only

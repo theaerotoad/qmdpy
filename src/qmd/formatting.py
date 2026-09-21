@@ -608,6 +608,115 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
         print(output)
     return output
 
+def format_extraction_cli(data: Dict):
+    """Prints smart extraction results."""
+    outline = data.get("outline", {})
+    metadata = data.get("metadata", {})
+    chunks = data.get("chunks", [])
+    
+    path_str = f"qmd://{outline.get('collection')}/{outline.get('path')}" if outline.get('collection') else outline.get('path', '')
+    title = metadata.get("title") or outline.get("title") or path_str
+    
+    print(f"\n{BOLD}Extraction: {title}{RESET} {DIM}({path_str}){RESET}")
+    print(f"{DIM}Selected {len(chunks)} of {data.get('total_chunks')} chunks to meet budget constraints.{RESET}\n")
+    
+    if metadata:
+        print(f"{CYAN}--- Document Metadata ---{RESET}")
+        if metadata.get("altTitle"): print(f"  {BOLD}Alt Title:{RESET} {metadata['altTitle']}")
+        if metadata.get("doc_type"): print(f"  {BOLD}Type:{RESET} {metadata['doc_type']}")
+        if metadata.get("authors"): print(f"  {BOLD}Authors:{RESET} {', '.join(metadata['authors'])}")
+        if metadata.get("summary"): print(f"  {BOLD}Summary:{RESET} {metadata['summary']}")
+        print(f"{CYAN}-------------------------{RESET}\n")
+
+    if outline.get("headings"):
+        print(f"{BOLD}Document Outline:{RESET}")
+        for h in outline["headings"]:
+            indent = "  " * (h['level'] - 1)
+            seq_str = f"[seq: {h['start_seq']}-{h['end_seq']}]" if h['start_seq'] != h['end_seq'] else f"[seq: {h['start_seq']}]"
+            print(f"{indent}{CYAN}{'#' * h['level']}{RESET} {h['text']} {YELLOW}{seq_str}{RESET}")
+        print()
+
+    print(f"{BOLD}Extracted Content:{RESET}\n")
+    
+    prev_seq = None
+    for res in chunks:
+        seq = res.seq_id
+        if prev_seq is not None:
+            gap = seq - prev_seq - 1
+            if gap > 0:
+                print(f"{YELLOW}[... {gap} chunks omitted ...]{RESET}\n")
+                
+        hdr_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
+        print(f"{GREEN}Chunk {seq}{RESET}{hdr_str}")
+        print(f"{res.text}\n")
+        prev_seq = seq
+
+
+def format_extraction_xml(data: Dict, print_output: bool = True) -> str:
+    """Outputs smart extraction results as XML."""
+    outline = data.get("outline", {})
+    metadata = data.get("metadata", {})
+    chunks = data.get("chunks", [])
+    total_chunks = data.get("total_chunks", 0)
+    
+    coll = outline.get("collection", "")
+    path = outline.get("path", "")
+    uri = f"qmd://{coll}/{path}" if coll else path
+    
+    lines = []
+    lines.append(f'<extracted_document uri="{escape_xml_attr(uri)}" total_chunks="{total_chunks}" selected_chunks="{len(chunks)}">')
+    
+    if metadata:
+        lines.append('  <metadata>')
+        for k, v in metadata.items():
+            if v and isinstance(v, list):
+                v = ", ".join(v)
+            if v and isinstance(v, str):
+                lines.append(f'    <{k}>{escape_xml_text(v)}</{k}>')
+        lines.append('  </metadata>')
+        
+    if outline:
+        lines.append('  <outline>')
+        for h in outline.get("headings", []):
+            level = h.get("level", 1)
+            text = escape_xml_attr(h.get("text", ""))
+            start_seq = h.get("start_seq", 0)
+            end_seq = h.get("end_seq", 0)
+            seq_str = f"{start_seq}-{end_seq}" if start_seq != end_seq else f"{start_seq}"
+            lines.append(f'    <section level="{level}" title="{text}" seq="{seq_str}" />')
+        lines.append('  </outline>')
+        
+    lines.append('  <content>')
+    
+    prev_seq = None
+    for res in chunks:
+        seq = res.seq_id
+        if prev_seq is not None:
+            gap = seq - prev_seq - 1
+            if gap > 0:
+                gap_from = prev_seq + 1
+                gap_to = seq - 1
+                gap_range = f"{gap_from}-{gap_to}" if gap_from != gap_to else f"{gap_from}"
+                gap_ref = f"{coll}:{path}:{gap_range}" if coll else f"{path}:{gap_range}"
+                expand_attr = f' expand="qmd read \'{escape_xml_attr(gap_ref)}\'"' if gap <= MAX_GAP_EXPAND_CHUNKS else ""
+                lines.append(f'    <gap omitted_chunks="{gap}" from_seq="{gap_from}" to_seq="{gap_to}"{expand_attr} />')
+                
+        clean_text = strip_ansi(res.text).strip()
+        chars = len(clean_text)
+        sec_attr = f' section="{escape_xml_attr(res.headers)}"' if getattr(res, 'headers', None) else ""
+        lines.append(f'    <chunk seq="{seq}" chars="{chars}"{sec_attr}>')
+        lines.append(escape_xml_text(clean_text))
+        lines.append('    </chunk>')
+        prev_seq = seq
+        
+    lines.append('  </content>')
+    lines.append('</extracted_document>')
+    
+    output = "\n".join(lines)
+    if print_output:
+        print(output)
+    return output
+
 def format_chunks_xml(results: List, window: int = 0, truncation_info: Optional[Dict] = None, print_output: bool = True):
     """Outputs retrieved chunks in XML format."""
     if not results:

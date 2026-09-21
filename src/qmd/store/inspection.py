@@ -455,6 +455,60 @@ class InspectionMixin:
                 ))
         return results
 
+    def get_chunks_by_seq_ids(self, collection: Optional[str], path: str, seq_ids: List[int]) -> List[Result]:
+        """Fast batch fetch of specific chunks by seq_id"""
+        target_stores = self._get_target_stores_for_collection(collection)
+        for store in target_stores:
+            if store is self:
+                res = self._get_chunks_by_seq_ids_local(collection, path, seq_ids)
+            else:
+                res = store.get_chunks_by_seq_ids(collection, path, seq_ids)
+            if res:
+                return res
+        return []
+
+    def _get_chunks_by_seq_ids_local(self, collection: Optional[str], path: str, seq_ids: List[int]) -> List[Result]:
+        cursor = self.conn.cursor()
+        coll_sql, coll_params = _build_collection_sql_filter("collection", collection)
+
+        cursor.execute(f"SELECT hash, collection, path, title FROM documents WHERE path = ?{coll_sql}", (path, *coll_params))
+        row = cursor.fetchone()
+        if not row:
+            cursor.execute(f"SELECT hash, collection, path, title FROM documents WHERE path LIKE ?{coll_sql}", (f"%{path}%", *coll_params))
+            row = cursor.fetchone()
+
+        if not row:
+            return []
+
+        doc_hash, coll_name, doc_path, title = row
+        if not seq_ids:
+            return []
+
+        sorted_seqs = sorted(set(seq_ids))
+        placeholders = ','.join(['?'] * len(sorted_seqs))
+        cursor.execute(f"""
+            SELECT m.rowid, m.seq_id, m.chunk_text, COALESCE(m.headers, ''), d.path, d.title, d.collection
+            FROM chunk_metadata m
+            JOIN documents d ON m.doc_hash = d.hash
+            WHERE m.doc_hash = ? AND m.seq_id IN ({placeholders})
+            ORDER BY m.seq_id ASC
+        """, (doc_hash, *sorted_seqs))
+
+        results = []
+        for r in cursor.fetchall():
+            rowid, s_id, compressed_text, headers, d_path, d_title, collection_name = r
+            results.append(Result(
+                path=d_path,
+                title=d_title,
+                text=decompress_text(compressed_text),
+                score=1.0,
+                source="chunk",
+                collection=collection_name or "",
+                seq_id=s_id,
+                headers=headers
+            ))
+        return results
+
     def get_chunk_by_seq(self, collection: Optional[str], path: str, seq_id: Union[int, List[int]] = 0, window: int = 0) -> List[Result]:
         """Retrieves target chunk(s) by collection, path, and seq_id(s) along with ±window surrounding chunks."""
         target_stores = self._get_target_stores_for_collection(collection)

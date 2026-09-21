@@ -527,6 +527,57 @@ def handle_search(args, store: Store):
         else:
             format_results_cli(results, query=query, verbose=args.verbose, session_id=session_id, exclusion_stats=store.last_exclusion_stats, truncation_info=truncation_info)
 
+def handle_extract(args, store: Store):
+    is_xml = _is_xml_output(args)
+    if getattr(args, "plain", False) or is_xml:
+        set_plain_mode(True)
+
+    spec = parse_target_spec(args.path, default_collection=getattr(args, "collection", None))
+    coll = spec["collection"] or getattr(args, "collection", None)
+    target_path = spec["path"] if spec["path"] is not None else args.path
+
+    try:
+        data = store.extract_document(
+            path=target_path,
+            collection=coll,
+            queries=args.queries,
+            max_chunks=args.max_chunks,
+            head_chunks=args.head,
+            tail_chunks=args.tail,
+            top_k_per_query=args.top_k
+        )
+    except ValueError as e:
+        if args.json:
+            import json
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print(f"{RED}Error: {e}{RESET}")
+        sys.exit(1)
+
+    if not data:
+        if args.json:
+            import json
+            print(json.dumps({"error": "Document not found"}, indent=2))
+        else:
+            print(f"{RED}Error: Document not found matching path '{target_path}'{RESET}")
+        sys.exit(1)
+
+    if args.json:
+        import json
+        
+        # Convert Result objects in chunks to dicts for JSON
+        if "chunks" in data:
+            from qmd.store.models import _results_to_json
+            data["chunks"] = json.loads(_results_to_json(data["chunks"]))
+        
+        print(json.dumps(data, indent=2))
+    elif is_xml:
+        from qmd.formatting import format_extraction_xml
+        format_extraction_xml(data)
+    else:
+        from qmd.formatting import format_extraction_cli
+        format_extraction_cli(data)
+
 def handle_outline(args, store: Store):
     is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
@@ -1042,6 +1093,19 @@ def build_parser():
     output_group.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
     output_group.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
 
+    extract_parser = subparsers.add_parser("extract", help="Smart document extraction (representative sampling) with constraints", parents=[parent_parser])
+    extract_parser.add_argument("path", help="Path or relative path to the document")
+    extract_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
+    extract_parser.add_argument("-q", "--queries", type=str, nargs="*", default=[], help="Semantic queries to prioritize chunks")
+    extract_parser.add_argument("--max-chunks", type=int, default=30, help="Maximum number of chunks to return")
+    extract_parser.add_argument("--head", type=int, default=3, help="Number of introduction chunks to unconditionally include")
+    extract_parser.add_argument("--tail", type=int, default=3, help="Number of conclusion chunks to unconditionally include")
+    extract_parser.add_argument("--top-k", type=int, default=3, help="Top K chunks to include per semantic query")
+    extract_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    extract_parser.add_argument("--xml", action="store_true", help="Output as XML for LLM context")
+    extract_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
+    extract_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
+
     outline_parser = subparsers.add_parser("outline", help="Show heading outline and chunk mapping for a document", parents=[parent_parser])
     outline_parser.add_argument("path", help="Path or relative path to the document")
     outline_parser.add_argument("-c", "--collection", type=str, help="Filter by collection name")
@@ -1146,6 +1210,8 @@ def execute_command(args, store):
         handle_map(args, store)
     elif args.command in ["search", "query", "q"]:
         handle_search(args, store)
+    elif args.command == "extract":
+        handle_extract(args, store)
     elif args.command == "outline":
         handle_outline(args, store)
     elif args.command in ["read", "chunk", "get", "view"]:
