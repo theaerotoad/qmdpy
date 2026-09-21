@@ -661,13 +661,11 @@ def format_extraction_cli(data: Dict):
             if gap > 0:
                 print(f"{YELLOW}[... {gap} chunks omitted ...]{RESET}\n")
                 
-        headers = []
-        for c in block:
-            h = getattr(c, 'headers', '')
-            if h and (not headers or headers[-1] != h):
-                headers.append(h)
+        # For a contiguous block, the internal markdown headers are already in the text.
+        # We only need the first available header to establish the starting context.
+        first_header = next((getattr(c, 'headers', '') for c in block if getattr(c, 'headers', '')), "")
                 
-        hdr_str = f" {CYAN}[{' | '.join(headers)}]{RESET}" if headers else ""
+        hdr_str = f" {CYAN}[{first_header}]{RESET}" if first_header else ""
         seq_label = f"Chunks {start_seq}-{end_seq}" if start_seq != end_seq else f"Chunk {start_seq}"
         
         print(f"{GREEN}{seq_label}{RESET}{hdr_str}")
@@ -744,12 +742,8 @@ def format_extraction_xml(data: Dict, print_output: bool = True) -> str:
         combined_text = "\n\n".join(clean_texts)
         chars = len(combined_text)
         
-        headers = []
-        for c in block:
-            h = getattr(c, 'headers', '')
-            if h and (not headers or headers[-1] != h):
-                headers.append(h)
-        sec_attr = f' section="{escape_xml_attr(" | ".join(headers))}"' if headers else ""
+        first_header = next((getattr(c, 'headers', '') for c in block if getattr(c, 'headers', '')), "")
+        sec_attr = f' section="{escape_xml_attr(first_header)}"' if first_header else ""
         
         seq_attr = f' seq="{start_seq}-{end_seq}"' if start_seq != end_seq else f' seq="{start_seq}"'
         
