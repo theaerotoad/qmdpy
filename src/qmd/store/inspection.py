@@ -348,7 +348,7 @@ class InspectionMixin:
         cursor.execute("""
             SELECT m.rowid, m.seq_id, m.chunk_text, COALESCE(m.headers, ''), d.path, d.title, d.collection
             FROM chunk_metadata m
-            JOIN documents d ON m.doc_hash = d.hash
+            JOIN (SELECT hash, MIN(path) as path, MIN(title) as title, MIN(collection) as collection FROM documents GROUP BY hash) d ON m.doc_hash = d.hash
             WHERE m.doc_hash = ? AND m.seq_id >= ? AND m.seq_id <= ?
             ORDER BY m.seq_id ASC
         """, (doc_hash, min_seq, max_seq))
@@ -394,7 +394,7 @@ class InspectionMixin:
             cursor.execute(f"""
                 SELECT m.rowid, m.seq_id, m.chunk_text, COALESCE(m.headers, ''), d.path, d.title, d.collection
                 FROM chunk_metadata m
-                JOIN documents d ON m.doc_hash = d.hash
+                JOIN (SELECT hash, MIN(path) as path, MIN(title) as title, MIN(collection) as collection FROM documents GROUP BY hash) d ON m.doc_hash = d.hash
                 WHERE m.rowid IN ({placeholders})
                 ORDER BY d.collection, d.path, m.seq_id ASC
             """, tuple(rowids))
@@ -437,7 +437,7 @@ class InspectionMixin:
             cursor.execute(f"""
                 SELECT m.rowid, m.seq_id, m.chunk_text, COALESCE(m.headers, ''), d.path, d.title, d.collection
                 FROM chunk_metadata m
-                JOIN documents d ON m.doc_hash = d.hash
+                JOIN (SELECT hash, MIN(path) as path, MIN(title) as title, MIN(collection) as collection FROM documents GROUP BY hash) d ON m.doc_hash = d.hash
                 WHERE m.doc_hash = ? AND m.seq_id IN ({seq_placeholders})
                 ORDER BY m.seq_id ASC
             """, (doc_hash, *seq_list))
@@ -487,23 +487,22 @@ class InspectionMixin:
         sorted_seqs = sorted(set(seq_ids))
         placeholders = ','.join(['?'] * len(sorted_seqs))
         cursor.execute(f"""
-            SELECT m.rowid, m.seq_id, m.chunk_text, COALESCE(m.headers, ''), d.path, d.title, d.collection
-            FROM chunk_metadata m
-            JOIN documents d ON m.doc_hash = d.hash
-            WHERE m.doc_hash = ? AND m.seq_id IN ({placeholders})
-            ORDER BY m.seq_id ASC
+            SELECT rowid, seq_id, chunk_text, COALESCE(headers, '')
+            FROM chunk_metadata
+            WHERE doc_hash = ? AND seq_id IN ({placeholders})
+            ORDER BY seq_id ASC
         """, (doc_hash, *sorted_seqs))
 
         results = []
         for r in cursor.fetchall():
-            rowid, s_id, compressed_text, headers, d_path, d_title, collection_name = r
+            rowid, s_id, compressed_text, headers = r
             results.append(Result(
-                path=d_path,
-                title=d_title,
+                path=doc_path,
+                title=title,
                 text=decompress_text(compressed_text),
                 score=1.0,
                 source="chunk",
-                collection=collection_name or "",
+                collection=coll_name or "",
                 seq_id=s_id,
                 headers=headers
             ))
@@ -547,23 +546,22 @@ class InspectionMixin:
         sorted_seqs = sorted(target_seqs)
         placeholders = ','.join(['?'] * len(sorted_seqs))
         cursor.execute(f"""
-            SELECT m.rowid, m.seq_id, m.chunk_text, COALESCE(m.headers, ''), d.path, d.title, d.collection
-            FROM chunk_metadata m
-            JOIN documents d ON m.doc_hash = d.hash
-            WHERE m.doc_hash = ? AND m.seq_id IN ({placeholders})
-            ORDER BY m.seq_id ASC
+            SELECT rowid, seq_id, chunk_text, COALESCE(headers, '')
+            FROM chunk_metadata
+            WHERE doc_hash = ? AND seq_id IN ({placeholders})
+            ORDER BY seq_id ASC
         """, (doc_hash, *sorted_seqs))
 
         results = []
         for r in cursor.fetchall():
-            rowid, s_id, compressed_text, headers, d_path, d_title, collection_name = r
+            rowid, s_id, compressed_text, headers = r
             results.append(Result(
-                path=d_path,
-                title=d_title,
+                path=doc_path,
+                title=title,
                 text=decompress_text(compressed_text),
                 score=1.0,
                 source="chunk",
-                collection=collection_name or "",
+                collection=coll_name or "",
                 seq_id=s_id,
                 headers=headers
             ))
