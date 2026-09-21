@@ -532,6 +532,10 @@ def handle_extract(args, store: Store):
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
+    env_deep = os.environ.get("QMD_DEEP", "").strip().lower() in ("1", "true", "yes", "on")
+    is_deep = getattr(args, "deep", False) or env_deep
+    rerank = getattr(args, "rerank", False) or is_deep
+
     spec = parse_target_spec(args.path, default_collection=getattr(args, "collection", None))
     coll = spec["collection"] or getattr(args, "collection", None)
     target_path = spec["path"] if spec["path"] is not None else args.path
@@ -544,7 +548,8 @@ def handle_extract(args, store: Store):
             max_chunks=args.max_chunks,
             head_chunks=args.head,
             tail_chunks=args.tail,
-            top_k_per_query=args.top_k
+            top_k_per_query=args.top_k,
+            rerank=rerank
         )
     except ValueError as e:
         if args.json:
@@ -1101,6 +1106,8 @@ def build_parser():
     extract_parser.add_argument("--head", type=int, default=3, help="Number of introduction chunks to unconditionally include")
     extract_parser.add_argument("--tail", type=int, default=3, help="Number of conclusion chunks to unconditionally include")
     extract_parser.add_argument("--top-k", type=int, default=3, help="Top K chunks to include per semantic query")
+    extract_parser.add_argument("-r", "--rerank", action="store_true", help="Use LLM to rerank query results")
+    extract_parser.add_argument("--deep", action="store_true", help="Deep extraction: enable LLM reranking (implies -r)")
     extract_parser.add_argument("--json", action="store_true", help="Output as JSON")
     extract_parser.add_argument("--xml", action="store_true", help="Output as XML for LLM context")
     extract_parser.add_argument("--llm", action="store_true", help="Alias for --xml")

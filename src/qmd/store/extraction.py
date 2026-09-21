@@ -12,7 +12,8 @@ class ExtractionMixin:
         max_chunks: int = 30,
         head_chunks: int = 3,
         tail_chunks: int = 3,
-        top_k_per_query: int = 3
+        top_k_per_query: int = 3,
+        rerank: bool = False
     ) -> Optional[Dict[str, Any]]:
         """
         Extracts a representative sample of a document based on boundaries, headers, and semantic queries.
@@ -74,13 +75,13 @@ class ExtractionMixin:
         for query in queries:
             if not query.strip():
                 continue
-            # Use search_vec directly, filtering by path
-            # hybrid_search could also be used but search_vec is faster and sufficient for semantic matches
-            search_results = self.search_vec(
+            # Use hybrid_search to support optional LLM reranking
+            search_results = self.hybrid_search(
                 query,
                 limit=top_k_per_query,
                 collection=resolved_coll,
-                path=resolved_path
+                path=resolved_path,
+                rerank=rerank
             )
             for res in search_results:
                 if res.seq_id is not None:

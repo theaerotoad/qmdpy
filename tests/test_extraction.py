@@ -48,7 +48,7 @@ def test_extract_document_budget_trimming(db_conn, temp_db_path):
 
     with patch.object(store, 'get_document_outline') as mock_outline, \
          patch.object(store, 'get_chunks_by_seq_ids') as mock_get_chunks, \
-         patch.object(store, 'search_vec') as mock_search, \
+         patch.object(store, 'hybrid_search') as mock_search, \
          patch.object(store, 'get_analysis_report') as mock_analysis:
          
         mock_outline.return_value = {
