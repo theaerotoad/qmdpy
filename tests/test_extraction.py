@@ -184,7 +184,8 @@ def test_cli_extract_command(monkeypatch, capsys):
             max_chunks=15,
             head_chunks=3,
             tail_chunks=3,
-            top_k_per_query=3
+            top_k_per_query=3,
+            rerank=False
         )
         
         # Verify JSON output structure
