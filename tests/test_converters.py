@@ -499,21 +499,21 @@ def test_convert_epub_merges_broken_title_lines_and_connector_headings(tmp_path)
 def test_convert_mobi(tmp_path, monkeypatch):
     class MockMobi:
         def extract(self, path):
-            import zipfile
             tempdir = tmp_path / "mobi_temp"
             tempdir.mkdir(exist_ok=True)
-            epub_file = tempdir / "extracted.epub"
             
-            container_xml = '<?xml version="1.0"?>\n<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">\n  <rootfiles>\n    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>\n  </rootfiles>\n</container>'
-            content_opf = '<?xml version="1.0" encoding="utf-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0">\n  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\n    <dc:title>Mobi Book Title</dc:title>\n  </metadata>\n  <manifest>\n    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>\n  </manifest>\n  <spine>\n    <itemref idref="ch1"/>\n  </spine>\n</package>'
-            ch1_xhtml = '<!DOCTYPE html>\n<html>\n<head><title>Chapter 1</title></head>\n<body>\n  <h1>Chapter 1</h1>\n  <p>This is a test paragraph from a mobi conversion.</p>\n</body>\n</html>'
+            # Simulate a MOBI7 extraction returning an HTML file
+            html_file = tempdir / "extracted.html"
+            html_content = '''<!DOCTYPE html>
+            <html>
+            <body>
+              <p>MOBI INTRODUCTION</p>
+              <p>This is a test paragraph from a mobi conversion.</p>
+            </body>
+            </html>'''
+            html_file.write_text(html_content, encoding="utf-8")
 
-            with zipfile.ZipFile(epub_file, 'w') as z:
-                z.writestr("META-INF/container.xml", container_xml)
-                z.writestr("OEBPS/content.opf", content_opf)
-                z.writestr("OEBPS/ch1.xhtml", ch1_xhtml)
-
-            return str(tempdir), str(epub_file)
+            return str(tempdir), str(html_file)
 
     import sys
     monkeypatch.setitem(sys.modules, 'mobi', MockMobi())
@@ -523,7 +523,9 @@ def test_convert_mobi(tmp_path, monkeypatch):
     
     from qmd.converters import convert_to_markdown
     md = convert_to_markdown(mobi_file)
-    assert "Mobi Book Title" in md or "Chapter 1" in md
+    
+    # Ensure EPUB parsing logic ran (MOBI INTRODUCTION should be promoted to a heading)
+    assert "# MOBI INTRODUCTION" in md
     assert "This is a test paragraph from a mobi conversion." in md
 
 

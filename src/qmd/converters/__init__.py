@@ -433,6 +433,7 @@ def _convert_mobi(path: Path) -> str:
         raise ImportError("mobi is required for converting .mobi files. Install with `pip install mobi`.")
     
     import shutil
+    import re
     
     try:
         tempdir, filepath = mobi.extract(str(path))
@@ -444,7 +445,34 @@ def _convert_mobi(path: Path) -> str:
         if ext == ".epub":
             return _convert_epub(Path(filepath))
         elif ext in {".html", ".htm"}:
-            return _convert_html(Path(filepath))
+            # Use the EPUB parsing pipeline to get the exact same heading processing
+            from qmd.epub import (
+                EPUBHTMLToMarkdown, clean_broken_paragraphs,
+                promote_all_caps_headings, merge_consecutive_headings,
+                normalize_headings
+            )
+            
+            try:
+                content = Path(filepath).read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                content = Path(filepath).read_text(encoding="latin-1", errors="replace")
+                
+            parser = EPUBHTMLToMarkdown(
+                epub_zip=None,
+                current_html_path=str(filepath),
+                image_mode='refer'
+            )
+            parser.feed(content)
+            md = parser.get_markdown()
+            
+            if md:
+                md = clean_broken_paragraphs(md)
+                md = promote_all_caps_headings(md, default_level=3)
+                md = merge_consecutive_headings(md)
+                md = normalize_headings(md)
+                md = merge_consecutive_headings(md)
+                md = re.sub(r'\n{3,}', '\n\n', md).strip()
+            return md
         else:
             return _convert_text(Path(filepath))
     except Exception as e:
