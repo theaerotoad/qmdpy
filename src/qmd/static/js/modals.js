@@ -622,9 +622,7 @@ async function openDocument(collection, path, targetText, searchMeta = null) {
     content.innerHTML = '<div class="text-gray-500 py-16 text-center">Loading document...</div>';
 
     const metaContainer = document.getElementById('slide-meta');
-    const metaDetails = document.getElementById('slide-meta-details');
     if (metaContainer) metaContainer.innerHTML = '';
-    if (metaDetails) metaDetails.classList.remove('hidden'); // Always visible because it now contains the URI
     document.getElementById('slide-title').textContent = (searchMeta && searchMeta.alt_title) ? searchMeta.alt_title : path.split('/').pop();
 
     try {
