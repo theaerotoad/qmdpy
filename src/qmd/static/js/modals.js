@@ -609,7 +609,7 @@ function findTargetElement(container, targetText) {
     return null;
 }
 
-async function openDocument(collection, path, targetText, meta = null) {
+async function openDocument(collection, path, targetText, searchMeta = null) {
     currentDocCollection = collection || '';
     currentDocPath = path || '';
     const drawer = document.getElementById('slide-over');
@@ -622,21 +622,34 @@ async function openDocument(collection, path, targetText, meta = null) {
     content.innerHTML = '<div class="text-gray-500 py-16 text-center">Loading document...</div>';
 
     const metaContainer = document.getElementById('slide-meta');
-    if (metaContainer) {
-        metaContainer.innerHTML = '';
-        const badges = [];
-        if (meta?.doc_type) badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium">Type: ${escapeHtml(meta.doc_type)}</span>`);
-        if (meta?.doc_date) badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium">Date: ${escapeHtml(meta.doc_date)}</span>`);
-        if (meta?.authors && Array.isArray(meta.authors) && meta.authors.length > 0) {
-            badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium">Authors: ${escapeHtml(meta.authors.join(', '))}</span>`);
-        }
-        metaContainer.innerHTML = badges.join('');
-    }
+    const metaDetails = document.getElementById('slide-meta-details');
+    if (metaContainer) metaContainer.innerHTML = '';
+    if (metaDetails) metaDetails.classList.add('hidden');
+    document.getElementById('slide-title').textContent = (searchMeta && searchMeta.alt_title) ? searchMeta.alt_title : path.split('/').pop();
 
     try {
         const res = await fetch(apiUrl(`api/document?collection=${encodeURIComponent(collection)}&path=${encodeURIComponent(path)}${featureStates.redact_pii ? '&redact_pii=true' : ''}`));
         const data = await res.json();
-        document.getElementById('slide-title').textContent = (meta && meta.alt_title) ? meta.alt_title : (data.title || path);
+        
+        const mergedMeta = { ...searchMeta, ...data };
+        document.getElementById('slide-title').textContent = mergedMeta.alt_title || data.title || path;
+        
+        if (metaContainer && metaDetails) {
+            const badges = [];
+            if (mergedMeta.doc_type) badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium border border-gray-300 dark:border-gray-600">Type: ${escapeHtml(mergedMeta.doc_type)}</span>`);
+            
+            let dateStr = mergedMeta.doc_date;
+            if (dateStr && typeof dateStr === 'string') dateStr = dateStr.split('T')[0].split(' ')[0];
+            if (dateStr) badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium border border-gray-300 dark:border-gray-600">Date: ${escapeHtml(dateStr)}</span>`);
+            
+            if (mergedMeta.authors && Array.isArray(mergedMeta.authors) && mergedMeta.authors.length > 0) {
+                badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium border border-gray-300 dark:border-gray-600">Authors: ${escapeHtml(mergedMeta.authors.join(', '))}</span>`);
+            }
+            if (badges.length > 0) {
+                metaContainer.innerHTML = badges.join('');
+                metaDetails.classList.remove('hidden');
+            }
+        }
         if (data.collection) currentDocCollection = data.collection;
         content.innerHTML = marked.parse(data.content || '');
         updateOpenFileButtonVisibility(data.allow_open);
@@ -661,7 +674,11 @@ async function openDocument(collection, path, targetText, meta = null) {
 function closeDocument() {
     document.getElementById('slide-backdrop').classList.add('opacity-0');
     document.getElementById('slide-panel').classList.add('translate-x-full');
-    setTimeout(() => document.getElementById('slide-over').classList.add('hidden'), 200);
+    setTimeout(() => {
+        document.getElementById('slide-over').classList.add('hidden');
+        const details = document.getElementById('slide-meta-details');
+        if (details) details.open = false;
+    }, 200);
 }
 
 // Collection Tree Slide-Over Drawer

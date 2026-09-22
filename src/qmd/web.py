@@ -595,16 +595,18 @@ def get_document():
         cursor = target_store.conn.cursor()
         if collection:
             cursor.execute('''
-                SELECT c.body, d.title, d.collection
+                SELECT c.body, d.title, d.collection, da.alt_title, da.doc_type, d.doc_date, da.authors
                 FROM documents d
                 JOIN content c ON d.hash = c.hash
+                LEFT JOIN document_analysis da ON d.hash = da.doc_hash
                 WHERE (d.collection = ? OR d.collection LIKE ?) AND (d.path = ? OR d.path LIKE ?)
             ''', (collection, f"%{collection}%", path, f"%{path}%"))
         else:
             cursor.execute('''
-                SELECT c.body, d.title, d.collection
+                SELECT c.body, d.title, d.collection, da.alt_title, da.doc_type, d.doc_date, da.authors
                 FROM documents d
                 JOIN content c ON d.hash = c.hash
+                LEFT JOIN document_analysis da ON d.hash = da.doc_hash
                 WHERE d.path = ? OR d.path LIKE ?
             ''', (path, f"%{path}%"))
         row = cursor.fetchone()
@@ -615,10 +617,23 @@ def get_document():
             if should_redact:
                 title = redact_pii(title)
                 content = redact_pii(content)
+
+            authors_list = None
+            if row[6]:
+                try:
+                    import json
+                    authors_list = json.loads(row[6])
+                except:
+                    pass
+
             return jsonify({
                 "title": title,
                 "content": content,
                 "collection": row[2],
+                "alt_title": row[3],
+                "doc_type": row[4],
+                "doc_date": row[5],
+                "authors": authors_list,
                 "allow_open": getattr(get_config(), "allow_open_file", False)
             })
     return jsonify({"error": "Not found"}), 404
