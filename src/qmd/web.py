@@ -283,6 +283,10 @@ def discover():
                 "collection": r.collection,
                 "seq_id": r.seq_id,
                 "headers": getattr(r, "headers", ""),
+                "doc_date": getattr(r, "doc_date", None),
+                "alt_title": getattr(r, "alt_title", None),
+                "doc_type": getattr(r, "doc_type", None),
+                "authors": getattr(r, "authors", None),
                 "match_count": getattr(r, "match_count", 1),
                 "rank": getattr(r, "rank", None) or (i + 1),
                 "xml": r_xml
@@ -438,6 +442,10 @@ def search():
                     "collection": r.collection,
                     "seq_id": r.seq_id,
                     "headers": getattr(r, "headers", ""),
+                    "doc_date": getattr(r, "doc_date", None),
+                    "alt_title": getattr(r, "alt_title", None),
+                    "doc_type": getattr(r, "doc_type", None),
+                    "authors": getattr(r, "authors", None),
                     "rank": getattr(r, "rank", None) or (i + 1),
                     "xml": r_xml
                 })

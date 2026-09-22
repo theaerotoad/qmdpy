@@ -300,11 +300,19 @@ function renderResults(results, type, query) {
             metaSource.doc_date = metaSource.doc_date.split('T')[0].split(' ')[0];
         }
 
+        let formattedDate = '';
+        if (metaSource.doc_date) {
+            formattedDate = `<span class="text-gray-500 dark:text-gray-400 font-mono flex-shrink-0 ml-2" title="Document Date">${escapeHtml(metaSource.doc_date)}</span>`;
+        }
+
         article.innerHTML = `
             <div class="flex items-center gap-2 text-xs">
-                <a href="javascript:void(0)" class="uri-link g-url font-mono truncate max-w-3xl block cursor-pointer" title="${escapeXmlAttr(uri)}">
-                    ${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}
-                </a>
+                <div class="flex items-center flex-1 min-w-0">
+                    <a href="javascript:void(0)" class="uri-link g-url font-mono truncate max-w-3xl block cursor-pointer" title="${escapeXmlAttr(uri)}">
+                        ${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}
+                    </a>
+                    ${formattedDate}
+                </div>
                 ${matchesBadge}
             </div>
 
