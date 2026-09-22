@@ -5,18 +5,29 @@ import re
 import contextlib
 from typing import Optional, Any
 
+MCP_AVAILABLE = False
+FAST_MCP_AVAILABLE = False
+
 try:
-    from mcp.server.fastmcp import FastMCP
+    # mcp >= 2.0
+    from mcp.server import MCPServer as FastMCP
     FAST_MCP_AVAILABLE = True
 except ImportError:
-    FAST_MCP_AVAILABLE = False
+    try:
+        # mcp 1.x
+        from mcp.server.fastmcp import FastMCP
+        FAST_MCP_AVAILABLE = True
+    except ImportError:
+        pass
+
+if not FAST_MCP_AVAILABLE:
     try:
         from mcp.server import Server
         from mcp.server.stdio import stdio_server
         import mcp.types as types
         MCP_AVAILABLE = True
     except ImportError:
-        MCP_AVAILABLE = False
+        pass
 
 def execute_qmd_command(command_str: str, config_path: Optional[str] = None, store: Optional[Any] = None) -> str:
     from qmd.main import build_parser, execute_command
