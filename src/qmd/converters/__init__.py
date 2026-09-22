@@ -466,6 +466,19 @@ def _convert_mobi(path: Path) -> str:
             md = parser.get_markdown()
             
             if md:
+                # MOBI7 often fakes headings with bold/italic tags rather than h1-h6.
+                # Promote standalone ***Text*** and **Text** to ATX headings before the pipeline.
+                mobi_lines = []
+                for line in md.splitlines():
+                    s = line.strip()
+                    if s.startswith('***') and s.endswith('***') and len(s) > 6:
+                        mobi_lines.append(f"## {s[3:-3].strip()}")
+                    elif s.startswith('**') and s.endswith('**') and len(s) > 4:
+                        mobi_lines.append(f"### {s[2:-2].strip()}")
+                    else:
+                        mobi_lines.append(line)
+                md = "\n".join(mobi_lines)
+
                 md = clean_broken_paragraphs(md)
                 md = promote_all_caps_headings(md, default_level=3)
                 md = merge_consecutive_headings(md)

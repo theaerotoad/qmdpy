@@ -507,6 +507,8 @@ def test_convert_mobi(tmp_path, monkeypatch):
             html_content = '''<!DOCTYPE html>
             <html>
             <body>
+              <p><b><i>The Awakening</i></b></p>
+              <p><b>Self-Assessment</b></p>
               <p>MOBI INTRODUCTION</p>
               <p>This is a test paragraph from a mobi conversion.</p>
             </body>
@@ -524,9 +526,14 @@ def test_convert_mobi(tmp_path, monkeypatch):
     from qmd.converters import convert_to_markdown
     md = convert_to_markdown(mobi_file)
     
-    # Ensure EPUB parsing logic ran (MOBI INTRODUCTION should be promoted to a heading)
-    assert "# MOBI INTRODUCTION" in md
+    # Ensure EPUB parsing logic ran and MOBI faked headings were promoted
+    assert "The Awakening" in md
+    assert "Self-Assessment" in md
+    assert "MOBI INTRODUCTION" in md
     assert "This is a test paragraph from a mobi conversion." in md
+    # Check that they were converted to structural headings
+    assert "# The Awakening" in md
+    assert "## Self-Assessment" in md
 
 
 def test_convert_text_file(tmp_path):
