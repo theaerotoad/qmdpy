@@ -155,6 +155,9 @@ class Result:
     seq_id: int = 0  # 0 for FTS/whole doc, specific index for chunks
     headers: str = ""
     doc_date: Optional[str] = None
+    alt_title: Optional[str] = None
+    doc_type: Optional[str] = None
+    authors: Optional[List[str]] = None
     fts_score: Optional[float] = None
     fts_rank: Optional[int] = None
     vec_score: Optional[float] = None
@@ -179,6 +182,9 @@ def _results_to_json(results: List[Result]) -> str:
             "seq_id": r.seq_id,
             "headers": getattr(r, "headers", ""),
             "doc_date": getattr(r, "doc_date", None),
+            "alt_title": getattr(r, "alt_title", None),
+            "doc_type": getattr(r, "doc_type", None),
+            "authors": getattr(r, "authors", None),
             "fts_score": getattr(r, "fts_score", None),
             "fts_rank": getattr(r, "fts_rank", None),
             "vec_score": getattr(r, "vec_score", None),
@@ -206,6 +212,9 @@ def _json_to_results(json_str: str) -> List[Result]:
             seq_id=item.get("seq_id", 0),
             headers=item.get("headers", ""),
             doc_date=item.get("doc_date"),
+            alt_title=item.get("alt_title"),
+            doc_type=item.get("doc_type"),
+            authors=item.get("authors"),
             fts_score=item.get("fts_score"),
             fts_rank=item.get("fts_rank"),
             vec_score=item.get("vec_score"),

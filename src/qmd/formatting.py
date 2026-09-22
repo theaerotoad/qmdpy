@@ -138,9 +138,17 @@ def format_results_cli(results: List, query: str = "", verbose: bool = False, se
         rank_str = f"{i+1}."
         path_str = f"qmd://{res.collection}/{res.path}" if res.collection else res.path
         header_str = f" {CYAN}[{res.headers}]{RESET}" if getattr(res, 'headers', None) else ""
-        
+
         print(f"{GREEN}{rank_str}{RESET} {BOLD}{res.title}{RESET}{header_str} {DIM}({path_str}){RESET}")
-        
+
+        meta_parts = []
+        if getattr(res, 'alt_title', None): meta_parts.append(f"Alt: {res.alt_title}")
+        if getattr(res, 'doc_type', None): meta_parts.append(f"Type: {res.doc_type}")
+        if getattr(res, 'doc_date', None): meta_parts.append(f"Date: {res.doc_date}")
+        if getattr(res, 'authors', None): meta_parts.append(f"Authors: {', '.join(res.authors)}")
+        if meta_parts:
+            print(f"   {CYAN}{' | '.join(meta_parts)}{RESET}")
+
         snippet = res.text[:2000].replace("\n", " ") + "..."
         highlighted = highlight_keywords(snippet, query)
         print(f"   {highlighted}")
@@ -186,6 +194,18 @@ def format_doc_results_cli(grouped_results: List[Dict], query: str = "", verbose
         path_str = f"qmd://{doc['collection']}/{doc['path']}" if doc['collection'] else doc['path']
         
         print(f"{GREEN}{rank_str}{RESET} {BOLD}{doc['title']}{RESET} {DIM}({path_str}){RESET}")
+
+        meta_parts = []
+        if doc.get("chunks"):
+            first_chunk = doc["chunks"][0]
+            if first_chunk.get("alt_title"): meta_parts.append(f"Alt: {first_chunk.get('alt_title')}")
+            if first_chunk.get("doc_type"): meta_parts.append(f"Type: {first_chunk.get('doc_type')}")
+            if first_chunk.get("doc_date"): meta_parts.append(f"Date: {first_chunk.get('doc_date')}")
+            if first_chunk.get("authors"): meta_parts.append(f"Authors: {', '.join(first_chunk.get('authors'))}")
+        
+        if meta_parts:
+            print(f"   {CYAN}{' | '.join(meta_parts)}{RESET}")
+
         print(f"   {DIM}Max Score: {doc['score']:.4f}{RESET}")
 
         if verbose and doc.get("chunks"):
@@ -232,7 +252,11 @@ def format_results_json(results: List, verbose: bool = False, session_id: Option
             "source": res.source,
             "collection": res.collection,
             "seq_id": res.seq_id,
-            "headers": getattr(res, "headers", "")
+            "headers": getattr(res, "headers", ""),
+            "alt_title": getattr(res, "alt_title", ""),
+            "doc_type": getattr(res, "doc_type", ""),
+            "doc_date": getattr(res, "doc_date", ""),
+            "authors": getattr(res, "authors", [])
         }
         if session_id:
             item["session_id"] = session_id
@@ -283,6 +307,14 @@ def format_discover_cli(results: List, query: str = "", verbose: bool = False, s
 
         print(f"{GREEN}{rank_str}{RESET} {BOLD}{res.title}{RESET}{header_str}{matches_badge} {DIM}({path_str}){RESET}")
 
+        meta_parts = []
+        if getattr(res, 'alt_title', None): meta_parts.append(f"Alt: {res.alt_title}")
+        if getattr(res, 'doc_type', None): meta_parts.append(f"Type: {res.doc_type}")
+        if getattr(res, 'doc_date', None): meta_parts.append(f"Date: {res.doc_date}")
+        if getattr(res, 'authors', None): meta_parts.append(f"Authors: {', '.join(res.authors)}")
+        if meta_parts:
+            print(f"   {CYAN}{' | '.join(meta_parts)}{RESET}")
+
         snippet = res.text[:2000].replace("\n", " ").strip()
         if len(res.text) > 2000:
             snippet += "..."
@@ -322,6 +354,10 @@ def format_discover_json(results: List, verbose: bool = False, session_id: Optio
             "collection": res.collection,
             "seq_id": res.seq_id,
             "headers": getattr(res, "headers", ""),
+            "alt_title": getattr(res, "alt_title", ""),
+            "doc_type": getattr(res, "doc_type", ""),
+            "doc_date": getattr(res, "doc_date", ""),
+            "authors": getattr(res, "authors", []),
             "match_count": getattr(res, "match_count", 1)
         }
         if session_id:
@@ -379,6 +415,14 @@ def format_discover_xml(results: List, query: str = "", verbose: bool = False, s
             f'    score="{score_str}"\n'
             f'    uri="{escape_xml_attr(doc_uri)}"{coll_attr}{path_attr}\n'
             f'    title="{escape_xml_attr(res.title)}"\n'
+        )
+
+        if getattr(res, 'alt_title', None): res_tag += f'    alt_title="{escape_xml_attr(res.alt_title)}"\n'
+        if getattr(res, 'doc_type', None): res_tag += f'    doc_type="{escape_xml_attr(res.doc_type)}"\n'
+        if getattr(res, 'doc_date', None): res_tag += f'    doc_date="{escape_xml_attr(res.doc_date)}"\n'
+        if getattr(res, 'authors', None): res_tag += f'    authors="{escape_xml_attr(", ".join(res.authors))}"\n'
+
+        res_tag += (
             f'    top_chunk_seq="{seq}"\n'
             f'    match_count="{match_count}"\n'
             f'    chars="{chars}"\n'
@@ -480,6 +524,14 @@ def format_results_xml(results: List, query: str = "", verbose: bool = False, se
             f'    rank="{rank}"\n'
             f'    score="{score_str}"\n'
             f'    document="{escape_xml_attr(doc_uri)}"{coll_attr}{path_attr}\n'
+        )
+
+        if getattr(res, 'alt_title', None): res_tag += f'    alt_title="{escape_xml_attr(res.alt_title)}"\n'
+        if getattr(res, 'doc_type', None): res_tag += f'    doc_type="{escape_xml_attr(res.doc_type)}"\n'
+        if getattr(res, 'doc_date', None): res_tag += f'    doc_date="{escape_xml_attr(res.doc_date)}"\n'
+        if getattr(res, 'authors', None): res_tag += f'    authors="{escape_xml_attr(", ".join(res.authors))}"\n'
+
+        res_tag += (
             f'    seq="{seq}"\n'
             f'    chars="{chars}"\n'
             f'    title="{escape_xml_attr(res.title)}"\n'
@@ -540,7 +592,16 @@ def format_doc_results_xml(grouped_results: List[Dict], query: str = "", verbose
         title_attr = escape_xml_attr(doc.get('title', ''))
         coll_attr = f' collection="{escape_xml_attr(coll)}"' if coll else ""
         path_attr = f' path="{escape_xml_attr(path)}"' if path else ""
-        lines.append(f'  <document uri="{escape_xml_attr(doc_uri)}"{coll_attr}{path_attr} title="{title_attr}">')
+        
+        meta_attrs = ""
+        if doc.get("chunks"):
+            first_chunk = doc["chunks"][0]
+            if first_chunk.get("alt_title"): meta_attrs += f' alt_title="{escape_xml_attr(first_chunk["alt_title"])}"'
+            if first_chunk.get("doc_type"): meta_attrs += f' doc_type="{escape_xml_attr(first_chunk["doc_type"])}"'
+            if first_chunk.get("doc_date"): meta_attrs += f' doc_date="{escape_xml_attr(first_chunk["doc_date"])}"'
+            if first_chunk.get("authors"): meta_attrs += f' authors="{escape_xml_attr(", ".join(first_chunk["authors"]))}"'
+
+        lines.append(f'  <document uri="{escape_xml_attr(doc_uri)}"{coll_attr}{path_attr} title="{title_attr}"{meta_attrs}>')
 
         outline_ref = f"{coll}:{path}" if coll else path
         doc_outline_cmd = f"qmd outline '{outline_ref}'"

@@ -161,9 +161,12 @@ class RetrievalMixin:
 
         body_col = "'' AS body" if defer_text else "f.body"
         base_sql = f"""
-            SELECT f.filepath, f.title, {body_col}, f.rank, f.collection, f.rowid, m.seq_id, COALESCE(f.headers, '')
+            SELECT f.filepath, f.title, {body_col}, f.rank, f.collection, f.rowid, m.seq_id, COALESCE(f.headers, ''),
+                   da.alt_title, da.doc_type, d.doc_date, da.authors
             FROM chunks_fts f
             JOIN chunk_metadata m ON f.rowid = m.rowid
+            JOIN documents d ON m.doc_hash = d.hash
+            LEFT JOIN document_analysis da ON d.hash = da.doc_hash
             WHERE chunks_fts MATCH ?
         """
         coll_sql, coll_params = _build_collection_sql_filter("f.collection", collection)
@@ -198,7 +201,14 @@ class RetrievalMixin:
 
         results = []
         for row in rows:
-            doc_path, doc_title, chunk_text, rank, coll, rowid, seq_id, headers = row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]
+            doc_path, doc_title, chunk_text, rank, coll, rowid, seq_id, headers = row[0:8]
+            alt_title, doc_type, doc_date, authors_raw = row[8:12]
+            
+            authors_list = None
+            if authors_raw:
+                try: authors_list = json.loads(authors_raw)
+                except: pass
+
             key = (coll or "", doc_path, seq_id)
             if exclude_seen_set and key in exclude_seen_set:
                 if excluded_chunks_tracker is not None:
@@ -218,6 +228,10 @@ class RetrievalMixin:
                 collection=coll or "",
                 seq_id=seq_id,
                 headers=headers,
+                doc_date=doc_date,
+                alt_title=alt_title,
+                doc_type=doc_type,
+                authors=authors_list,
                 fts_score=calculated_fts_score,
                 fts_rank=calculated_fts_rank,
                 rowid=rowid
@@ -312,9 +326,11 @@ class RetrievalMixin:
                     chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
 
                     query_sql = f"""
-                        SELECT m.rowid, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, '')
+                        SELECT m.rowid, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''),
+                               da.alt_title, da.doc_type, d.doc_date, da.authors
                         FROM chunk_metadata m
                         JOIN documents d ON m.doc_hash = d.hash
+                        LEFT JOIN document_analysis da ON d.hash = da.doc_hash
                         WHERE m.rowid IN ({placeholders})
                     """
                     params = list(match_keys)
@@ -334,7 +350,7 @@ class RetrievalMixin:
 
                     cursor.execute(query_sql, tuple(params))
                     raw_candidates = []
-                    for r_id, text_blob, doc_path, doc_title, coll, seq_id, hdrs in cursor.fetchall():
+                    for r_id, text_blob, doc_path, doc_title, coll, seq_id, hdrs, alt_title, doc_type, doc_date, authors_raw in cursor.fetchall():
                         key = (coll or "", doc_path, seq_id)
                         if exclude_seen_set and key in exclude_seen_set:
                             if excluded_chunks_tracker is not None:
@@ -347,15 +363,21 @@ class RetrievalMixin:
                         else:
                             score = max(0.0, 1.0 - float(dist))
 
-                        raw_candidates.append((score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id))
+                        authors_list = None
+                        if authors_raw:
+                            try: authors_list = json.loads(authors_raw)
+                            except: pass
+
+                        raw_candidates.append((score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id, alt_title, doc_type, doc_date, authors_list))
 
                     raw_candidates.sort(key=lambda x: x[0], reverse=True)
                     candidates = []
-                    for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id) in enumerate(raw_candidates[:limit]):
+                    for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id, alt_title, doc_type, doc_date, authors_list) in enumerate(raw_candidates[:limit]):
                         chunk_str = decompress_text(text_blob) if (not defer_text and text_blob is not None) else ""
                         candidates.append(Result(
                             path=doc_path, title=doc_title, text=chunk_str, score=score,
                             source="vec", collection=coll, seq_id=seq_id, headers=hdrs,
+                            doc_date=doc_date, alt_title=alt_title, doc_type=doc_type, authors=authors_list,
                             vec_score=score, vec_rank=vec_idx + 1,
                             rowid=r_id
                         ))
@@ -371,7 +393,8 @@ class RetrievalMixin:
 
                 chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
                 query_sql = f"""
-                    SELECT v.rowid, v.distance, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, '')
+                    SELECT v.rowid, v.distance, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''),
+                           da.alt_title, da.doc_type, d.doc_date, da.authors
                     FROM (
                         SELECT rowid, distance
                         FROM vectors
@@ -379,6 +402,7 @@ class RetrievalMixin:
                     ) v
                     JOIN chunk_metadata m ON v.rowid = m.rowid
                     JOIN documents d ON m.doc_hash = d.hash
+                    LEFT JOIN document_analysis da ON d.hash = da.doc_hash
                     WHERE 1=1
                 """
                 params = [query_blob, k_val]
@@ -397,7 +421,7 @@ class RetrievalMixin:
 
                 cursor.execute(query_sql, tuple(params))
                 raw_candidates = []
-                for rowid, dist, text_blob, doc_path, doc_title, coll, seq_id, hdrs in cursor.fetchall():
+                for rowid, dist, text_blob, doc_path, doc_title, coll, seq_id, hdrs, alt_title, doc_type, doc_date, authors_raw in cursor.fetchall():
                     key = (coll or "", doc_path, seq_id)
                     if exclude_seen_set and key in exclude_seen_set:
                         if excluded_chunks_tracker is not None:
@@ -408,15 +432,21 @@ class RetrievalMixin:
                     else:
                         score = max(0.0, 1.0 - float(dist))
 
-                    raw_candidates.append((score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, rowid))
+                    authors_list = None
+                    if authors_raw:
+                        try: authors_list = json.loads(authors_raw)
+                        except: pass
+
+                    raw_candidates.append((score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, rowid, alt_title, doc_type, doc_date, authors_list))
 
                 raw_candidates.sort(key=lambda x: x[0], reverse=True)
                 candidates = []
-                for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id) in enumerate(raw_candidates[:limit]):
+                for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id, alt_title, doc_type, doc_date, authors_list) in enumerate(raw_candidates[:limit]):
                     chunk_str = decompress_text(text_blob) if (not defer_text and text_blob is not None) else ""
                     candidates.append(Result(
                         path=doc_path, title=doc_title, text=chunk_str, score=score,
                         source="vec", collection=coll, seq_id=seq_id, headers=hdrs,
+                        doc_date=doc_date, alt_title=alt_title, doc_type=doc_type, authors=authors_list,
                         vec_score=score, vec_rank=vec_idx + 1,
                         rowid=r_id
                     ))
@@ -426,10 +456,12 @@ class RetrievalMixin:
 
         chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
         query_sql = f"""
-            SELECT v.embedding, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''), v.rowid
+            SELECT v.embedding, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''), v.rowid,
+                   da.alt_title, da.doc_type, d.doc_date, da.authors
             FROM vectors v
             JOIN chunk_metadata m ON v.rowid = m.rowid
             JOIN documents d ON m.doc_hash = d.hash
+            LEFT JOIN document_analysis da ON d.hash = da.doc_hash
         """
         where_clauses = []
         params = []
@@ -456,7 +488,7 @@ class RetrievalMixin:
             return []
 
         raw_candidates = []
-        for emb_blob, text_blob, doc_path, doc_title, coll, seq_id, hdrs, r_id in cursor.fetchall():
+        for emb_blob, text_blob, doc_path, doc_title, coll, seq_id, hdrs, r_id, alt_title, doc_type, doc_date, authors_raw in cursor.fetchall():
             key = (coll or "", doc_path, seq_id)
             if exclude_seen_set and key in exclude_seen_set:
                 if excluded_chunks_tracker is not None:
@@ -468,15 +500,21 @@ class RetrievalMixin:
             mag_v = math.sqrt(sum(a * a for a in vec))
             sim = dot_prod / (mag_q * mag_v) if mag_v else 0
 
-            raw_candidates.append((sim, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id))
+            authors_list = None
+            if authors_raw:
+                try: authors_list = json.loads(authors_raw)
+                except: pass
+
+            raw_candidates.append((sim, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id, alt_title, doc_type, doc_date, authors_list))
 
         raw_candidates.sort(key=lambda x: x[0], reverse=True)
         candidates = []
-        for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id) in enumerate(raw_candidates[:limit]):
+        for vec_idx, (score, doc_path, doc_title, text_blob, coll, seq_id, hdrs, r_id, alt_title, doc_type, doc_date, authors_list) in enumerate(raw_candidates[:limit]):
             chunk_str = decompress_text(text_blob) if (not defer_text and text_blob is not None) else ""
             candidates.append(Result(
                 path=doc_path, title=doc_title, text=chunk_str, score=score, 
                 source="vec", collection=coll, seq_id=seq_id, headers=hdrs,
+                doc_date=doc_date, alt_title=alt_title, doc_type=doc_type, authors=authors_list,
                 vec_score=score, vec_rank=vec_idx + 1,
                 rowid=r_id
             ))
