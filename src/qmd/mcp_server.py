@@ -96,7 +96,10 @@ def execute_qmd_command(command_str: str, config_path: Optional[str] = None, sto
                 
             active_store = store
             if active_store is None:
-                config = load_config(getattr(args, "config", config_path))
+                # argparse sets missing args to None, which defeats getattr's fallback.
+                # We must explicitly check for None to inherit the server's config path.
+                inner_cfg = getattr(args, "config", None)
+                config = load_config(inner_cfg if inner_cfg is not None else config_path)
                 active_store = Store(config)
             execute_command(args, active_store)
     except SystemExit:
