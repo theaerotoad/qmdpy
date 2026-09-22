@@ -294,6 +294,21 @@ function renderResults(results, type, query) {
             ? (item.chunks[0].text || '')
             : (item.text || (item.snippets ? item.snippets[0] : ''));
 
+        const metaSource = (type === 'doc' && item.chunks && item.chunks.length > 0) ? item.chunks[0] : item;
+        const metaBadges = [];
+        if (metaSource.alt_title) metaBadges.push(`<span class="font-semibold">Alt:</span> ${escapeHtml(metaSource.alt_title)}`);
+        if (metaSource.doc_type) metaBadges.push(`<span class="font-semibold">Type:</span> ${escapeHtml(metaSource.doc_type)}`);
+        if (metaSource.doc_date) metaBadges.push(`<span class="font-semibold">Date:</span> ${escapeHtml(metaSource.doc_date)}`);
+        if (metaSource.authors && Array.isArray(metaSource.authors) && metaSource.authors.length > 0) {
+            metaBadges.push(`<span class="font-semibold">Authors:</span> ${escapeHtml(metaSource.authors.join(', '))}`);
+        }
+        
+        const metadataHtml = metaBadges.length > 0
+            ? `<div class="g-metadata text-[13px] mt-0.5 mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                 ${metaBadges.join('<span class="opacity-40">•</span>')}
+               </div>`
+            : '';
+
         article.innerHTML = `
             <div class="flex items-center gap-2 text-xs">
                 <a href="javascript:void(0)" class="uri-link g-url font-mono truncate max-w-3xl block cursor-pointer" title="${escapeXmlAttr(uri)}">
@@ -307,6 +322,8 @@ function renderResults(results, type, query) {
                     ${escapeHtml(item.title || item.path)}
                 </a>
             </h2>
+
+            ${metadataHtml}
 
             ${contentHtml}
 
