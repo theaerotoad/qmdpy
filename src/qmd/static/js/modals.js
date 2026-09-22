@@ -624,7 +624,7 @@ async function openDocument(collection, path, targetText, searchMeta = null) {
     const metaContainer = document.getElementById('slide-meta');
     const metaDetails = document.getElementById('slide-meta-details');
     if (metaContainer) metaContainer.innerHTML = '';
-    if (metaDetails) metaDetails.classList.add('hidden');
+    if (metaDetails) metaDetails.classList.remove('hidden'); // Always visible because it now contains the URI
     document.getElementById('slide-title').textContent = (searchMeta && searchMeta.alt_title) ? searchMeta.alt_title : path.split('/').pop();
 
     try {
@@ -634,7 +634,7 @@ async function openDocument(collection, path, targetText, searchMeta = null) {
         const mergedMeta = { ...searchMeta, ...data };
         document.getElementById('slide-title').textContent = mergedMeta.alt_title || data.title || path;
         
-        if (metaContainer && metaDetails) {
+        if (metaContainer) {
             const badges = [];
             if (mergedMeta.doc_type) badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium border border-gray-300 dark:border-gray-600">Type: ${escapeHtml(mergedMeta.doc_type)}</span>`);
             
@@ -645,10 +645,7 @@ async function openDocument(collection, path, targetText, searchMeta = null) {
             if (mergedMeta.authors && Array.isArray(mergedMeta.authors) && mergedMeta.authors.length > 0) {
                 badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium border border-gray-300 dark:border-gray-600">Authors: ${escapeHtml(mergedMeta.authors.join(', '))}</span>`);
             }
-            if (badges.length > 0) {
-                metaContainer.innerHTML = badges.join('');
-                metaDetails.classList.remove('hidden');
-            }
+            metaContainer.innerHTML = badges.join('');
         }
         if (data.collection) currentDocCollection = data.collection;
         content.innerHTML = marked.parse(data.content || '');

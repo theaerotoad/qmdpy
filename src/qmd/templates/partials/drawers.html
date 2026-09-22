@@ -30,15 +30,16 @@
             <div id="slide-panel" class="w-full bg-white dark:bg-[#202124] border-l border-google-border dark:border-google-borderDark shadow-2xl transform transition-transform translate-x-full pointer-events-auto flex flex-col duration-200">
                 <div class="px-5 py-4 border-b border-google-border dark:border-google-borderDark bg-[#f8f9fa] dark:bg-[#282a2d] flex items-center justify-between">
                     <div class="flex flex-col min-w-0 pr-4">
-                        <span class="text-[10px] uppercase font-bold tracking-wider text-blue-600 dark:text-blue-400">Document Reader</span>
-                        <span id="slide-uri" class="text-xs font-mono text-gray-500 dark:text-gray-400 truncate mt-0.5"></span>
-                        <h2 id="slide-title" class="text-base font-semibold text-gray-900 dark:text-white truncate">Document Preview</h2>
-                        <details id="slide-meta-details" class="mt-1.5 hidden group">
+                        <h2 id="slide-title" class="text-base font-semibold text-gray-900 dark:text-white leading-snug">Document Preview</h2>
+                        <details id="slide-meta-details" class="mt-1.5 group">
                             <summary class="text-[11px] font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer list-none [&::-webkit-details-marker]:hidden flex items-center gap-1 outline-none">
                                 <svg class="w-3 h-3 transform group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                                 Document Details
                             </summary>
-                            <div id="slide-meta" class="flex flex-wrap gap-1.5 mt-2 pl-4 text-[11px] empty:hidden cursor-default"></div>
+                            <div class="mt-2 pl-4 space-y-2">
+                                <div id="slide-uri" class="text-[10px] font-mono text-gray-500 dark:text-gray-400 break-all"></div>
+                                <div id="slide-meta" class="flex flex-wrap gap-1.5 text-[11px] empty:hidden cursor-default"></div>
+                            </div>
                         </details>
                     </div>
                     <button type="button" onclick="closeDocument()" class="p-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 transition focus:outline-none flex-shrink-0">
