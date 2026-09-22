@@ -587,6 +587,10 @@ class SearchMixin:
                 collection=best_chunk.collection,
                 seq_id=best_chunk.seq_id,
                 headers=getattr(best_chunk, "headers", ""),
+                doc_date=getattr(best_chunk, "doc_date", None),
+                alt_title=getattr(best_chunk, "alt_title", None),
+                doc_type=getattr(best_chunk, "doc_type", None),
+                authors=getattr(best_chunk, "authors", None),
                 fts_score=getattr(best_chunk, "fts_score", None),
                 fts_rank=getattr(best_chunk, "fts_rank", None),
                 vec_score=getattr(best_chunk, "vec_score", None),
@@ -708,7 +712,11 @@ class SearchMixin:
                     "path": doc.path,
                     "score": doc.score,
                     "rank": doc.rank,
-                    "match_count": getattr(doc, "match_count", 1)
+                    "match_count": getattr(doc, "match_count", 1),
+                    "alt_title": getattr(doc, "alt_title", None),
+                    "doc_type": getattr(doc, "doc_type", None),
+                    "doc_date": getattr(doc, "doc_date", None),
+                    "authors": getattr(doc, "authors", None)
                 })
 
             def _convert_node(name: str, node_data: Dict[str, Any]) -> Dict[str, Any]:
