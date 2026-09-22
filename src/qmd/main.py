@@ -215,6 +215,10 @@ def group_results_by_doc(results: List[Result]) -> List[Dict]:
                 "rrf_rank": getattr(r, "rrf_rank", None),
                 "source": r.source,
                 "headers": getattr(r, "headers", ""),
+                "doc_date": getattr(r, "doc_date", None),
+                "alt_title": getattr(r, "alt_title", None),
+                "doc_type": getattr(r, "doc_type", None),
+                "authors": getattr(r, "authors", None),
                 "text": r.text
             })
             
