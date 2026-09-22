@@ -609,7 +609,7 @@ function findTargetElement(container, targetText) {
     return null;
 }
 
-async function openDocument(collection, path, targetText) {
+async function openDocument(collection, path, targetText, meta = null) {
     currentDocCollection = collection || '';
     currentDocPath = path || '';
     const drawer = document.getElementById('slide-over');
@@ -621,10 +621,22 @@ async function openDocument(collection, path, targetText) {
     const content = document.getElementById('slide-content');
     content.innerHTML = '<div class="text-gray-500 py-16 text-center">Loading document...</div>';
 
+    const metaContainer = document.getElementById('slide-meta');
+    if (metaContainer) {
+        metaContainer.innerHTML = '';
+        const badges = [];
+        if (meta?.doc_type) badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium">Type: ${escapeHtml(meta.doc_type)}</span>`);
+        if (meta?.doc_date) badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium">Date: ${escapeHtml(meta.doc_date)}</span>`);
+        if (meta?.authors && Array.isArray(meta.authors) && meta.authors.length > 0) {
+            badges.push(`<span class="px-1.5 py-0.5 bg-gray-200 dark:bg-[#303134] rounded text-gray-700 dark:text-gray-300 font-medium">Authors: ${escapeHtml(meta.authors.join(', '))}</span>`);
+        }
+        metaContainer.innerHTML = badges.join('');
+    }
+
     try {
         const res = await fetch(apiUrl(`api/document?collection=${encodeURIComponent(collection)}&path=${encodeURIComponent(path)}${featureStates.redact_pii ? '&redact_pii=true' : ''}`));
         const data = await res.json();
-        document.getElementById('slide-title').textContent = data.title || path;
+        document.getElementById('slide-title').textContent = (meta && meta.alt_title) ? meta.alt_title : (data.title || path);
         if (data.collection) currentDocCollection = data.collection;
         content.innerHTML = marked.parse(data.content || '');
         updateOpenFileButtonVisibility(data.allow_open);

@@ -295,19 +295,10 @@ function renderResults(results, type, query) {
             : (item.text || (item.snippets ? item.snippets[0] : ''));
 
         const metaSource = (type === 'doc' && item.chunks && item.chunks.length > 0) ? item.chunks[0] : item;
-        const metaBadges = [];
-        if (metaSource.alt_title) metaBadges.push(`<span class="font-semibold">Alt:</span> ${escapeHtml(metaSource.alt_title)}`);
-        if (metaSource.doc_type) metaBadges.push(`<span class="font-semibold">Type:</span> ${escapeHtml(metaSource.doc_type)}`);
-        if (metaSource.doc_date) metaBadges.push(`<span class="font-semibold">Date:</span> ${escapeHtml(metaSource.doc_date)}`);
-        if (metaSource.authors && Array.isArray(metaSource.authors) && metaSource.authors.length > 0) {
-            metaBadges.push(`<span class="font-semibold">Authors:</span> ${escapeHtml(metaSource.authors.join(', '))}`);
+        const displayTitle = metaSource.alt_title || item.title || item.path;
+        if (metaSource.doc_date && typeof metaSource.doc_date === 'string') {
+            metaSource.doc_date = metaSource.doc_date.split('T')[0].split(' ')[0];
         }
-        
-        const metadataHtml = metaBadges.length > 0
-            ? `<div class="g-metadata text-[13px] mt-0.5 mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-                 ${metaBadges.join('<span class="opacity-40">•</span>')}
-               </div>`
-            : '';
 
         article.innerHTML = `
             <div class="flex items-center gap-2 text-xs">
@@ -319,11 +310,9 @@ function renderResults(results, type, query) {
 
             <h2 class="text-xl leading-snug">
                 <a href="javascript:void(0)" class="doc-link g-link font-medium">
-                    ${escapeHtml(item.title || item.path)}
+                    ${escapeHtml(displayTitle)}
                 </a>
             </h2>
-
-            ${metadataHtml}
 
             ${contentHtml}
 
@@ -341,9 +330,9 @@ function renderResults(results, type, query) {
         `;
 
         const uriLink = article.querySelector('.uri-link');
-        if (uriLink) uriLink.onclick = () => openDocument(item.collection, item.path, targetChunkText);
-        article.querySelector('.doc-link').onclick = () => openDocument(item.collection, item.path, targetChunkText);
-        article.querySelector('.btn-deep-search').onclick = () => deepSearchSnippet(item.title || item.path, item.path, item.collection);
+        if (uriLink) uriLink.onclick = () => openDocument(item.collection, item.path, targetChunkText, metaSource);
+        article.querySelector('.doc-link').onclick = () => openDocument(item.collection, item.path, targetChunkText, metaSource);
+        article.querySelector('.btn-deep-search').onclick = () => deepSearchSnippet(displayTitle, item.path, item.collection);
         article.querySelector('.btn-copy-chunk').onclick = (e) => copySingleExcerpt(index, e.currentTarget);
         article.querySelector('.btn-copy-xml').onclick = (e) => copySingleXml(index, e.currentTarget);
 

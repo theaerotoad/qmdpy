@@ -71,13 +71,6 @@
   color: #e8eaed;
 }
 
-.g-metadata {
-  color: #0f766e;
-}
-.dark .g-metadata {
-  color: #5eead4;
-}
-
 .g-highlight, mark.qmd-highlight {
   font-weight: 700;
   color: inherit;
