@@ -19,6 +19,7 @@ def test_supported_extensions():
     assert is_supported_file("notes.md")
     assert is_supported_file("document.pdf")
     assert is_supported_file("book.epub")
+    assert is_supported_file("book.mobi")
 
 def test_format_matrix_to_md_table():
     matrix = [
@@ -494,6 +495,37 @@ def test_convert_epub_merges_broken_title_lines_and_connector_headings(tmp_path)
     assert "## ALICE W. THURSTON and BOB M. CARPENTER" in md
     assert "## and\n" not in md
     assert "EACH PATTERN HAS UNIQUE ADVANTAGES— AND PREDICTABLE TRADEOFFS" in md
+
+def test_convert_mobi(tmp_path, monkeypatch):
+    class MockMobi:
+        def extract(self, path):
+            import zipfile
+            tempdir = tmp_path / "mobi_temp"
+            tempdir.mkdir(exist_ok=True)
+            epub_file = tempdir / "extracted.epub"
+            
+            container_xml = '<?xml version="1.0"?>\n<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">\n  <rootfiles>\n    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>\n  </rootfiles>\n</container>'
+            content_opf = '<?xml version="1.0" encoding="utf-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0">\n  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\n    <dc:title>Mobi Book Title</dc:title>\n  </metadata>\n  <manifest>\n    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>\n  </manifest>\n  <spine>\n    <itemref idref="ch1"/>\n  </spine>\n</package>'
+            ch1_xhtml = '<!DOCTYPE html>\n<html>\n<head><title>Chapter 1</title></head>\n<body>\n  <h1>Chapter 1</h1>\n  <p>This is a test paragraph from a mobi conversion.</p>\n</body>\n</html>'
+
+            with zipfile.ZipFile(epub_file, 'w') as z:
+                z.writestr("META-INF/container.xml", container_xml)
+                z.writestr("OEBPS/content.opf", content_opf)
+                z.writestr("OEBPS/ch1.xhtml", ch1_xhtml)
+
+            return str(tempdir), str(epub_file)
+
+    import sys
+    monkeypatch.setitem(sys.modules, 'mobi', MockMobi())
+    
+    mobi_file = tmp_path / "test.mobi"
+    mobi_file.write_bytes(b"dummy mobi content")
+    
+    from qmd.converters import convert_to_markdown
+    md = convert_to_markdown(mobi_file)
+    assert "Mobi Book Title" in md or "Chapter 1" in md
+    assert "This is a test paragraph from a mobi conversion." in md
+
 
 def test_convert_text_file(tmp_path):
     txt_file = tmp_path / "test.txt"

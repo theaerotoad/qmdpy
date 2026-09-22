@@ -61,7 +61,8 @@ SUPPORTED_EXTENSIONS = {
     ".xlsx",
     ".csv",
     ".html", ".htm",
-    ".epub"
+    ".epub",
+    ".mobi"
 }
 
 
@@ -425,6 +426,33 @@ def _convert_epub(path: Path) -> str:
         raise ValueError(f"Failed to parse EPUB file '{path.name}': {e}")
 
 
+def _convert_mobi(path: Path) -> str:
+    try:
+        import mobi
+    except ImportError:
+        raise ImportError("mobi is required for converting .mobi files. Install with `pip install mobi`.")
+    
+    import shutil
+    
+    try:
+        tempdir, filepath = mobi.extract(str(path))
+    except Exception as e:
+        raise ValueError(f"Failed to extract MOBI file '{path.name}': {e}")
+        
+    try:
+        ext = Path(filepath).suffix.lower()
+        if ext == ".epub":
+            return _convert_epub(Path(filepath))
+        elif ext in {".html", ".htm"}:
+            return _convert_html(Path(filepath))
+        else:
+            return _convert_text(Path(filepath))
+    except Exception as e:
+        raise ValueError(f"Failed to parse extracted MOBI file '{path.name}': {e}")
+    finally:
+        shutil.rmtree(tempdir, ignore_errors=True)
+
+
 def _convert_html(path: Path) -> str:
     try:
         content = path.read_text(encoding="utf-8")
@@ -547,6 +575,8 @@ def convert_to_markdown(file_path: Union[str, Path], config=None, errors_out: Op
         raw_md = _get_fn("_convert_html", _convert_html)(path)
     elif ext == ".epub":
         raw_md = _get_fn("_convert_epub", _convert_epub)(path)
+    elif ext == ".mobi":
+        raw_md = _get_fn("_convert_mobi", _convert_mobi)(path)
     else:
         raw_md = _get_fn("_convert_text", _convert_text)(path)
 
@@ -572,7 +602,7 @@ def main():
         sys.path.insert(0, src_dir)
 
     parser = argparse.ArgumentParser(
-        description="Convert a document (.docx, .pptx, .xlsx, .csv, .html, .epub, .md) to Markdown and inspect parsed blocks/chunks."
+        description="Convert a document (.docx, .pptx, .xlsx, .csv, .html, .epub, .mobi, .md) to Markdown and inspect parsed blocks/chunks."
     )
     parser.add_argument("file_path", type=str, help="Path to the document to convert")
     parser.add_argument("-o", "--output", type=str, help="Optional output path to save the Markdown content")
@@ -685,6 +715,7 @@ __all__ = [
     "_convert_xlsx",
     "_convert_csv",
     "_convert_epub",
+    "_convert_mobi",
     "_convert_html",
     "_mathml_to_latex",
     "_omml_to_latex",
