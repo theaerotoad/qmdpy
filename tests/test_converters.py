@@ -508,7 +508,9 @@ def test_convert_mobi(tmp_path, monkeypatch):
             <html>
             <body>
               <p><b><i>The Awakening</i></b></p>
+              <p>Body text to separate the headings.</p>
               <p><b>Self-Assessment</b></p>
+              <p>More body text to separate the headings.</p>
               <p>MOBI INTRODUCTION</p>
               <p>This is a test paragraph from a mobi conversion.</p>
             </body>
