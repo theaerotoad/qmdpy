@@ -133,10 +133,10 @@ class RetrievalMixin:
 
     def _search_fts_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
+        sanitized = query.replace('"', '')
         if '"' in query or ' AND ' in query or ' OR ' in query or ' NOT ' in query:
             fts_query = query
         else:
-            sanitized = query.replace('"', '')
             raw_terms = sanitized.split()
             stop_words = {
                 "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "if", 
