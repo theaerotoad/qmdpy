@@ -84,7 +84,7 @@ def _get_llm_endpoint_and_model():
         cfg = get_config()
         base_url = getattr(cfg, "llm_url", None) or os.environ.get("QMD_LLM_URL")
         model = getattr(cfg, "generate_model", None) or os.environ.get("GENERATE_MODEL")
-        api_key = getattr(cfg, "llm_api_key", None) or os.environ.get("QMD_LLM_API_KEY", "sk-no-key-required")
+        api_key = getattr(cfg, "api_key", None) or getattr(cfg, "llm_api_key", None) or os.environ.get("QMD_LLM_API_KEY", "sk-no-key-required")
     except Exception as e:
         logger.warning(f"Could not read config for quick answer LLM: {e}")
         base_url = None
@@ -122,12 +122,6 @@ def generate_quick_answer_stream(
         ],
         "max_tokens": 8192,
         "stream": True,
-        # Explicitly disable reasoning as requested for faster inference
-        "enable_thinking": False,
-        "thinking_budget_tokens": 2048,
-        "extra_body": {
-            "enable_thinking": False,
-        },
     }
 
     headers = {

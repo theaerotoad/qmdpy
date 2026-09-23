@@ -418,7 +418,11 @@
           try {
             const data = JSON.parse(dataStr);
             if (data.error) {
-              hideQuickAnswer();
+              isCheckingRelevance = false;
+              els.loading.classList.add("hidden");
+              els.body.classList.remove("hidden");
+              els.content.innerHTML = `<div class="mb-2 text-sm font-semibold text-red-500 dark:text-red-400">LLM Error</div><div class="text-xs text-red-600 dark:text-red-300 break-words">${escapeHtmlText(data.error)}</div>`;
+              finishStream(els);
               return;
             }
             if (data.delta) {
