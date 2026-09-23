@@ -159,16 +159,31 @@ class RetrievalMixin:
         elif isinstance(path, (list, tuple, set)):
             paths = [str(p).strip() for p in path if str(p).strip()]
 
+        if getattr(self, '_has_analysis_table', None) is None:
+            c = self.conn.cursor()
+            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='document_analysis'")
+            self._has_analysis_table = c.fetchone() is not None
+
         body_col = "'' AS body" if defer_text else "f.body"
-        base_sql = f"""
-            SELECT f.filepath, f.title, {body_col}, f.rank, f.collection, f.rowid, m.seq_id, COALESCE(f.headers, ''),
-                   da.alt_title, da.doc_type, d.doc_date, da.authors
-            FROM chunks_fts f
-            JOIN chunk_metadata m ON f.rowid = m.rowid
-            JOIN documents d ON m.doc_hash = d.hash
-            LEFT JOIN document_analysis da ON d.hash = da.doc_hash
-            WHERE chunks_fts MATCH ?
-        """
+        if self._has_analysis_table:
+            base_sql = f"""
+                SELECT f.filepath, f.title, {body_col}, f.rank, f.collection, f.rowid, m.seq_id, COALESCE(f.headers, ''),
+                       da.alt_title, da.doc_type, d.doc_date, da.authors
+                FROM chunks_fts f
+                JOIN chunk_metadata m ON f.rowid = m.rowid
+                JOIN documents d ON m.doc_hash = d.hash
+                LEFT JOIN document_analysis da ON d.hash = da.doc_hash
+                WHERE chunks_fts MATCH ?
+            """
+        else:
+            base_sql = f"""
+                SELECT f.filepath, f.title, {body_col}, f.rank, f.collection, f.rowid, m.seq_id, COALESCE(f.headers, ''),
+                       NULL, NULL, d.doc_date, NULL
+                FROM chunks_fts f
+                JOIN chunk_metadata m ON f.rowid = m.rowid
+                JOIN documents d ON m.doc_hash = d.hash
+                WHERE chunks_fts MATCH ?
+            """
         coll_sql, coll_params = _build_collection_sql_filter("f.collection", collection)
         filters_sql = coll_sql
         if title: filters_sql += " AND f.title LIKE ?"
@@ -323,16 +338,30 @@ class RetrievalMixin:
                     dist_map = dict(zip(match_keys, match_distances))
 
                     placeholders = ','.join(['?'] * len(match_keys))
+                    if getattr(self, '_has_analysis_table', None) is None:
+                        c = self.conn.cursor()
+                        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='document_analysis'")
+                        self._has_analysis_table = c.fetchone() is not None
+
                     chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
 
-                    query_sql = f"""
-                        SELECT m.rowid, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''),
-                               da.alt_title, da.doc_type, d.doc_date, da.authors
-                        FROM chunk_metadata m
-                        JOIN documents d ON m.doc_hash = d.hash
-                        LEFT JOIN document_analysis da ON d.hash = da.doc_hash
-                        WHERE m.rowid IN ({placeholders})
-                    """
+                    if self._has_analysis_table:
+                        query_sql = f"""
+                            SELECT m.rowid, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''),
+                                   da.alt_title, da.doc_type, d.doc_date, da.authors
+                            FROM chunk_metadata m
+                            JOIN documents d ON m.doc_hash = d.hash
+                            LEFT JOIN document_analysis da ON d.hash = da.doc_hash
+                            WHERE m.rowid IN ({placeholders})
+                        """
+                    else:
+                        query_sql = f"""
+                            SELECT m.rowid, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''),
+                                   NULL, NULL, d.doc_date, NULL
+                            FROM chunk_metadata m
+                            JOIN documents d ON m.doc_hash = d.hash
+                            WHERE m.rowid IN ({placeholders})
+                        """
                     params = list(match_keys)
 
                     coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
@@ -391,20 +420,39 @@ class RetrievalMixin:
                 extra_seen = (len(exclude_seen_set) * 2) if exclude_seen_set else 0
                 k_val = max(limit * 8 + extra_seen, 500) if (collection or title or paths or exclude_seen_set) else limit
 
+                if getattr(self, '_has_analysis_table', None) is None:
+                    c = self.conn.cursor()
+                    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='document_analysis'")
+                    self._has_analysis_table = c.fetchone() is not None
+
                 chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
-                query_sql = f"""
-                    SELECT v.rowid, v.distance, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''),
-                           da.alt_title, da.doc_type, d.doc_date, da.authors
-                    FROM (
-                        SELECT rowid, distance
-                        FROM vectors
-                        WHERE embedding MATCH ? AND k = ?
-                    ) v
-                    JOIN chunk_metadata m ON v.rowid = m.rowid
-                    JOIN documents d ON m.doc_hash = d.hash
-                    LEFT JOIN document_analysis da ON d.hash = da.doc_hash
-                    WHERE 1=1
-                """
+                if self._has_analysis_table:
+                    query_sql = f"""
+                        SELECT v.rowid, v.distance, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''),
+                               da.alt_title, da.doc_type, d.doc_date, da.authors
+                        FROM (
+                            SELECT rowid, distance
+                            FROM vectors
+                            WHERE embedding MATCH ? AND k = ?
+                        ) v
+                        JOIN chunk_metadata m ON v.rowid = m.rowid
+                        JOIN documents d ON m.doc_hash = d.hash
+                        LEFT JOIN document_analysis da ON d.hash = da.doc_hash
+                        WHERE 1=1
+                    """
+                else:
+                    query_sql = f"""
+                        SELECT v.rowid, v.distance, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''),
+                               NULL, NULL, d.doc_date, NULL
+                        FROM (
+                            SELECT rowid, distance
+                            FROM vectors
+                            WHERE embedding MATCH ? AND k = ?
+                        ) v
+                        JOIN chunk_metadata m ON v.rowid = m.rowid
+                        JOIN documents d ON m.doc_hash = d.hash
+                        WHERE 1=1
+                    """
                 params = [query_blob, k_val]
 
                 coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
@@ -454,15 +502,29 @@ class RetrievalMixin:
             except sqlite3.OperationalError as e:
                 print(f"{YELLOW}Warning: sqlite-vec accelerated query failed ({e}), using fallback scanner.{RESET}")
 
+        if getattr(self, '_has_analysis_table', None) is None:
+            c = self.conn.cursor()
+            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='document_analysis'")
+            self._has_analysis_table = c.fetchone() is not None
+
         chunk_col = "NULL AS chunk_text" if defer_text else "m.chunk_text"
-        query_sql = f"""
-            SELECT v.embedding, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''), v.rowid,
-                   da.alt_title, da.doc_type, d.doc_date, da.authors
-            FROM vectors v
-            JOIN chunk_metadata m ON v.rowid = m.rowid
-            JOIN documents d ON m.doc_hash = d.hash
-            LEFT JOIN document_analysis da ON d.hash = da.doc_hash
-        """
+        if self._has_analysis_table:
+            query_sql = f"""
+                SELECT v.embedding, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''), v.rowid,
+                       da.alt_title, da.doc_type, d.doc_date, da.authors
+                FROM vectors v
+                JOIN chunk_metadata m ON v.rowid = m.rowid
+                JOIN documents d ON m.doc_hash = d.hash
+                LEFT JOIN document_analysis da ON d.hash = da.doc_hash
+            """
+        else:
+            query_sql = f"""
+                SELECT v.embedding, {chunk_col}, d.path, d.title, d.collection, m.seq_id, COALESCE(m.headers, ''), v.rowid,
+                       NULL, NULL, d.doc_date, NULL
+                FROM vectors v
+                JOIN chunk_metadata m ON v.rowid = m.rowid
+                JOIN documents d ON m.doc_hash = d.hash
+            """
         where_clauses = []
         params = []
         coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)

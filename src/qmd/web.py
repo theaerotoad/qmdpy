@@ -593,20 +593,29 @@ def get_document():
     target_stores = store._get_target_stores_for_collection(collection)
     for target_store in target_stores:
         cursor = target_store.conn.cursor()
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='document_analysis'")
+        has_analysis = cursor.fetchone() is not None
+
+        if has_analysis:
+            sql_select = "c.body, d.title, d.collection, da.alt_title, da.doc_type, d.doc_date, da.authors"
+            sql_join = "JOIN content c ON d.hash = c.hash LEFT JOIN document_analysis da ON d.hash = da.doc_hash"
+        else:
+            sql_select = "c.body, d.title, d.collection, NULL, NULL, d.doc_date, NULL"
+            sql_join = "JOIN content c ON d.hash = c.hash"
+
         if collection:
-            cursor.execute('''
-                SELECT c.body, d.title, d.collection, da.alt_title, da.doc_type, d.doc_date, da.authors
+            cursor.execute(f'''
+                SELECT {sql_select}
                 FROM documents d
-                JOIN content c ON d.hash = c.hash
-                LEFT JOIN document_analysis da ON d.hash = da.doc_hash
+                {sql_join}
                 WHERE (d.collection = ? OR d.collection LIKE ?) AND (d.path = ? OR d.path LIKE ?)
             ''', (collection, f"%{collection}%", path, f"%{path}%"))
         else:
-            cursor.execute('''
-                SELECT c.body, d.title, d.collection, da.alt_title, da.doc_type, d.doc_date, da.authors
+            cursor.execute(f'''
+                SELECT {sql_select}
                 FROM documents d
-                JOIN content c ON d.hash = c.hash
-                LEFT JOIN document_analysis da ON d.hash = da.doc_hash
+                {sql_join}
                 WHERE d.path = ? OR d.path LIKE ?
             ''', (path, f"%{path}%"))
         row = cursor.fetchone()
