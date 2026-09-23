@@ -77,26 +77,29 @@ NOT RELEVANT
 
 
 def _get_llm_endpoint_and_model():
-    """Retrieve LLM URL and generation model name from current config."""
+    """Retrieve LLM URL, generation model name, and API key from current config."""
     try:
         from qmd.web import get_config
+        import os
         cfg = get_config()
-        base_url = getattr(cfg, "llm_url", None)
-        model = getattr(cfg, "generate_model", None)
+        base_url = getattr(cfg, "llm_url", None) or os.environ.get("QMD_LLM_URL")
+        model = getattr(cfg, "generate_model", None) or os.environ.get("GENERATE_MODEL")
+        api_key = getattr(cfg, "llm_api_key", None) or os.environ.get("QMD_LLM_API_KEY", "sk-no-key-required")
     except Exception as e:
         logger.warning(f"Could not read config for quick answer LLM: {e}")
         base_url = None
         model = None
+        api_key = "sk-no-key-required"
     if base_url:
         base_url = base_url.rstrip("/")
-    return base_url, model
+    return base_url, model, api_key
 
 
 def generate_quick_answer_stream(
     query: str, xml_context: str, session_id: str, handle: ActiveStreamHandle
 ) -> Generator[str, None, None]:
     """Streams LLM tokens for quick answer as Server-Sent Events (SSE)."""
-    base_url, model = _get_llm_endpoint_and_model()
+    base_url, model, api_key = _get_llm_endpoint_and_model()
     
     if not base_url or not model:
         yield f"data: {json.dumps({'error': 'LLM URL or generation model not configured.'})}\n\n"
@@ -127,7 +130,10 @@ def generate_quick_answer_stream(
         },
     }
 
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
 
     try:
         if handle.cancel_event.is_set():
