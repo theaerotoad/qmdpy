@@ -750,3 +750,58 @@ def test_quick_update(db_conn, temp_db_path, tmp_path, mock_llm_client):
     file1.write_text("Quick test content modified.")
     store.index_collection("test", config.collections["test"], quick=True)
     mock_llm_client.embed_batch.assert_called_once()
+
+
+def test_indexing_context_size_fallback(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that a 400/413 error from the embedding API triggers raw chunking fallback."""
+    import httpx
+    from httpx import HTTPStatusError, Request, Response
+    
+    notes_dir = tmp_path / "fallback_notes"
+    notes_dir.mkdir()
+
+    # Small target_chunk_size so we can trigger the length threshold easily
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path),
+        target_chunk_size=300,  # safe_window will be max(250, 100) = 250
+        max_chunk_size=1000
+    )
+    store = Store(config, connection=db_conn)
+
+    # Create a document with a single large block > 250 chars
+    large_text = "A" * 600
+    file1 = notes_dir / "large_doc.md"
+    file1.write_text(large_text)
+
+    # We want embed_batch to fail the FIRST time (with 400), and succeed the SECOND time.
+    call_count = [0]
+    def custom_embed_side_effect(texts, *args, **kwargs):
+        if call_count[0] == 0:
+            call_count[0] += 1
+            req = Request("POST", "http://test")
+            resp = Response(400, request=req)
+            raise HTTPStatusError("Context exceeded", request=req, response=resp)
+        else:
+            call_count[0] += 1
+            return [[0.1] * 768 for _ in texts]
+            
+    mock_llm_client.embed_batch.side_effect = custom_embed_side_effect
+
+    # Run index
+    store.index_collection("test", config.collections["test"])
+
+    # Check that embed_batch was called twice (initial fail + fallback)
+    assert mock_llm_client.embed_batch.call_count == 2
+    
+    # Verify the database has the chunks. 
+    # A 600 char text split at window 250 with overlap 50:
+    # chunk 1: 0-250
+    # chunk 2: 200-450
+    # chunk 3: 400-600
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT count(*) FROM chunk_metadata")
+    chunk_count = cursor.fetchone()[0]
+    
+    # Should be >= 3 because the oversized chunk was split successfully.
+    assert chunk_count >= 3
