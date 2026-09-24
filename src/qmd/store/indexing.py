@@ -451,12 +451,60 @@ class IndexingMixin:
         batch_size = getattr(self.config, "embed_batch_size", 16)
         disp_name = rel_path if rel_path else title
         desc_str = f"  Chunking {disp_name[:25]}" if len(disp_name) > 25 else f"  Chunking {disp_name}"
-        embeddings = self.llm.embed_batch(
-            embedding_texts,
-            batch_size=batch_size,
-            show_progress=True,
-            desc=desc_str
-        )
+        
+        import httpx
+        try:
+            embeddings = self.llm.embed_batch(
+                embedding_texts,
+                batch_size=batch_size,
+                show_progress=True,
+                desc=desc_str
+            )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (400, 413):
+                tqdm.write(f"{YELLOW}Warning: Context size exceeded for '{disp_name}'. Applying raw chunking fallback...{RESET}")
+                from qmd.utils import chunk_text
+                import copy
+                
+                fallback_chunks = []
+                safe_window = max(250, self.config.target_chunk_size // 3)
+                for chunk in chunks:
+                    if len(chunk.content) > safe_window:
+                        raw_pieces = chunk_text(chunk.content, window_size=safe_window, overlap=50)
+                        for rp in raw_pieces:
+                            new_chunk = copy.copy(chunk)
+                            new_chunk.content = rp
+                            fallback_chunks.append(new_chunk)
+                    else:
+                        fallback_chunks.append(chunk)
+                
+                embedding_texts = []
+                final_chunk_texts = []
+                chunk_headers = []
+                for chunk in fallback_chunks:
+                    clean_parents = [re.sub(r'^\s*#+\s*', '', h).strip() for h in chunk.parent_headers.values() if h and h.strip()]
+                    context_str = " > ".join(clean_parents)
+
+                    if context_str:
+                        text_to_embed = f"Context: {context_str}\n\n{chunk.content}"
+                    else:
+                        text_to_embed = chunk.content
+
+                    formatted = self.llm.format_doc_for_embedding(title, text_to_embed)
+
+                    embedding_texts.append(formatted)
+                    final_chunk_texts.append(chunk.content)
+                    chunk_headers.append(context_str)
+                
+                embeddings = self.llm.embed_batch(
+                    embedding_texts,
+                    batch_size=batch_size,
+                    show_progress=True,
+                    desc=desc_str + " (Fallback)"
+                )
+            else:
+                raise
+
         if not embeddings:
             return
 
