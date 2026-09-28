@@ -67,7 +67,11 @@ SUPPORTED_EXTENSIONS = {
 
 
 def is_supported_file(file_path: Union[str, Path]) -> bool:
-    ext = Path(file_path).suffix.lower()
+    path_obj = Path(file_path)
+    # Skip MS Office temporary lock files
+    if path_obj.name.startswith("~$"):
+        return False
+    ext = path_obj.suffix.lower()
     return ext in SUPPORTED_EXTENSIONS
 
 
@@ -202,7 +206,11 @@ def _convert_docx(path: Path, config=None, errors_out: Optional[List[dict]] = No
     except ImportError:
         raise ImportError("python-docx is required for converting .docx files. Install with `pip install python-docx`.")
 
-    doc = docx.Document(str(path))
+    try:
+        doc = docx.Document(str(path))
+    except Exception as e:
+        raise ValueError(f"Failed to open DOCX file '{path.name}' (it may be corrupt, zero bytes, or a temporary lock file): {e}")
+
     md_lines: List[str] = []
 
     for elem in doc.element.body:
@@ -270,7 +278,11 @@ def _convert_pptx(path: Path, config=None, errors_out: Optional[List[dict]] = No
     except ImportError:
         raise ImportError("python-pptx is required for converting .pptx files. Install with `pip install python-pptx`.")
 
-    prs = Presentation(str(path))
+    try:
+        prs = Presentation(str(path))
+    except Exception as e:
+        raise ValueError(f"Failed to open PPTX file '{path.name}' (it may be corrupt, zero bytes, or a temporary lock file): {e}")
+
     md_lines: List[str] = []
 
     for i, slide in enumerate(prs.slides, 1):
@@ -348,7 +360,11 @@ def _convert_xlsx(path: Path, config=None, errors_out: Optional[List[dict]] = No
     except ImportError:
         raise ImportError("openpyxl is required for converting .xlsx files. Install with `pip install openpyxl`.")
 
-    wb = openpyxl.load_workbook(str(path), data_only=True, read_only=True)
+    try:
+        wb = openpyxl.load_workbook(str(path), data_only=True, read_only=True)
+    except Exception as e:
+        raise ValueError(f"Failed to open XLSX file '{path.name}' (it may be corrupt, zero bytes, or a temporary lock file): {e}")
+
     md_lines: List[str] = []
 
     for sheet_name in wb.sheetnames:
