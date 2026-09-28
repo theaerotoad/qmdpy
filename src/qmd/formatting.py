@@ -2,6 +2,8 @@ import sys
 import re
 import html
 import json
+import csv
+import io
 from typing import List, Dict, Optional, Tuple, Any, Union
 
 PLAIN_MODE = False
@@ -1017,27 +1019,88 @@ def format_chunks_cli(results: List, window: int = 0, truncation_info: Optional[
             print(f"{YELLOW}[... Truncated {omitted} remaining chunk(s) to protect context. Next page: {resume_cmd} ...]{RESET}\n")
 
 def format_report_cli(results: List[Dict[str, Any]]):
-    """Prints document analysis reports."""
+    """Prints document analysis reports (handles both nested 'analysis' format and flattened custom reports)."""
     if not results:
         print(f"{YELLOW}No analysis reports found for the specified documents.{RESET}")
         return
 
     print(f"\n{CYAN}--- Document Analysis Reports ---{RESET}")
     for res in results:
-        print(f"\n{GREEN}File: {res['path']}{RESET} (Collection: {res.get('collection', 'None')})")
-        analysis = res.get('analysis', {})
-        if analysis.get('altTitle'): print(f"  {BOLD}Alt Title:{RESET} {analysis['altTitle']}")
-        if analysis.get('doc_type'): print(f"  {BOLD}Type:{RESET} {analysis['doc_type']}")
-        if analysis.get('summary'): print(f"  {BOLD}Summary:{RESET} {analysis['summary']}")
-        if analysis.get('authors'): print(f"  {BOLD}Authors:{RESET} {', '.join(analysis['authors'])}")
-        if analysis.get('tags'): print(f"  {BOLD}Tags:{RESET} {', '.join(analysis['tags'])}")
-        if analysis.get('dates'): print(f"  {BOLD}Dates:{RESET} {', '.join(analysis['dates'])}")
-        questions = analysis.get('questions', [])
-        if questions:
-            print(f"  {BOLD}Questions:{RESET}")
-            for q in questions:
-                print(f"    - {q}")
+        path_str = res.get('path', 'Unknown')
+        coll_str = res.get('collection', 'None')
+        print(f"\n{GREEN}File: {path_str}{RESET} (Collection: {coll_str})")
+        
+        # Support backward compatibility with nested 'analysis' objects or flattened dynamic fields
+        data = res.get('analysis', res)
+        
+        for k, v in data.items():
+            if k in ('path', 'collection', 'hash', 'analysis'):
+                continue
+            
+            if isinstance(v, list) and v:
+                print(f"  {BOLD}{k.title()}:{RESET}")
+                for item in v:
+                    # Truncate long list items slightly so CLI isn't destroyed
+                    snippet = str(item).replace("\n", " ").strip()
+                    if len(snippet) > 120: snippet = snippet[:117] + "..."
+                    print(f"    - {snippet}")
+            elif v and isinstance(v, str):
+                # Handle multi-line strings gracefully
+                if "\n" in v:
+                    print(f"  {BOLD}{k.title()}:{RESET}")
+                    for line in v.split("\n"):
+                        print(f"    {line.strip()}")
+                else:
+                    print(f"  {BOLD}{k.title()}:{RESET} {v}")
+            elif v:
+                print(f"  {BOLD}{k.title()}:{RESET} {v}")
+                
     print(f"\n{CYAN}---------------------------------{RESET}")
+
+def format_report_csv(results: List[Dict[str, Any]], print_output: bool = True) -> str:
+    """Outputs flattened reports to standard CSV, flattening lists with semicolons."""
+    if not results:
+        return ""
+    
+    flat_results = []
+    all_keys = set()
+    
+    for res in results:
+        flat = {}
+        # Merge core fields and analysis subset
+        for k, v in res.items():
+            if k == "analysis" and isinstance(v, dict):
+                for ak, av in v.items():
+                    if isinstance(av, list):
+                        flat[ak] = "; ".join(str(i) for i in av)
+                    else:
+                        flat[ak] = str(av)
+                continue
+            
+            if isinstance(v, list):
+                flat[k] = "; ".join(str(i) for i in v)
+            else:
+                flat[k] = str(v) if v is not None else ""
+        
+        flat_results.append(flat)
+        all_keys.update(flat.keys())
+    
+    headers = sorted(list(all_keys))
+    # Prioritize standard identifier columns
+    for priority_col in reversed(["collection", "path", "title", "hash"]):
+        if priority_col in headers:
+            headers.insert(0, headers.pop(headers.index(priority_col)))
+            
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=headers)
+    writer.writeheader()
+    for r in flat_results:
+        writer.writerow(r)
+        
+    csv_str = output.getvalue()
+    if print_output:
+        print(csv_str, end="")
+    return csv_str
 
 def format_report_json(results: List[Dict[str, Any]]):
     """Outputs document analysis reports as JSON."""
@@ -1060,21 +1123,24 @@ def format_report_xml(results: List[Dict[str, Any]], print_output: bool = True) 
         path_attr = f' path="{escape_xml_attr(path)}"' if path else ""
         lines.append(f'  <report uri="{escape_xml_attr(uri)}"{coll_attr}{path_attr}>')
         
-        analysis = res.get('analysis', {})
-        if analysis.get('altTitle'): lines.append(f'    <alt_title>{escape_xml_text(analysis["altTitle"])}</alt_title>')
-        if analysis.get('doc_type'): lines.append(f'    <doc_type>{escape_xml_text(analysis["doc_type"])}</doc_type>')
-        if analysis.get('summary'): lines.append(f'    <summary>{escape_xml_text(analysis["summary"])}</summary>')
-        if analysis.get('authors'): lines.append(f'    <authors>{escape_xml_text(", ".join(analysis["authors"]))}</authors>')
-        if analysis.get('tags'): lines.append(f'    <tags>{escape_xml_text(", ".join(analysis["tags"]))}</tags>')
-        if analysis.get('dates'): lines.append(f'    <dates>{escape_xml_text(", ".join(analysis["dates"]))}</dates>')
+        # Support backward compatibility with nested 'analysis' objects or flattened dynamic fields
+        data = res.get('analysis', res)
         
-        questions = analysis.get('questions', [])
-        if questions:
-            lines.append('    <questions>')
-            for q in questions:
-                lines.append(f'      <question>{escape_xml_text(q)}</question>')
-            lines.append('    </questions>')
+        for k, v in data.items():
+            if k in ('path', 'collection', 'hash', 'analysis'):
+                continue
+                
+            # Replace spaces with underscores for valid XML tags
+            safe_tag = k.replace(" ", "_").lower()
             
+            if isinstance(v, list) and v:
+                lines.append(f'    <{safe_tag}>')
+                for item in v:
+                    lines.append(f'      <item>{escape_xml_text(str(item))}</item>')
+                lines.append(f'    </{safe_tag}>')
+            elif v:
+                lines.append(f'    <{safe_tag}>{escape_xml_text(str(v))}</{safe_tag}>')
+                
         lines.append('  </report>')
         
     lines.append('</analysis_reports>')

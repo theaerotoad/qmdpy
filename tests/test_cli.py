@@ -530,29 +530,44 @@ def test_guide_command(monkeypatch, capsys):
 
 def test_cli_report_command(monkeypatch, capsys):
     """Test qmd report CLI command routing and output."""
-    monkeypatch.setattr(sys, "argv", ["qmd", "report", "-c", "Docs", "-p", "test.md", "--limit", "10", "--xml"])
+    monkeypatch.setattr(sys, "argv", ["qmd", "report", "-c", "Docs", "-p", "test.md", "--limit", "10", "--fields", "type,dates-", "--csv"])
     with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
         mock_store = MockStore.return_value
-        mock_store.get_analysis_report.return_value = [{
+        mock_store.build_custom_report.return_value = [{
             "collection": "Docs",
             "path": "test.md",
-            "hash": "hash123",
-            "analysis": {
-                "summary": "This is a test summary",
-                "doc_type": "markdown",
-                "questions": ["What is a test?"]
-            }
+            "type": "markdown",
+            "dates": ["2026-09-11"]
         }]
         main()
         out = capsys.readouterr().out
-        assert "<analysis_reports>" in out
-        assert "This is a test summary" in out
-        assert "markdown" in out
-        assert "<question>What is a test?</question>" in out
+        assert "collection,path,dates,type" in out
+        assert "Docs,test.md,2026-09-11,markdown" in out
 
         # Check kwargs routing
-        mock_store.get_analysis_report.assert_called_once()
-        kwargs = mock_store.get_analysis_report.call_args.kwargs
-        assert kwargs["collection"] == "Docs"
-        assert kwargs["path"] == "test.md"
+        mock_store.build_custom_report.assert_called_once()
+        kwargs = mock_store.build_custom_report.call_args.kwargs
         assert kwargs["limit"] == 10
+        assert kwargs["report_cfg"]["target"]["collection"] == "Docs"
+        assert kwargs["report_cfg"]["target"]["path"] == "test.md"
+        assert kwargs["report_cfg"]["fields"] == ["type", "dates"]
+        assert kwargs["report_cfg"]["sort"] == [{"field": "dates", "order": "desc"}]
+
+def test_cli_report_yaml(monkeypatch, capsys, tmp_path):
+    """Test qmd report loading from YAML configuration."""
+    cfg_path = tmp_path / "report.yml"
+    cfg_path.write_text("fields:\n  - altTitle\n  - authors\nsort:\n  - field: altTitle\n    order: asc")
+    monkeypatch.setattr(sys, "argv", ["qmd", "report", "-y", str(cfg_path), "--xml"])
+    
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.build_custom_report.return_value = [{
+            "collection": "Docs",
+            "path": "test.md",
+            "altTitle": "Test Doc",
+            "authors": ["John Doe"]
+        }]
+        main()
+        out = capsys.readouterr().out
+        assert "<alttitle>Test Doc</alttitle>" in out
+        assert "<item>John Doe</item>" in out

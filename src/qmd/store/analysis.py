@@ -1,7 +1,7 @@
 import time
 import json
 from datetime import datetime
-from typing import List, Optional, Union, Dict, Any
+from typing import List, Optional, Union, Dict, Any, Tuple
 
 from tqdm import tqdm
 
@@ -83,10 +83,100 @@ class AnalysisMixin:
                 "path": doc_path,
                 "collection": doc_coll,
                 "hash": doc_hash,
-                "analysis": analysis_res
+                "title": doc_title,
+                **analysis_res
             })
 
         return results
+
+    def build_custom_report(self, report_cfg: Dict[str, Any], limit: int = 100) -> List[Dict[str, Any]]:
+        """Builds a highly customizable dataset based on YAML or CLI defined fields and scoped searches."""
+        target_cfg = report_cfg.get("target", {})
+        req_fields = report_cfg.get("fields", [])
+        dynamic_queries = report_cfg.get("dynamic_queries", [])
+        sort_rules = report_cfg.get("sort", [])
+
+        # 1. Extract base documents, joining document_analysis
+        base_results = self.get_analysis_report(
+            collection=target_cfg.get("collection"),
+            path=target_cfg.get("path"),
+            title=target_cfg.get("title"),
+            limit=10000  # Pull wide pool first before memory-sort and limit
+        )
+
+        cursor = self.conn.cursor()
+
+        # 2. Process dynamic fields and queries per document
+        enriched_results = []
+        for doc in base_results:
+            # Augment with explicit DB fields (like chunk_count) if needed
+            if "chunk_count" in req_fields or any(s.get("field") == "chunk_count" for s in sort_rules):
+                cursor.execute("SELECT count(*) FROM chunk_metadata WHERE doc_hash = ?", (doc["hash"],))
+                doc["chunk_count"] = cursor.fetchone()[0]
+
+            # Execute Dynamic Scoped Queries
+            for dq in dynamic_queries:
+                q_id = dq.get("id")
+                if not q_id or dq.get("type") != "search_snippets":
+                    continue
+                
+                q_limit = dq.get("limit", 3)
+                snippets = self.hybrid_search(
+                    query=dq.get("query", ""),
+                    collection=doc["collection"],
+                    path=doc["path"],
+                    limit=q_limit,
+                    verbose=False
+                )
+                
+                fmt = dq.get("format", "list")
+                if fmt == "bulleted":
+                    doc[q_id] = "\n".join([f"- {s.text.strip()}" for s in snippets])
+                else:
+                    doc[q_id] = [s.text.strip() for s in snippets]
+
+            enriched_results.append(doc)
+
+        # 3. Apply Multi-key Sorting
+        if sort_rules:
+            def sort_key(item: Dict) -> Tuple:
+                keys = []
+                for rule in sort_rules:
+                    val = item.get(rule["field"])
+                    # Convert lists to strings for comparison safety
+                    if isinstance(val, list):
+                        val = str(val)
+                    # Handle missing numeric/string sorting natively
+                    if val is None:
+                        keys.append("")
+                    else:
+                        keys.append(val)
+                return tuple(keys)
+            
+            # Python sorting is stable, so we apply reverse sorts sequentially
+            # from least important to most important (backwards through the sort rules list)
+            for rule in reversed(sort_rules):
+                is_reverse = str(rule.get("order", "asc")).lower() in ("desc", "descending", "-", "reverse")
+                enriched_results.sort(
+                    key=lambda x: str(x.get(rule["field"], "")) if isinstance(x.get(rule["field"]), list) else (x.get(rule["field"]) or ""), 
+                    reverse=is_reverse
+                )
+
+        # 4. Apply Final Limit
+        enriched_results = enriched_results[:limit]
+
+        # 5. Filter Dictionary Keys (Field Selection)
+        if req_fields:
+            final_results = []
+            for doc in enriched_results:
+                final_doc = {}
+                for f in req_fields:
+                    if f in doc:
+                        final_doc[f] = doc[f]
+                final_results.append(final_doc)
+            return final_results
+
+        return enriched_results
 
     def get_random_analysis_questions(self, limit: int = 3) -> List[Dict[str, str]]:
         """Fetches random questions generated from document analysis to display as suggestions."""

@@ -16,7 +16,7 @@ from qmd.formatting import (
     format_discover_cli, format_discover_json, format_discover_xml,
     format_outline_cli, format_chunks_cli, format_results_xml, format_doc_results_xml,
     format_chunks_xml, format_outline_xml, format_collection_tree_cli, format_collection_tree_xml,
-    format_map_cli, format_map_xml, format_report_cli, format_report_json, format_report_xml,
+    format_map_cli, format_map_xml, format_report_cli, format_report_json, format_report_xml, format_report_csv,
     set_plain_mode, strip_ansi, BOLD, CYAN, GREEN, RED, RESET, YELLOW
 )
 from qmd.utils import redact_pii, parse_target_spec, parse_int_ranges
@@ -901,20 +901,57 @@ def handle_report(args, store: Store):
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
 
-    limit = getattr(args, "limit", 100)
-    collection = getattr(args, "collection", None)
-    path = getattr(args, "path", None)
-    title = getattr(args, "title", None)
+    # 1. Build Configuration Map from YAML or CLI arguments
+    report_cfg = {}
+    if getattr(args, "yaml", None):
+        import yaml
+        try:
+            with open(args.yaml, 'r', encoding='utf-8') as f:
+                report_cfg = yaml.safe_load(f)
+        except Exception as e:
+            print(f"{RED}Error loading YAML file: {e}{RESET}")
+            sys.exit(1)
+    else:
+        fields = []
+        sort_rules = []
+        if getattr(args, "fields", None):
+            raw_fields = [f.strip() for f in args.fields.split(',') if f.strip()]
+            for rf in raw_fields:
+                if rf.endswith('+'):
+                    sort_rules.append({"field": rf[:-1], "order": "asc"})
+                    fields.append(rf[:-1])
+                elif rf.endswith('-'):
+                    sort_rules.append({"field": rf[:-1], "order": "desc"})
+                    fields.append(rf[:-1])
+                else:
+                    fields.append(rf)
+        if fields:
+            report_cfg["fields"] = fields
+        if sort_rules:
+            report_cfg["sort"] = sort_rules
 
-    results = store.get_analysis_report(
-        collection=collection,
-        path=path,
-        title=title,
-        limit=limit
-    )
+    # Merge CLI limits and targets into config so YAML can be overridden or augmented by CLI
+    if "target" not in report_cfg:
+        report_cfg["target"] = {}
+    
+    collection = getattr(args, "collection", None)
+    if collection: report_cfg["target"]["collection"] = collection
+    
+    path = getattr(args, "path", None)
+    if path: report_cfg["target"]["path"] = path
+    
+    title = getattr(args, "title", None)
+    if title: report_cfg["target"]["title"] = title
+
+    limit = getattr(args, "limit", 100)
+
+    # Execute custom report compilation
+    results = store.build_custom_report(report_cfg=report_cfg, limit=limit)
 
     if getattr(args, "json", False):
         format_report_json(results)
+    elif getattr(args, "csv", False):
+        format_report_csv(results)
     elif is_xml:
         format_report_xml(results)
     else:
@@ -1190,6 +1227,9 @@ def build_parser():
     report_parser.add_argument("-p", "--path", type=str, help="Filter documents by path (substring match)")
     report_parser.add_argument("-t", "--title", type=str, help="Filter documents by title (substring match)")
     report_parser.add_argument("--limit", type=int, default=100, help="Maximum number of reports to display")
+    report_parser.add_argument("--fields", type=str, help="Comma-separated fields to display (e.g. 'dates+,altTitle,type-')")
+    report_parser.add_argument("-y", "--yaml", type=str, help="Path to a YAML report configuration file")
+    report_parser.add_argument("--csv", action="store_true", help="Output results as CSV")
     report_parser.add_argument("--json", action="store_true", help="Output results as JSON")
     report_parser.add_argument("--xml", action="store_true", help="Output results as XML for LLM context")
     report_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
