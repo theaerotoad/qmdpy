@@ -527,3 +527,32 @@ def test_guide_command(monkeypatch, capsys):
         # Batch guidance XML drops --deep and session logic
         assert "--deep" not in out
         assert "--session" not in out
+
+def test_cli_report_command(monkeypatch, capsys):
+    """Test qmd report CLI command routing and output."""
+    monkeypatch.setattr(sys, "argv", ["qmd", "report", "-c", "Docs", "-p", "test.md", "--limit", "10", "--xml"])
+    with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"):
+        mock_store = MockStore.return_value
+        mock_store.get_analysis_report.return_value = [{
+            "collection": "Docs",
+            "path": "test.md",
+            "hash": "hash123",
+            "analysis": {
+                "summary": "This is a test summary",
+                "doc_type": "markdown",
+                "questions": ["What is a test?"]
+            }
+        }]
+        main()
+        out = capsys.readouterr().out
+        assert "<analysis_reports>" in out
+        assert "This is a test summary" in out
+        assert "markdown" in out
+        assert "<question>What is a test?</question>" in out
+
+        # Check kwargs routing
+        mock_store.get_analysis_report.assert_called_once()
+        kwargs = mock_store.get_analysis_report.call_args.kwargs
+        assert kwargs["collection"] == "Docs"
+        assert kwargs["path"] == "test.md"
+        assert kwargs["limit"] == 10
