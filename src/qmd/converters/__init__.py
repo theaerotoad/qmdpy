@@ -246,10 +246,18 @@ def _convert_docx(path: Path, config=None, errors_out: Optional[List[dict]] = No
 
         elif tag == 'tbl':
             tbl = docx.table.Table(elem, doc)
-            table_md = _format_matrix_to_md_table([
-                [cell.text.strip().replace('\n', ' ') for cell in row.cells]
-                for row in tbl.rows
-            ])
+            table_matrix = []
+            for row in tbl.rows:
+                row_cells = []
+                for cell in row.cells:
+                    # Avoid python-docx's `cell.text` as it fails to properly add newlines 
+                    # for embedded block elements (like text boxes) and blindly concatenates all text.
+                    cell_text = _extract_text_and_math(cell._tc).strip()
+                    cell_text = _condense_repeating_lines(cell_text, threshold=5, max_block_size=50)
+                    row_cells.append(cell_text.replace('\n', '<br>'))
+                table_matrix.append(row_cells)
+                
+            table_md = _format_matrix_to_md_table(table_matrix)
             if table_md:
                 md_lines.append(table_md + "\n")
 
