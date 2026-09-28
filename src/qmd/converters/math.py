@@ -159,6 +159,7 @@ def _extract_text_and_math(node) -> str:
     MML_NS = "http://www.w3.org/1998/Math/MathML"
     WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
     DRAWING_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
     
     if not hasattr(node, "tag"):
         return ""
@@ -174,9 +175,21 @@ def _extract_text_and_math(node) -> str:
         elif tag == f"{{{MML_NS}}}math":
             tex = _mathml_to_latex(node)
             return f"${tex}$"
+        elif tag == f"{{{MC_NS}}}AlternateContent":
+            # Prevent massive duplication from Choice + Fallback blocks (e.g. text boxes)
+            choice = node.find(f"{{{MC_NS}}}Choice")
+            if choice is not None:
+                return _extract_text_and_math(choice)
+            fallback = node.find(f"{{{MC_NS}}}Fallback")
+            if fallback is not None:
+                return _extract_text_and_math(fallback)
+            return ""
+        elif tag in (f"{{{WORD_NS}}}del", f"{{{WORD_NS}}}moveFrom"):
+            # Skip track-changes deleted/moved-away text entirely
+            return ""
         
-        # Explicit text nodes: Word, Word-Delete, Math, PPTX
-        elif tag in (f"{{{WORD_NS}}}t", f"{{{WORD_NS}}}delText", f"{{{MATH_NS}}}t", f"{{{DRAWING_NS}}}t"):
+        # Explicit text nodes: Word, Math, PPTX
+        elif tag in (f"{{{WORD_NS}}}t", f"{{{MATH_NS}}}t", f"{{{DRAWING_NS}}}t"):
             return node.text or ""
         # Handle whitespace explicitly
         elif tag == f"{{{WORD_NS}}}tab":
