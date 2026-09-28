@@ -589,6 +589,48 @@ def guess_document_date(file_path: Union[str, Path], markdown_body: str = "") ->
     return None
 
 
+def _condense_repeating_lines(text: str, threshold: int = 5, max_block_size: int = 50) -> str:
+    """Detects and condenses highly repetitive lines or blocks of lines (e.g. pathological pasting)."""
+    lines = text.splitlines()
+    if not lines:
+        return text
+
+    result = []
+    i = 0
+    n = len(lines)
+    
+    while i < n:
+        best_k = 0
+        best_repeats = 0
+        
+        # Check block sizes up to max_block_size
+        for k in range(1, min(max_block_size + 1, (n - i) // 2 + 1)):
+            if lines[i] == lines[i+k]:  # Fast short-circuit
+                if lines[i:i+k] == lines[i+k:i+2*k]:
+                    repeats = 2
+                    while i + (repeats * k) + k <= n and lines[i:i+k] == lines[i + (repeats*k) : i + (repeats*k) + k]:
+                        repeats += 1
+                    
+                    if repeats > best_repeats and repeats >= threshold:
+                        # Verify the block is not purely whitespace
+                        if any(line.strip() for line in lines[i:i+k]):
+                            best_k = k
+                            best_repeats = repeats
+        
+        if best_k > 0:
+            for j in range(best_k):
+                result.append(lines[i+j])
+            result.append("")
+            result.append(f"> *[... Content block repeated {best_repeats - 1} more times skipped ...]*")
+            result.append("")
+            i += best_k * best_repeats
+        else:
+            result.append(lines[i])
+            i += 1
+            
+    return "\n".join(result)
+
+
 def convert_to_markdown(file_path: Union[str, Path], config=None, errors_out: Optional[List[dict]] = None) -> str:
     """
     Converts a supported document or text file to Markdown.
@@ -620,6 +662,9 @@ def convert_to_markdown(file_path: Union[str, Path], config=None, errors_out: Op
         raw_md = _get_fn("_convert_mobi", _convert_mobi)(path)
     else:
         raw_md = _get_fn("_convert_text", _convert_text)(path)
+
+    # Condense highly repetitive text (e.g. pathological 400x pasted text box bug)
+    raw_md = _condense_repeating_lines(raw_md, threshold=5, max_block_size=50)
 
     sanitized = _sanitize_text(raw_md)
     
@@ -749,6 +794,7 @@ __all__ = [
     "_get_dplib",
     "_sanitize_text",
     "_format_matrix_to_md_table",
+    "_condense_repeating_lines",
     "_convert_text",
     "_convert_pdf",
     "_convert_docx",

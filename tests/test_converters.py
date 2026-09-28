@@ -21,6 +21,40 @@ def test_supported_extensions():
     assert is_supported_file("book.epub")
     assert is_supported_file("book.mobi")
 
+def test_condense_repeating_lines():
+    from qmd.converters import _condense_repeating_lines
+    
+    # Test 1: Single line repeating
+    text = "Hello\n" * 10
+    condensed = _condense_repeating_lines(text, threshold=5)
+    assert "Hello" in condensed
+    assert "repeated 9 more times" in condensed
+    assert len(condensed.splitlines()) < 10
+
+    # Test 2: Multi-line block repeating
+    block = "Line 1\nLine 2\n\n"
+    text = block * 6
+    condensed = _condense_repeating_lines(text, threshold=5)
+    assert "Line 1" in condensed
+    assert "Line 2" in condensed
+    assert "repeated 5 more times" in condensed
+
+    # Test 3: Below threshold, no change
+    text = "Hello\n" * 4
+    condensed = _condense_repeating_lines(text, threshold=5)
+    assert condensed.strip() == "Hello\nHello\nHello\nHello"
+
+    # Test 4: Does not mess up normal things
+    text = "Line 1\nLine 2\nLine 3\nLine 1\nLine 4\n"
+    condensed = _condense_repeating_lines(text, threshold=5)
+    assert condensed.strip() == text.strip()
+
+    # Test 5: Ignores blank lines repetition
+    text = "A\n\n\n\n\n\n\n\nB"
+    condensed = _condense_repeating_lines(text, threshold=5)
+    # Should not condense purely empty blocks
+    assert "repeated" not in condensed
+
 def test_format_matrix_to_md_table():
     matrix = [
         ["Header 1", "Header 2"],
