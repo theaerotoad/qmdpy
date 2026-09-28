@@ -1,0 +1,33 @@
+name: "Sample Report Format"
+description: "Extracts a listing of files across a specified corpus, with metadata as requested"
+
+# 1. Target Scope
+target:
+  collection: "Papers"
+  path: "2021"
+
+# 2. Sorting Rules
+sort:
+  - field: "dates"
+    order: "asc"
+  - field: "altTitle"
+    order: "asc"
+
+# 3. Base Fields (Standard DB / Analysis columns)
+fields:
+  - collection
+  - path
+  - dates
+  - altTitle
+  - authors
+  - summary
+  - little_known_fact
+  - last_indexed
+
+# 4. Dynamic Queries (Scoped to EACH document)
+dynamic_queries:
+  - id: "little_known_fact"
+    type: "search_snippets"
+    query: "What is a little known fact?"
+    limit: 3               # Return top 3 chunks
+    format: "bulleted"     # Combine into a single string for the CSV cell
