@@ -204,11 +204,19 @@ def _diagnose_ooxml_failure(path: Path, original_error: Exception) -> ValueError
     """Inspects the magic bytes of a failed OOXML file to give a precise error message."""
     try:
         with open(path, 'rb') as f:
-            header = f.read(8)
+            header_chunk = f.read(4096)
+            header = header_chunk[:8]
     except Exception:
         return ValueError(f"Failed to open '{path.name}' and could not read header: {original_error}")
     
     if header.startswith(b'\xd0\xcf\x11\xe0'):
+        # Check for common DRM / Encryption streams in the OLE2 container
+        if b'EncryptedPackage' in header_chunk or b'DRM' in header_chunk or b'DataSpaces' in header_chunk:
+            return ValueError(
+                f"File '{path.name}' is DRM-protected or encrypted (e.g., Microsoft Information Protection / Sensitivity Labels). "
+                "The indexer cannot decrypt this file natively. "
+                f"(Original error: {original_error})"
+            )
         return ValueError(
             f"File '{path.name}' is an OLE2 binary file, not a valid ZIP/OOXML package. "
             "This usually means it is either an older Office format (e.g., .ppt/.doc/.xls) "
