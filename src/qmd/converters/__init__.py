@@ -253,7 +253,7 @@ def _convert_docx(path: Path, config=None, errors_out: Optional[List[dict]] = No
                     # Avoid python-docx's `cell.text` as it fails to properly add newlines 
                     # for embedded block elements (like text boxes) and blindly concatenates all text.
                     cell_text = _extract_text_and_math(cell._tc).strip()
-                    cell_text = _condense_repeating_lines(cell_text, threshold=5, max_block_size=50)
+                    cell_text = _condense_repeating_lines(cell_text, threshold=5, max_block_size=200)
                     row_cells.append(cell_text.replace('\n', '<br>'))
                 table_matrix.append(row_cells)
                 
@@ -597,46 +597,63 @@ def guess_document_date(file_path: Union[str, Path], markdown_body: str = "") ->
     return None
 
 
-def _condense_repeating_lines(text: str, threshold: int = 5, max_block_size: int = 50) -> str:
+def _condense_repeating_lines(text: str, threshold: int = 5, max_block_size: int = 200) -> str:
     """Detects and condenses highly repetitive lines or blocks of lines (e.g. pathological pasting)."""
+    
+    def _pass(lines):
+        result = []
+        i = 0
+        n = len(lines)
+        changed = False
+        
+        while i < n:
+            best_k = 0
+            best_repeats = 0
+            best_covered = 0
+            
+            # Check block sizes up to max_block_size
+            for k in range(1, min(max_block_size + 1, (n - i) // 2 + 1)):
+                if lines[i] == lines[i+k]:  # Fast short-circuit
+                    if lines[i:i+k] == lines[i+k:i+2*k]:
+                        repeats = 2
+                        while i + (repeats * k) + k <= n and lines[i:i+k] == lines[i + (repeats*k) : i + (repeats*k) + k]:
+                            repeats += 1
+                        
+                        if repeats >= threshold:
+                            covered = repeats * k
+                            if covered > best_covered:
+                                # Verify the block is not purely whitespace
+                                if any(line.strip() for line in lines[i:i+k]):
+                                    best_k = k
+                                    best_repeats = repeats
+                                    best_covered = covered
+            
+            if best_k > 0:
+                for j in range(best_k):
+                    result.append(lines[i+j])
+                result.append("")
+                result.append(f"> *[... Content block repeated {best_repeats - 1} more times skipped ...]*")
+                result.append("")
+                i += best_covered
+                changed = True
+            else:
+                result.append(lines[i])
+                i += 1
+                
+        return result, changed
+
     lines = text.splitlines()
     if not lines:
         return text
 
-    result = []
-    i = 0
-    n = len(lines)
-    
-    while i < n:
-        best_k = 0
-        best_repeats = 0
-        
-        # Check block sizes up to max_block_size
-        for k in range(1, min(max_block_size + 1, (n - i) // 2 + 1)):
-            if lines[i] == lines[i+k]:  # Fast short-circuit
-                if lines[i:i+k] == lines[i+k:i+2*k]:
-                    repeats = 2
-                    while i + (repeats * k) + k <= n and lines[i:i+k] == lines[i + (repeats*k) : i + (repeats*k) + k]:
-                        repeats += 1
-                    
-                    if repeats > best_repeats and repeats >= threshold:
-                        # Verify the block is not purely whitespace
-                        if any(line.strip() for line in lines[i:i+k]):
-                            best_k = k
-                            best_repeats = repeats
-        
-        if best_k > 0:
-            for j in range(best_k):
-                result.append(lines[i+j])
-            result.append("")
-            result.append(f"> *[... Content block repeated {best_repeats - 1} more times skipped ...]*")
-            result.append("")
-            i += best_k * best_repeats
-        else:
-            result.append(lines[i])
-            i += 1
-            
-    return "\n".join(result)
+    passes = 0
+    while passes < 10:  # Multipass to catch nested repetitions (macro blocks)
+        lines, changed = _pass(lines)
+        if not changed:
+            break
+        passes += 1
+
+    return "\n".join(lines)
 
 
 def convert_to_markdown(file_path: Union[str, Path], config=None, errors_out: Optional[List[dict]] = None) -> str:
@@ -672,7 +689,7 @@ def convert_to_markdown(file_path: Union[str, Path], config=None, errors_out: Op
         raw_md = _get_fn("_convert_text", _convert_text)(path)
 
     # Condense highly repetitive text (e.g. pathological 400x pasted text box bug)
-    raw_md = _condense_repeating_lines(raw_md, threshold=5, max_block_size=50)
+    raw_md = _condense_repeating_lines(raw_md, threshold=5, max_block_size=200)
 
     sanitized = _sanitize_text(raw_md)
     

@@ -55,6 +55,18 @@ def test_condense_repeating_lines():
     # Should not condense purely empty blocks
     assert "repeated" not in condensed
 
+    # Test 6: Multipass nested repetitions (macro blocks)
+    inner = "Task A\n"
+    macro1 = inner * 11 + "Task B\n"
+    macro2 = inner * 15 + "Task B\n"
+    # macro1 appears once, macro2 appears 6 times
+    text = macro1 + macro2 * 6
+    condensed = _condense_repeating_lines(text, threshold=5, max_block_size=200)
+    
+    # We should have one inner skip for macro1, one inner skip for the remaining macro2s, 
+    # and one outer skip for the 6 repetitions of macro2.
+    assert condensed.count("skipped") == 3
+
 def test_format_matrix_to_md_table():
     matrix = [
         ["Header 1", "Header 2"],
