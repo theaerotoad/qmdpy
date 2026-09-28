@@ -200,6 +200,34 @@ def _convert_text(path: Path) -> str:
         raise ValueError(f"Could not decode text file '{path.name}': {e}")
 
 
+def _diagnose_ooxml_failure(path: Path, original_error: Exception) -> ValueError:
+    """Inspects the magic bytes of a failed OOXML file to give a precise error message."""
+    try:
+        with open(path, 'rb') as f:
+            header = f.read(8)
+    except Exception:
+        return ValueError(f"Failed to open '{path.name}' and could not read header: {original_error}")
+    
+    if header.startswith(b'\xd0\xcf\x11\xe0'):
+        return ValueError(
+            f"File '{path.name}' is an OLE2 binary file, not a valid ZIP/OOXML package. "
+            "This usually means it is either an older Office format (e.g., .ppt/.doc/.xls) "
+            "that was incorrectly renamed to end in 'x', OR it is an encrypted/password-protected document. "
+            f"(Original error: {original_error})"
+        )
+    elif header.startswith(b'%PDF'):
+        return ValueError(f"File '{path.name}' is actually a PDF file masquerading as an Office document.")
+    elif header.startswith(b'{\\rtf'):
+        return ValueError(f"File '{path.name}' is actually an RTF file masquerading as an Office document.")
+    elif header.startswith(b'PK\x03\x04'):
+        return ValueError(
+            f"Failed to open '{path.name}'. It is a ZIP file, but may be corrupted or truncated. "
+            f"(Original error: {original_error})"
+        )
+    else:
+        return ValueError(f"Failed to open '{path.name}' (unknown file signature {header!r}). (Original error: {original_error})")
+
+
 def _convert_docx(path: Path, config=None, errors_out: Optional[List[dict]] = None) -> str:
     try:
         import docx
@@ -209,7 +237,7 @@ def _convert_docx(path: Path, config=None, errors_out: Optional[List[dict]] = No
     try:
         doc = docx.Document(str(path))
     except Exception as e:
-        raise ValueError(f"Failed to open DOCX file '{path.name}' (it may be corrupt, zero bytes, or a temporary lock file): {e}")
+        raise _diagnose_ooxml_failure(path, e)
 
     md_lines: List[str] = []
 
@@ -281,7 +309,7 @@ def _convert_pptx(path: Path, config=None, errors_out: Optional[List[dict]] = No
     try:
         prs = Presentation(str(path))
     except Exception as e:
-        raise ValueError(f"Failed to open PPTX file '{path.name}' (it may be corrupt, zero bytes, or a temporary lock file): {e}")
+        raise _diagnose_ooxml_failure(path, e)
 
     md_lines: List[str] = []
 
@@ -363,7 +391,7 @@ def _convert_xlsx(path: Path, config=None, errors_out: Optional[List[dict]] = No
     try:
         wb = openpyxl.load_workbook(str(path), data_only=True, read_only=True)
     except Exception as e:
-        raise ValueError(f"Failed to open XLSX file '{path.name}' (it may be corrupt, zero bytes, or a temporary lock file): {e}")
+        raise _diagnose_ooxml_failure(path, e)
 
     md_lines: List[str] = []
 
