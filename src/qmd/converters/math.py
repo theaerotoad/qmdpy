@@ -201,4 +201,14 @@ def _extract_text_and_math(node) -> str:
     for child in node:
         res.append(_extract_text_and_math(child))
         
-    return "".join(res)
+    out = "".join(res)
+    
+    # Insert boundaries for inner block elements (e.g., inside text boxes)
+    # Top-level calls usually `.strip()` the result, so this only affects nested content.
+    if isinstance(tag, str):
+        if tag in (f"{{{WORD_NS}}}p", f"{{{DRAWING_NS}}}p", f"{{{WORD_NS}}}tr", f"{{{DRAWING_NS}}}tr"):
+            out += "\n"
+        elif tag in (f"{{{WORD_NS}}}tc", f"{{{DRAWING_NS}}}tc"):
+            out += "\t"
+            
+    return out
