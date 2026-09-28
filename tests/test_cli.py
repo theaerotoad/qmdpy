@@ -311,6 +311,7 @@ def test_helpall_flag(monkeypatch, capsys):
     assert "outline" in out
     assert "chunk" in out
     assert "update" in out
+    assert "report" in out
     assert "collection" in out
     assert "serve" in out
     assert "mcp" in out

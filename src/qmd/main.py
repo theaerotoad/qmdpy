@@ -16,7 +16,7 @@ from qmd.formatting import (
     format_discover_cli, format_discover_json, format_discover_xml,
     format_outline_cli, format_chunks_cli, format_results_xml, format_doc_results_xml,
     format_chunks_xml, format_outline_xml, format_collection_tree_cli, format_collection_tree_xml,
-    format_map_cli, format_map_xml,
+    format_map_cli, format_map_xml, format_report_cli, format_report_json, format_report_xml,
     set_plain_mode, strip_ansi, BOLD, CYAN, GREEN, RED, RESET, YELLOW
 )
 from qmd.utils import redact_pii, parse_target_spec, parse_int_ranges
@@ -896,6 +896,30 @@ def handle_update(args, store: Store):
     else:
         print(f"{GREEN}✓ All files indexed cleanly with zero errors.{RESET}")
 
+def handle_report(args, store: Store):
+    is_xml = _is_xml_output(args)
+    if getattr(args, "plain", False) or is_xml:
+        set_plain_mode(True)
+
+    limit = getattr(args, "limit", 100)
+    collection = getattr(args, "collection", None)
+    path = getattr(args, "path", None)
+    title = getattr(args, "title", None)
+
+    results = store.get_analysis_report(
+        collection=collection,
+        path=path,
+        title=title,
+        limit=limit
+    )
+
+    if getattr(args, "json", False):
+        format_report_json(results)
+    elif is_xml:
+        format_report_xml(results)
+    else:
+        format_report_cli(results)
+
 def handle_analyze(args, store: Store):
     if getattr(args, "plain", False):
         set_plain_mode(True)
@@ -904,58 +928,32 @@ def handle_analyze(args, store: Store):
     time_limit = getattr(args, "time_limit", None)
     force = getattr(args, "force", False)
     outdated = getattr(args, "outdated", False)
-    report = getattr(args, "report", False)
     verbose = getattr(args, "verbose", False)
     
     collection = getattr(args, "collection", None)
     path = getattr(args, "path", None)
     title = getattr(args, "title", None)
 
-    if report:
-        results = store.get_analysis_report(
-            collection=collection,
-            path=path,
-            title=title,
-            limit=limit
-        )
-    else:
-        results = store.analyze_target(
-            collection=collection,
-            path=path,
-            title=title,
-            limit=limit,
-            time_limit=time_limit,
-            force=force,
-            outdated=outdated,
-            verbose=verbose
-        )
+    results = store.analyze_target(
+        collection=collection,
+        path=path,
+        title=title,
+        limit=limit,
+        time_limit=time_limit,
+        force=force,
+        outdated=outdated,
+        verbose=verbose
+    )
 
     if getattr(args, "json", False):
         import json
         print(json.dumps(results, indent=2))
     else:
         if not results:
-            if getattr(args, "report", False):
-                print(f"{YELLOW}No analysis reports found for the specified documents.{RESET}")
-            else:
-                print(f"{YELLOW}No documents found to analyze or all matched documents are already analyzed.{RESET}")
+            print(f"{YELLOW}No documents found to analyze or all matched documents are already analyzed.{RESET}")
             return
         print(f"\n{CYAN}--- Document Analysis Results ---{RESET}")
-        for res in results:
-            print(f"\n{GREEN}File: {res['path']}{RESET} (Collection: {res.get('collection', 'None')})")
-            analysis = res.get('analysis', {})
-            print(f"  {BOLD}Alt Title:{RESET} {analysis.get('altTitle', '')}")
-            print(f"  {BOLD}Type:{RESET} {analysis.get('doc_type', '')}")
-            print(f"  {BOLD}Summary:{RESET} {analysis.get('summary', '')}")
-            print(f"  {BOLD}Authors:{RESET} {', '.join(analysis.get('authors', []))}")
-            print(f"  {BOLD}Tags:{RESET} {', '.join(analysis.get('tags', []))}")
-            print(f"  {BOLD}Dates:{RESET} {', '.join(analysis.get('dates', []))}")
-            questions = analysis.get('questions', [])
-            if questions:
-                print(f"  {BOLD}Questions:{RESET}")
-                for q in questions:
-                    print(f"    - {q}")
-        print(f"\n{CYAN}---------------------------------{RESET}")
+        format_report_cli(results)
 
 class HelpAllAction(argparse.Action):
     root_parser: Optional[argparse.ArgumentParser] = None
@@ -1183,10 +1181,19 @@ def build_parser():
     analyze_parser.add_argument("--time-limit", type=float, default=None, help="Maximum execution time in hours (e.g., 0.5 for 30 mins)")
     analyze_parser.add_argument("-f", "--force", action="store_true", help="Force re-analysis even if document is already analyzed")
     analyze_parser.add_argument("--outdated", action="store_true", help="Analyze missing documents AND re-analyze those processed with an older prompt version")
-    analyze_parser.add_argument("--report", action="store_true", help="Display existing analysis reports instead of generating new ones")
     analyze_parser.add_argument("--json", action="store_true", help="Output results as JSON")
     analyze_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
     analyze_parser.add_argument("-v", "--verbose", action="store_true", help="Show verbose output during analysis")
+
+    report_parser = subparsers.add_parser("report", help="Display existing document analysis reports", parents=[parent_parser])
+    report_parser.add_argument("-c", "--collection", type=str, help="Filter documents by collection name")
+    report_parser.add_argument("-p", "--path", type=str, help="Filter documents by path (substring match)")
+    report_parser.add_argument("-t", "--title", type=str, help="Filter documents by title (substring match)")
+    report_parser.add_argument("--limit", type=int, default=100, help="Maximum number of reports to display")
+    report_parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    report_parser.add_argument("--xml", action="store_true", help="Output results as XML for LLM context")
+    report_parser.add_argument("--llm", action="store_true", help="Alias for --xml")
+    report_parser.add_argument("--plain", action="store_true", help="Disable ASCII color formatting")
 
     coll_parser = subparsers.add_parser("collection", help="Manage collections", parents=[parent_parser])
     coll_sub = coll_parser.add_subparsers(dest="subcommand", required=True)
@@ -1237,6 +1244,8 @@ def execute_command(args, store):
         handle_update(args, store)
     elif args.command in ["analyze", "analysis"]:
         handle_analyze(args, store)
+    elif args.command == "report":
+        handle_report(args, store)
     elif args.command == "collection":
         if args.subcommand == "list":
             handle_collections_list(args, store)

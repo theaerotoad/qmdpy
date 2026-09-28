@@ -1016,6 +1016,72 @@ def format_chunks_cli(results: List, window: int = 0, truncation_info: Optional[
             resume_cmd = truncation_info.get("resume_cmd", "")
             print(f"{YELLOW}[... Truncated {omitted} remaining chunk(s) to protect context. Next page: {resume_cmd} ...]{RESET}\n")
 
+def format_report_cli(results: List[Dict[str, Any]]):
+    """Prints document analysis reports."""
+    if not results:
+        print(f"{YELLOW}No analysis reports found for the specified documents.{RESET}")
+        return
+
+    print(f"\n{CYAN}--- Document Analysis Reports ---{RESET}")
+    for res in results:
+        print(f"\n{GREEN}File: {res['path']}{RESET} (Collection: {res.get('collection', 'None')})")
+        analysis = res.get('analysis', {})
+        if analysis.get('altTitle'): print(f"  {BOLD}Alt Title:{RESET} {analysis['altTitle']}")
+        if analysis.get('doc_type'): print(f"  {BOLD}Type:{RESET} {analysis['doc_type']}")
+        if analysis.get('summary'): print(f"  {BOLD}Summary:{RESET} {analysis['summary']}")
+        if analysis.get('authors'): print(f"  {BOLD}Authors:{RESET} {', '.join(analysis['authors'])}")
+        if analysis.get('tags'): print(f"  {BOLD}Tags:{RESET} {', '.join(analysis['tags'])}")
+        if analysis.get('dates'): print(f"  {BOLD}Dates:{RESET} {', '.join(analysis['dates'])}")
+        questions = analysis.get('questions', [])
+        if questions:
+            print(f"  {BOLD}Questions:{RESET}")
+            for q in questions:
+                print(f"    - {q}")
+    print(f"\n{CYAN}---------------------------------{RESET}")
+
+def format_report_json(results: List[Dict[str, Any]]):
+    """Outputs document analysis reports as JSON."""
+    print(json.dumps(results, indent=2))
+
+def format_report_xml(results: List[Dict[str, Any]], print_output: bool = True) -> str:
+    """Outputs document analysis reports as XML for LLM context."""
+    if not results:
+        output = '<analysis_reports>\n</analysis_reports>'
+        if print_output: print(output)
+        return output
+
+    lines = ['<analysis_reports>']
+    for res in results:
+        coll = res.get('collection', '') or ""
+        path = res.get('path', '') or ""
+        uri = f"qmd://{coll}/{path}" if coll else path
+        
+        coll_attr = f' collection="{escape_xml_attr(coll)}"' if coll else ""
+        path_attr = f' path="{escape_xml_attr(path)}"' if path else ""
+        lines.append(f'  <report uri="{escape_xml_attr(uri)}"{coll_attr}{path_attr}>')
+        
+        analysis = res.get('analysis', {})
+        if analysis.get('altTitle'): lines.append(f'    <alt_title>{escape_xml_text(analysis["altTitle"])}</alt_title>')
+        if analysis.get('doc_type'): lines.append(f'    <doc_type>{escape_xml_text(analysis["doc_type"])}</doc_type>')
+        if analysis.get('summary'): lines.append(f'    <summary>{escape_xml_text(analysis["summary"])}</summary>')
+        if analysis.get('authors'): lines.append(f'    <authors>{escape_xml_text(", ".join(analysis["authors"]))}</authors>')
+        if analysis.get('tags'): lines.append(f'    <tags>{escape_xml_text(", ".join(analysis["tags"]))}</tags>')
+        if analysis.get('dates'): lines.append(f'    <dates>{escape_xml_text(", ".join(analysis["dates"]))}</dates>')
+        
+        questions = analysis.get('questions', [])
+        if questions:
+            lines.append('    <questions>')
+            for q in questions:
+                lines.append(f'      <question>{escape_xml_text(q)}</question>')
+            lines.append('    </questions>')
+            
+        lines.append('  </report>')
+        
+    lines.append('</analysis_reports>')
+    output = "\n".join(lines)
+    if print_output: print(output)
+    return output
+
 def format_collection_tree_cli(tree_data: Union[Dict, List[Dict]]):
     """Prints collection folder directory tree in ASCII format."""
     if not tree_data:
