@@ -291,6 +291,7 @@ def handle_discover(args, store: Store):
         "rerank_candidates": rerank_candidates,
         "exclude_seen_set": exclude_seen_set,
         "w2n": is_w2n,
+        "dirlist": directives.get("dirlist", getattr(args, "dirlist", False)),
     }
     if getattr(args, "no_cache", False):
         search_kwargs["use_cache"] = False
@@ -374,6 +375,7 @@ def handle_map(args, store: Store):
         "vec_limit": vec_limit,
         "rerank_candidates": rerank_candidates,
         "exclude_seen_set": set(),
+        "dirlist": directives.get("dirlist", getattr(args, "dirlist", False)),
     }
     if getattr(args, "no_cache", False):
         search_kwargs["use_cache"] = False
@@ -449,6 +451,7 @@ def handle_search(args, store: Store):
         "vec_limit": vec_limit,
         "rerank_candidates": rerank_candidates,
         "exclude_seen_set": exclude_seen_set,
+        "dirlist": directives.get("dirlist", getattr(args, "dirlist", False)),
     }
     if getattr(args, "no_cache", False):
         search_kwargs["use_cache"] = False
@@ -1060,6 +1063,7 @@ def build_parser():
     d_mode_group.add_argument("--fts-limit", type=int, default=None, help="Max number of FTS (lexical) matches to retrieve")
     d_mode_group.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
     d_mode_group.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")
+    d_mode_group.add_argument("--dirlist", action="store_true", help="Include dynamic directory listings in search results")
 
     d_session_group = discover_parser.add_argument_group("Session & History")
     d_session_group.add_argument("--session", type=str, help="Session ID for tracking history and deduplication")
@@ -1092,6 +1096,7 @@ def build_parser():
     m_mode_group.add_argument("--fts-limit", type=int, default=None, help="Max number of FTS (lexical) matches to retrieve")
     m_mode_group.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
     m_mode_group.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")
+    m_mode_group.add_argument("--dirlist", action="store_true", help="Include dynamic directory listings in search results")
 
     m_output_group = map_parser.add_argument_group("Output & Formatting")
     m_output_group.add_argument("--xml", action="store_true", help="Output results in XML format for LLM context")
@@ -1121,6 +1126,7 @@ def build_parser():
     mode_group.add_argument("--fts-limit", type=int, default=None, help="Max number of FTS (lexical) matches to retrieve")
     mode_group.add_argument("--vec-limit", type=int, default=None, help="Max number of Vector (semantic) matches to retrieve")
     mode_group.add_argument("--rerank-candidates", type=int, default=None, help="Number of combined RRF candidates to send to reranker")
+    mode_group.add_argument("--dirlist", action="store_true", help="Include dynamic directory listings in search results")
 
     session_group = search_parser.add_argument_group("Session & History")
     session_group.add_argument("--session", type=str, help="Session ID for tracking history and deduplication")

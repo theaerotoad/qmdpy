@@ -199,6 +199,7 @@ def discover():
         exclude_seen = directives.get('exclude_seen') if directives.get('exclude_seen') is not None else data.get('exclude_seen', False)
         rerank = directives.get('rerank') if directives.get('rerank') is not None else data.get('rerank', False)
         w2n = directives.get('w2n') if directives.get('w2n') is not None else data.get('w2n', False)
+        is_dirlist = directives.get('dirlist') if directives.get('dirlist') is not None else data.get('dirlist', False)
         should_redact = directives.get('redact_pii') if directives.get('redact_pii') is not None else (data.get('redact_pii', False) or data.get('redact', False))
 
         collection = directives.get('collection') or data.get('collection') or None
@@ -228,7 +229,8 @@ def discover():
             title=title,
             path=paths_input if paths_input else None,
             exclude_seen_set=exclude_seen_set,
-            w2n=w2n
+            w2n=w2n,
+            dirlist=is_dirlist
         )
 
         if should_redact:
@@ -321,6 +323,7 @@ def search():
 
         exclude_seen = directives.get('exclude_seen') if directives.get('exclude_seen') is not None else data.get('exclude_seen', False)
         rerank = directives.get('rerank') if directives.get('rerank') is not None else data.get('rerank', False)
+        is_dirlist = directives.get('dirlist') if directives.get('dirlist') is not None else data.get('dirlist', False)
         should_redact = directives.get('redact_pii') if directives.get('redact_pii') is not None else (data.get('redact_pii', False) or data.get('redact', False))
 
         collection = directives.get('collection') or data.get('collection') or None
@@ -349,7 +352,8 @@ def search():
             lexical_query=lexical_query,
             title=title,
             path=paths_input if paths_input else None,
-            exclude_seen_set=exclude_seen_set
+            exclude_seen_set=exclude_seen_set,
+            dirlist=is_dirlist
         )
 
         if should_redact:
