@@ -805,3 +805,67 @@ def test_indexing_context_size_fallback(db_conn, temp_db_path, tmp_path, mock_ll
     
     # Should be >= 3 because the oversized chunk was split successfully.
     assert chunk_count >= 3
+
+
+def test_indexing_dirsummary_virtual_files(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that virtual .dirsummary files are generated when dirlists=True and ignored when False."""
+    notes_dir = tmp_path / "dir_notes"
+    notes_dir.mkdir()
+    
+    subdir = notes_dir / "subdir"
+    subdir.mkdir()
+    
+    (notes_dir / "root_file.md").write_text("root file")
+    (subdir / "sub_file1.md").write_text("sub 1")
+    (subdir / "sub_file2.txt").write_text("sub 2")
+    
+    # 1. Index with dirlists=False (default)
+    config_off = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir), dirlists=False)},
+        db_path=str(temp_db_path)
+    )
+    store_off = Store(config_off, connection=db_conn)
+    store_off.index_collection("test", config_off.collections["test"])
+    
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT path FROM documents WHERE collection='test'")
+    paths = {row[0] for row in cursor.fetchall()}
+    assert ".dirsummary" not in paths
+    assert "subdir/.dirsummary" not in paths
+    
+    # Reset mock
+    mock_llm_client.embed_batch.reset_mock()
+    
+    # 2. Index with dirlists=True
+    config_on = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir), dirlists=True)},
+        db_path=str(temp_db_path)
+    )
+    store_on = Store(config_on, connection=db_conn)
+    store_on.index_collection("test", config_on.collections["test"])
+    
+    cursor.execute("SELECT path, title, file_size FROM documents WHERE collection='test'")
+    docs = {row[0]: {"title": row[1], "size": row[2]} for row in cursor.fetchall()}
+    
+    assert ".dirsummary" in docs
+    assert "subdir/.dirsummary" in docs
+    
+    assert "Directory Summary: test" in docs[".dirsummary"]["title"]
+    assert "Directory Summary: subdir" in docs["subdir/.dirsummary"]["title"]
+    
+    # 3. Verify content
+    cursor.execute("SELECT body FROM documents_fts WHERE filepath='.dirsummary'")
+    root_body = cursor.fetchone()[0]
+    assert "root_file.md" in root_body
+    assert "subdir/" in root_body
+    
+    cursor.execute("SELECT body FROM documents_fts WHERE filepath='subdir/.dirsummary'")
+    sub_body = cursor.fetchone()[0]
+    assert "sub_file1.md" in sub_body
+    assert "sub_file2.txt" in sub_body
+    assert "root_file.md" not in sub_body
+
+    # 4. Re-index with quick=True to ensure virtual hashing correctly skips processing
+    mock_llm_client.embed_batch.reset_mock()
+    store_on.index_collection("test", config_on.collections["test"], quick=True)
+    mock_llm_client.embed_batch.assert_not_called()

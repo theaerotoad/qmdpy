@@ -577,3 +577,64 @@ collections:
     # 6. Verify mutation prohibition in federated mode
     with pytest.raises(RuntimeError, match="federated include mode"):
         store.index_collection("master_coll", cfg.collections["master_coll"])
+
+
+def test_search_dirlist_exclusion(db_conn, monkeypatch):
+    """Verify that .dirsummary files are excluded from FTS and VEC searches unless dirlist=True."""
+    from qmd.utils import compress_text
+    from qmd.store import encode_vector
+    config = Config(db_path=":memory:")
+    store = Store(config, connection=db_conn)
+
+    cursor = db_conn.cursor()
+    
+    # Insert normal file
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'normal document text', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'normal.md', 'Normal', 'h1', 'now')")
+    id_normal = cursor.lastrowid
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'c', 'normal.md', 'Normal', 'normal document text')", (id_normal,))
+    
+    # Insert dirsummary
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'dirsummary document text', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'subdir/.dirsummary', 'Dirsummary', 'h2', 'now')")
+    id_dir = cursor.lastrowid
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'c', 'subdir/.dirsummary', 'Dirsummary', 'dirsummary document text')", (id_dir,))
+    
+    dummy_vec = encode_vector([0.0] * 768)
+    for doc_id, h, p, t, txt in [(id_normal, 'h1', 'normal.md', 'Normal', 'normal document text'), 
+                                 (id_dir, 'h2', 'subdir/.dirsummary', 'Dirsummary', 'dirsummary document text')]:
+        cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (doc_id, dummy_vec))
+        cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, ?, 0, ?, '')", (doc_id, h, compress_text(txt)))
+        cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'c', ?, ?, ?, '')", (doc_id, p, t, txt))
+
+    db_conn.commit()
+
+    # Default FTS search: should hide .dirsummary
+    res_fts_default = store.search_fts("document text")
+    assert len(res_fts_default) == 1
+    assert res_fts_default[0].path == "normal.md"
+
+    # FTS search with dirlist=True: should show both
+    res_fts_dir = store.search_fts("document text", dirlist=True)
+    assert len(res_fts_dir) == 2
+    paths_fts = {r.path for r in res_fts_dir}
+    assert "normal.md" in paths_fts
+    assert "subdir/.dirsummary" in paths_fts
+
+    class MockLLM:
+        def format_query_for_embedding(self, q): return q
+        def embed_batch(self, texts): return [[0.0] * 768] * len(texts)
+
+    monkeypatch.setattr(store, "llm", MockLLM())
+
+    # Default VEC search: should hide .dirsummary
+    res_vec_default = store.search_vec("document text")
+    assert len(res_vec_default) == 1
+    assert res_vec_default[0].path == "normal.md"
+
+    # VEC search with dirlist=True: should show both
+    res_vec_dir = store.search_vec("document text", dirlist=True)
+    assert len(res_vec_dir) == 2
+    paths_vec = {r.path for r in res_vec_dir}
+    assert "normal.md" in paths_vec
+    assert "subdir/.dirsummary" in paths_vec
