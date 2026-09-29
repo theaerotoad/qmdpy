@@ -30,7 +30,8 @@ def test_arg_parsing_search(monkeypatch):
             fts_limit=None,
             vec_limit=None,
             rerank_candidates=None,
-            exclude_seen_set=set()
+            exclude_seen_set=set(),
+            dirlist=False
         )
 
 def test_arg_parsing_search_with_inline_cheatcodes(monkeypatch):
@@ -58,7 +59,8 @@ def test_arg_parsing_search_with_inline_cheatcodes(monkeypatch):
             fts_limit=None,
             vec_limit=None,
             rerank_candidates=None,
-            exclude_seen_set=set()
+            exclude_seen_set=set(),
+            dirlist=False
         )
 
 def test_git_pull_trigger(monkeypatch, tmp_path):
