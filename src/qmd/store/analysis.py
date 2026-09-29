@@ -241,12 +241,21 @@ class AnalysisMixin:
 
         if not force:
             query_sql += " LEFT JOIN document_analysis da ON d.hash = da.doc_hash"
+            
+            # Identify records where the LLM previously failed and returned empty/null data
+            empty_record_cond = """(
+                (da.summary IS NULL OR trim(da.summary) = '') AND
+                (da.tags IS NULL OR da.tags = '[]' OR trim(da.tags) = '') AND
+                (da.authors IS NULL OR da.authors = '[]' OR trim(da.authors) = '') AND
+                (da.questions IS NULL OR da.questions = '[]' OR trim(da.questions) = '')
+            )"""
+
             if outdated:
                 prompt_ver = getattr(self.llm, "ANALYSIS_PROMPT_VERSION", "1.0")
-                where_clauses.append("(da.doc_hash IS NULL OR da.prompt_version IS NULL OR da.prompt_version != ?)")
+                where_clauses.append(f"(da.doc_hash IS NULL OR da.prompt_version IS NULL OR da.prompt_version != ? OR {empty_record_cond})")
                 params.append(prompt_ver)
             else:
-                where_clauses.append("da.doc_hash IS NULL")
+                where_clauses.append(f"(da.doc_hash IS NULL OR {empty_record_cond})")
 
         coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
         if coll_sql:
