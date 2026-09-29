@@ -515,6 +515,16 @@ def parse_query_directives(query: str) -> Tuple[str, Dict[str, Any]]:
             directives["exclude_seen"] = False
         text = text[:seen_match.start()] + " " + text[seen_match.end():]
 
+    # Dirlist flag
+    dir_match = re.search(r'\b(?:dirlist):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))|(--dirlist|--no-dirlist)\b|(?:^|\s)(\+dirlist|-dirlist)(?:\s|$)', text, re.IGNORECASE)
+    if dir_match:
+        raw_val = next(g for g in dir_match.groups() if g is not None).lower()
+        if raw_val in ("on", "true", "--dirlist", "+dirlist"):
+            directives["dirlist"] = True
+        elif raw_val in ("off", "false", "--no-dirlist", "-dirlist"):
+            directives["dirlist"] = False
+        text = text[:dir_match.start()] + " " + text[dir_match.end():]
+
     # Rerank flag
     rr_match = re.search(r'\b(?:rerank|rr):(?:"(on|off|true|false)"|\'(on|off|true|false)\'|(on|off|true|false))', text, re.IGNORECASE)
     if rr_match:

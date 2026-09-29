@@ -13,6 +13,7 @@ class CollectionConfig:
     contexts: Optional[Dict[str, str]] = None
     file_extensions: Optional[List[str]] = None
     convert_non_md: bool = True
+    dirlists: bool = False
 
 @dataclass
 class Config:
@@ -91,7 +92,8 @@ class Config:
                 glob=cfg.get('glob', '**/*'),
                 contexts=cfg.get('contexts'),
                 file_extensions=exts,
-                convert_non_md=cfg.get('convert_non_md', True)
+                convert_non_md=cfg.get('convert_non_md', True),
+                dirlists=cfg.get('dirlists', False)
             )
         
         # Priority for db_path: Environment Var > YAML > Default

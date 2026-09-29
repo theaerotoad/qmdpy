@@ -35,10 +35,21 @@ class IndexingMixin:
                     files.append(f)
             seen = set()
             unique_files = []
+            dirs = set()
             for f in files:
                 if f not in seen:
                     seen.add(f)
                     unique_files.append(f)
+                dirs.add(f.parent)
+            
+            if collection_cfg.dirlists:
+                dirs.add(base_path)
+                for d in dirs:
+                    ds = d / ".dirsummary"
+                    if ds not in seen:
+                        seen.add(ds)
+                        unique_files.append(ds)
+
             return unique_files
         else:
             glob_pattern = collection_cfg.glob
@@ -48,6 +59,7 @@ class IndexingMixin:
                 candidates = list(base_path.glob(glob_pattern))
             seen = set()
             unique_files = []
+            dirs = set()
             for f in candidates:
                 if not f.is_file():
                     continue
@@ -58,6 +70,16 @@ class IndexingMixin:
                     if f not in seen:
                         seen.add(f)
                         unique_files.append(f)
+                    dirs.add(f.parent)
+            
+            if collection_cfg.dirlists:
+                dirs.add(base_path)
+                for d in dirs:
+                    ds = d / ".dirsummary"
+                    if ds not in seen:
+                        seen.add(ds)
+                        unique_files.append(ds)
+
             return unique_files
 
     def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False, verbose: bool = False, quick: bool = False):
@@ -236,22 +258,61 @@ class IndexingMixin:
             tqdm.write(f"\n[Verbose] Processing file: {file_path}")
             sys.stdout.flush()
 
-        try:
-            stat = file_path.stat()
-            file_size = stat.st_size
-            file_mtime = stat.st_mtime
-        except Exception as e:
-            record_indexing_error(
-                self.conn,
-                collection=collection_name,
-                path=rel_path,
-                doc_hash=None,
-                error_type="file_read_error",
-                error_message=str(e)
-            )
-            return False
+        is_dirsummary = (file_path.name == ".dirsummary")
+        dir_content_str = ""
 
-        title = file_path.stem.replace('_', ' ').title()
+        if is_dirsummary:
+            import os
+            try:
+                dir_parent = file_path.parent
+                contents = sorted(os.listdir(dir_parent))
+                # Only include valid files/dirs, skip other .dirsummary files
+                items = []
+                for item in contents:
+                    if item == ".dirsummary":
+                        continue
+                    item_path = dir_parent / item
+                    if item_path.is_dir():
+                        items.append(f"- {item}/")
+                    else:
+                        items.append(f"- {item}")
+                
+                disp_dir = f"/{rel_path[:-12]}" if rel_path != ".dirsummary" else "/"
+                dir_content_str = f"# Directory Contents: {disp_dir}\n" + "\n".join(items)
+                
+                file_size = len(dir_content_str)
+                import time
+                file_mtime = time.time()
+            except Exception as e:
+                record_indexing_error(
+                    self.conn,
+                    collection=collection_name,
+                    path=rel_path,
+                    doc_hash=None,
+                    error_type="file_read_error",
+                    error_message=str(e)
+                )
+                return False
+        else:
+            try:
+                stat = file_path.stat()
+                file_size = stat.st_size
+                file_mtime = stat.st_mtime
+            except Exception as e:
+                record_indexing_error(
+                    self.conn,
+                    collection=collection_name,
+                    path=rel_path,
+                    doc_hash=None,
+                    error_type="file_read_error",
+                    error_message=str(e)
+                )
+                return False
+
+        if is_dirsummary:
+            title = f"Directory Summary: {file_path.parent.name if file_path.parent != base_path else collection_name}"
+        else:
+            title = file_path.stem.replace('_', ' ').title()
         check_cursor = self.conn.cursor()
         check_cursor.execute(
             "SELECT hash, file_size, file_mtime FROM documents WHERE collection = ? AND path = ?",
@@ -273,18 +334,21 @@ class IndexingMixin:
             if quick and db_size == file_size and db_mtime == file_mtime:
                 return False
 
-        try:
-            raw_bytes = file_path.read_bytes()
-        except Exception as e:
-            record_indexing_error(
-                self.conn,
-                collection=collection_name,
-                path=rel_path,
-                doc_hash=None,
-                error_type="file_read_error",
-                error_message=str(e)
-            )
-            return False
+        if is_dirsummary:
+            raw_bytes = dir_content_str.encode('utf-8')
+        else:
+            try:
+                raw_bytes = file_path.read_bytes()
+            except Exception as e:
+                record_indexing_error(
+                    self.conn,
+                    collection=collection_name,
+                    path=rel_path,
+                    doc_hash=None,
+                    error_type="file_read_error",
+                    error_message=str(e)
+                )
+                return False
 
         file_hash = compute_hash(raw_bytes)
 
@@ -356,10 +420,14 @@ class IndexingMixin:
                 markdown_body = decompress_text(content_row[0])
             else:
                 content_exists = False
-                if verbose:
-                    tqdm.write(f"[Verbose] Converting to markdown: {file_path}")
-                    sys.stdout.flush()
-                markdown_body = conv_fn(file_path, config=self.config, errors_out=conversion_errors)
+                if is_dirsummary:
+                    markdown_body = dir_content_str
+                else:
+                    if verbose:
+                        tqdm.write(f"[Verbose] Converting to markdown: {file_path}")
+                        sys.stdout.flush()
+                    markdown_body = conv_fn(file_path, config=self.config, errors_out=conversion_errors)
+                
                 cursor.execute("""
                     INSERT INTO content (hash, body, created_at) VALUES (?, ?, ?)
                     ON CONFLICT(hash) DO UPDATE SET body = excluded.body, created_at = excluded.created_at

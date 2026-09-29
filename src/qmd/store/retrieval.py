@@ -131,7 +131,7 @@ class RetrievalMixin:
         }
         return compute_hash(json.dumps(key_data, sort_keys=True))
 
-    def _search_fts_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False) -> List[Result]:
+    def _search_fts_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False, dirlist: bool = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
         sanitized = query.replace('"', '')
         if '"' in query or ' AND ' in query or ' OR ' in query or ' NOT ' in query:
@@ -186,6 +186,7 @@ class RetrievalMixin:
             """
         coll_sql, coll_params = _build_collection_sql_filter("f.collection", collection)
         filters_sql = coll_sql
+        if not dirlist: filters_sql += " AND f.filepath NOT LIKE '%/.dirsummary' AND f.filepath != '.dirsummary'"
         if title: filters_sql += " AND f.title LIKE ?"
         if paths:
             path_clauses = " OR ".join(["f.filepath LIKE ?" for _ in paths])
@@ -256,12 +257,12 @@ class RetrievalMixin:
 
         return results
 
-    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False) -> List[Result]:
+    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False, dirlist: bool = False) -> List[Result]:
         """Lexical search directly on chunks across local and federated stores."""
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
         target_stores = self._get_target_stores_for_collection(collection)
         if len(target_stores) == 1 and target_stores[0] is self:
-            return self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+            return self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text, dirlist=dirlist)
 
         all_results = []
         if len(target_stores) > 1:
@@ -270,9 +271,9 @@ class RetrievalMixin:
             def _query_store_fts(s: Any) -> List[Result]:
                 local_tracker = set() if excluded_chunks_tracker is not None else None
                 if s is self:
-                    res = self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, defer_text=defer_text)
+                    res = self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, defer_text=defer_text, dirlist=dirlist)
                 else:
-                    res = s.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, defer_text=defer_text)
+                    res = s.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, defer_text=defer_text, dirlist=dirlist)
                 if local_tracker and excluded_chunks_tracker is not None:
                     with lock:
                         excluded_chunks_tracker.update(local_tracker)
@@ -284,9 +285,9 @@ class RetrievalMixin:
         else:
             for store in target_stores:
                 if store is self:
-                    res = self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+                    res = self._search_fts_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text, dirlist=dirlist)
                 else:
-                    res = store.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text)
+                    res = store.search_fts(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, defer_text=defer_text, dirlist=dirlist)
                 all_results.extend(res)
 
         all_results.sort(key=lambda r: r.score, reverse=True)
@@ -304,7 +305,7 @@ class RetrievalMixin:
             return vecs[0]
         return []
 
-    def _search_vec_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False) -> List[Result]:
+    def _search_vec_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False, dirlist: bool = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
         if query_vec is None:
             query_text = self.llm.format_query_for_embedding(query)
@@ -367,6 +368,9 @@ class RetrievalMixin:
                     coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
                     query_sql += coll_sql
                     params.extend(coll_params)
+                    
+                    if not dirlist:
+                        query_sql += " AND d.path NOT LIKE '%/.dirsummary' AND d.path != '.dirsummary'"
 
                     if title:
                         query_sql += " AND d.title LIKE ?"
@@ -458,6 +462,10 @@ class RetrievalMixin:
                 coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
                 query_sql += coll_sql
                 params.extend(coll_params)
+                
+                if not dirlist:
+                    query_sql += " AND d.path NOT LIKE '%/.dirsummary' AND d.path != '.dirsummary'"
+
                 if title:
                     query_sql += " AND d.title LIKE ?"
                     params.append(f"%{title}%")
@@ -531,6 +539,10 @@ class RetrievalMixin:
         if coll_sql:
             where_clauses.append(coll_sql[5:])
             params.extend(coll_params)
+            
+        if not dirlist:
+            where_clauses.append("(d.path NOT LIKE '%/.dirsummary' AND d.path != '.dirsummary')")
+
         if title:
             where_clauses.append("d.title LIKE ?")
             params.append(f"%{title}%")
@@ -582,7 +594,7 @@ class RetrievalMixin:
             ))
         return candidates
 
-    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False) -> List[Result]:
+    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False, dirlist: bool = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
         if query_vec is None:
             query_text = self.llm.format_query_for_embedding(query)
@@ -592,7 +604,7 @@ class RetrievalMixin:
 
         target_stores = self._get_target_stores_for_collection(collection)
         if len(target_stores) == 1 and target_stores[0] is self:
-            return self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+            return self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text, dirlist=dirlist)
 
         all_results = []
         if len(target_stores) > 1:
@@ -601,9 +613,9 @@ class RetrievalMixin:
             def _query_store_vec(s: Any) -> List[Result]:
                 local_tracker = set() if excluded_chunks_tracker is not None else None
                 if s is self:
-                    res = self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, query_vec=query_vec, defer_text=defer_text)
+                    res = self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, query_vec=query_vec, defer_text=defer_text, dirlist=dirlist)
                 else:
-                    res = s.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, query_vec=query_vec, defer_text=defer_text)
+                    res = s.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=local_tracker, query_vec=query_vec, defer_text=defer_text, dirlist=dirlist)
                 if local_tracker and excluded_chunks_tracker is not None:
                     with lock:
                         excluded_chunks_tracker.update(local_tracker)
@@ -615,9 +627,9 @@ class RetrievalMixin:
         else:
             for store in target_stores:
                 if store is self:
-                    res = self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+                    res = self._search_vec_local(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text, dirlist=dirlist)
                 else:
-                    res = store.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text)
+                    res = store.search_vec(query, limit=limit, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=query_vec, defer_text=defer_text, dirlist=dirlist)
                 all_results.extend(res)
 
         all_results.sort(key=lambda r: r.score, reverse=True)
