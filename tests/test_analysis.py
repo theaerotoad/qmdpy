@@ -98,16 +98,19 @@ def test_analyze_robustness_and_empty_retries(mock_store):
     # Doc 2: for testing exception failure
     cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('hash2', 'mock_body2', 'now')")
     cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at, active) VALUES ('test_coll', 'doc2.md', 'Doc 2', 'hash2', 'now', 1)")
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (2, x'00')")
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (2, 'hash2', 0, 'text2')")
 
     # Doc 3: for testing invalid/empty response
     cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('hash3', 'mock_body3', 'now')")
     cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at, active) VALUES ('test_coll', 'doc3.md', 'Doc 3', 'hash3', 'now', 1)")
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (3, x'00')")
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (3, 'hash3', 0, 'text3')")
     
     # Doc 4: will simulate a document that has a completely empty analysis in DB
     cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('hash4', 'mock_body4', 'now')")
     cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at, active) VALUES ('test_coll', 'doc4.md', 'Doc 4', 'hash4', 'now', 1)")
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (4, x'00')")
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (4, 'hash4', 0, 'text4')")
     cursor.execute("""
         INSERT INTO document_analysis (doc_hash, summary, authors, tags, dates, questions, doc_type, alt_title, prompt_version, analyzed_at)
