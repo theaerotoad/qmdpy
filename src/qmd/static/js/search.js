@@ -1,3 +1,19 @@
+window.openDocumentSystem = async function(collection, path) {
+    try {
+        const res = await fetch(apiUrl('api/document/open'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ collection, path })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to open document");
+        if (typeof showToast === 'function') showToast(`Opening ${path}...`);
+    } catch (e) {
+        if (typeof showToast === 'function') showToast(`Error: ${e.message}`);
+        console.error("Failed to open document system:", e);
+    }
+};
+
 // Single Result XML Copy Handler
 function copySingleXml(index, btnEl = null) {
     if (!lastRawJson || !lastRawJson[index]) return;
@@ -271,11 +287,21 @@ function renderResults(results, type, query) {
                             ? `<h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">${escapeHtml(chunk.headers)}</h3>` 
                             : '';
 
+                        let parsedChunkText = marked.parse(chunk.text || '');
+                        if (item.path.endsWith('.dirsummary')) {
+                            const basePath = item.path.replace(/\.dirsummary$/, '');
+                            parsedChunkText = parsedChunkText.replace(/<li>(.*?)<\/li>/g, (match, inner) => {
+                                const cleanName = inner.replace(/<[^>]+>/g, '').trim();
+                                const fullPath = basePath + cleanName.replace(/\/$/, '');
+                                return `<li><a href="#" class="text-blue-600 hover:underline dark:text-blue-400" onclick="event.preventDefault(); event.stopPropagation(); openDocumentSystem('${item.collection}', '${fullPath}')">${inner}</a></li>`;
+                            });
+                        }
+
                         return `
                             ${skipNotice}
                             <div>
                                 ${headerHtml}
-                                <div class="g-snippet">${marked.parse(chunk.text || '')}</div>
+                                <div class="g-snippet">${parsedChunkText}</div>
                             </div>
                         `;
                     }).join('')}
@@ -283,9 +309,18 @@ function renderResults(results, type, query) {
             `;
         } else {
             const rawBody = item.text || (item.snippets ? item.snippets[0] : '');
+            let parsedRawBody = marked.parse(rawBody || '');
+            if (item.path.endsWith('.dirsummary')) {
+                const basePath = item.path.replace(/\.dirsummary$/, '');
+                parsedRawBody = parsedRawBody.replace(/<li>(.*?)<\/li>/g, (match, inner) => {
+                    const cleanName = inner.replace(/<[^>]+>/g, '').trim();
+                    const fullPath = basePath + cleanName.replace(/\/$/, '');
+                    return `<li><a href="#" class="text-blue-600 hover:underline dark:text-blue-400" onclick="event.preventDefault(); event.stopPropagation(); openDocumentSystem('${item.collection}', '${fullPath}')">${inner}</a></li>`;
+                });
+            }
             contentHtml = `
                 <div class="g-snippet space-y-2 mt-1">
-                    ${marked.parse(rawBody || '')}
+                    ${parsedRawBody}
                 </div>
             `;
         }
