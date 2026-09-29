@@ -319,6 +319,14 @@ class AnalysisMixin:
                     tqdm.write(f"Error analyzing {doc_path}: {e}")
                 continue
 
+            # Validate response: Do not save if LLM failed to return a proper analysis.
+            # This allows it to be picked up in future runs without needing --force.
+            if not analysis_res or not isinstance(analysis_res, dict) or analysis_res.get("error") or not str(analysis_res.get("summary", "")).strip():
+                if verbose:
+                    err_msg = analysis_res.get("error", "Empty summary or invalid response") if isinstance(analysis_res, dict) else "Invalid response type"
+                    tqdm.write(f"Analysis failed/incomplete for {doc_path} ({err_msg}), skipping so it can be retried later.")
+                continue
+
             # Store in DB
             prompt_version = getattr(self.llm, "ANALYSIS_PROMPT_VERSION", "1.0")
             now = datetime.utcnow().isoformat() + "Z"
