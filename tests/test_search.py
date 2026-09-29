@@ -621,19 +621,13 @@ def test_search_dirlist_exclusion(db_conn, monkeypatch):
     assert "normal.md" in paths_fts
     assert "subdir/.dirsummary" in paths_fts
 
-    class MockLLM:
-        def format_query_for_embedding(self, q): return q
-        def embed_batch(self, texts): return [[0.1] * 768] * len(texts)
-
-    monkeypatch.setattr(store, "llm", MockLLM())
-
     # Default VEC search: should hide .dirsummary
-    res_vec_default = store.search_vec("document text")
+    res_vec_default = store.search_vec("document text", query_vec=[0.1]*768)
     assert len(res_vec_default) == 1
     assert res_vec_default[0].path == "normal.md"
 
     # VEC search with dirlist=True: should show both
-    res_vec_dir = store.search_vec("document text", dirlist=True)
+    res_vec_dir = store.search_vec("document text", query_vec=[0.1]*768, dirlist=True)
     assert len(res_vec_dir) == 2
     paths_vec = {r.path for r in res_vec_dir}
     assert "normal.md" in paths_vec
