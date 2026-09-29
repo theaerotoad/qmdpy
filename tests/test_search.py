@@ -600,7 +600,7 @@ def test_search_dirlist_exclusion(db_conn, monkeypatch):
     id_dir = cursor.lastrowid
     cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'c', 'subdir/.dirsummary', 'Dirsummary', 'dirsummary document text')", (id_dir,))
     
-    dummy_vec = encode_vector([0.0] * 768)
+    dummy_vec = encode_vector([0.1] * 768)
     for doc_id, h, p, t, txt in [(id_normal, 'h1', 'normal.md', 'Normal', 'normal document text'), 
                                  (id_dir, 'h2', 'subdir/.dirsummary', 'Dirsummary', 'dirsummary document text')]:
         cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (?, ?)", (doc_id, dummy_vec))
@@ -623,7 +623,7 @@ def test_search_dirlist_exclusion(db_conn, monkeypatch):
 
     class MockLLM:
         def format_query_for_embedding(self, q): return q
-        def embed_batch(self, texts): return [[0.0] * 768] * len(texts)
+        def embed_batch(self, texts): return [[0.1] * 768] * len(texts)
 
     monkeypatch.setattr(store, "llm", MockLLM())
 
