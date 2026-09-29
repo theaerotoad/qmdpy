@@ -124,7 +124,8 @@ async function handleFormSubmit(e, source) {
                 title: parsed.title || null,
                 path: scopedPaths.length === 1 ? scopedPaths[0] : (scopedPaths.length > 1 ? scopedPaths : null),
                 paths: scopedPaths.length > 0 ? scopedPaths : undefined,
-                session_id: currentSessionId
+                session_id: currentSessionId,
+                dirlist: parsed.dirlist !== null ? parsed.dirlist : undefined
             };
             const res = await fetch(apiUrl('api/discover'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
@@ -157,7 +158,8 @@ async function handleFormSubmit(e, source) {
                 title: parsed.title || null,
                 path: scopedPaths.length === 1 ? scopedPaths[0] : (scopedPaths.length > 1 ? scopedPaths : null),
                 paths: scopedPaths.length > 0 ? scopedPaths : undefined,
-                session_id: currentSessionId
+                session_id: currentSessionId,
+                dirlist: parsed.dirlist !== null ? parsed.dirlist : undefined
             };
             const res = await fetch(apiUrl('api/search'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();

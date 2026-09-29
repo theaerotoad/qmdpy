@@ -179,7 +179,8 @@ function parseQueryDirectives(rawText) {
         path: null,
         collection: null,
         lex: null,
-        limit: null
+        limit: null,
+        dirlist: null
     };
 
     const titleMatch = text.match(/(?:title|t):(?:"([^"]+)"|'([^']+)'|(\S+))/i);
@@ -208,6 +209,13 @@ function parseQueryDirectives(rawText) {
 
     const llmMatch = text.match(/(?:llm|qa|answer):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false))/i);
     if (llmMatch) { toggleFeature('offer_llm', ['on', 'true'].includes((llmMatch[1]||llmMatch[2]||llmMatch[3]).toLowerCase())); text = text.replace(llmMatch[0], ' '); }
+
+    const dirMatch = text.match(/\b(?:dirlist):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false))|(--dirlist|--no-dirlist)\b|(?:^|\s)(\+dirlist|-dirlist)(?:\s|$)/i);
+    if (dirMatch) {
+        const rawVal = Array.from(dirMatch).slice(1).find(g => g !== undefined).toLowerCase();
+        directives.dirlist = ['on', 'true', '--dirlist', '+dirlist'].includes(rawVal);
+        text = text.replace(dirMatch[0], ' ');
+    }
 
     directives.cleanQuery = text.replace(/\s+/g, ' ').trim();
     return directives;
