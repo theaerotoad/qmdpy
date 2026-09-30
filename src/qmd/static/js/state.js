@@ -183,34 +183,34 @@ function parseQueryDirectives(rawText) {
         dirlist: null
     };
 
-    const titleMatch = text.match(/(?:title|t):(?:"([^"]+)"|'([^']+)'|(\S+))/i);
+    const titleMatch = text.match(/\b(?:title|t):(?:"([^"]+)"|'([^']+)'|(\S+))/i);
     if (titleMatch) { directives.title = titleMatch[1] || titleMatch[2] || titleMatch[3]; text = text.replace(titleMatch[0], ' '); }
 
-    const pathMatch = text.match(/(?:path|file|p):(?:"([^"]+)"|'([^']+)'|(\S+))/i);
+    const pathMatch = text.match(/\b(?:path|file|p):(?:"([^"]+)"|'([^']+)'|(\S+))/i);
     if (pathMatch) { directives.path = pathMatch[1] || pathMatch[2] || pathMatch[3]; text = text.replace(pathMatch[0], ' '); }
 
-    const colMatch = text.match(/(?:col|in|c):(?:"([^"]+)"|'([^']+)'|(\S+))/i);
+    const colMatch = text.match(/\b(?:col|in|c):(?:"([^"]+)"|'([^']+)'|(\S+))/i);
     if (colMatch) { directives.collection = colMatch[1] || colMatch[2] || colMatch[3]; text = text.replace(colMatch[0], ' '); }
 
-    const lexMatch = text.match(/(?:lex|fts|l):(?:"([^"]+)"|'([^']+)'|(\S+))/i);
+    const lexMatch = text.match(/\b(?:lex|fts|l):(?:"([^"]+)"|'([^']+)'|(\S+))/i);
     if (lexMatch) { directives.lex = lexMatch[1] || lexMatch[2] || lexMatch[3]; text = text.replace(lexMatch[0], ' '); }
 
-    const limitMatch = text.match(/(?:limit|n):(\d+)/i);
+    const limitMatch = text.match(/\b(?:limit|n):(\d+)/i);
     if (limitMatch) { directives.limit = parseInt(limitMatch[1]); text = text.replace(limitMatch[0], ' '); }
 
-    const piiMatch = text.match(/(?:pii):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false))/i);
-    if (piiMatch) { toggleFeature('redact_pii', ['on', 'true'].includes((piiMatch[1]||piiMatch[2]||piiMatch[3]).toLowerCase())); text = text.replace(piiMatch[0], ' '); }
+    const piiMatch = text.match(/\b(?:pii):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false)\b)|(--redact-pii|--no-pii)\b/i);
+    if (piiMatch) { toggleFeature('redact_pii', ['on', 'true', '--redact-pii'].includes((piiMatch[1]||piiMatch[2]||piiMatch[3]||piiMatch[4]||'').toLowerCase())); text = text.replace(piiMatch[0], ' '); }
 
-    const seenMatch = text.match(/(?:seen):(?:"(exclude|off|on|true|false)"|'(exclude|off|on|true|false)'|(exclude|off|on|true|false))/i);
-    if (seenMatch) { toggleFeature('exclude_seen', ['exclude', 'on', 'true'].includes((seenMatch[1]||seenMatch[2]||seenMatch[3]).toLowerCase())); text = text.replace(seenMatch[0], ' '); }
+    const seenMatch = text.match(/\b(?:seen):(?:"(exclude|off|on|true|false)"|'(exclude|off|on|true|false)'|(exclude|off|on|true|false)\b)|(--exclude-seen)\b/i);
+    if (seenMatch) { toggleFeature('exclude_seen', ['exclude', 'on', 'true', '--exclude-seen'].includes((seenMatch[1]||seenMatch[2]||seenMatch[3]||seenMatch[4]||'').toLowerCase())); text = text.replace(seenMatch[0], ' '); }
 
-    const rrMatch = text.match(/(?:rerank|rr):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false))/i);
-    if (rrMatch) { toggleFeature('rerank', ['on', 'true'].includes((rrMatch[1]||rrMatch[2]||rrMatch[3]).toLowerCase())); text = text.replace(rrMatch[0], ' '); }
+    const rrMatch = text.match(/\b(?:rerank|rr):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false)\b)/i);
+    if (rrMatch) { toggleFeature('rerank', ['on', 'true'].includes((rrMatch[1]||rrMatch[2]||rrMatch[3]||'').toLowerCase())); text = text.replace(rrMatch[0], ' '); }
 
-    const llmMatch = text.match(/(?:llm|qa|answer):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false))/i);
-    if (llmMatch) { toggleFeature('offer_llm', ['on', 'true'].includes((llmMatch[1]||llmMatch[2]||llmMatch[3]).toLowerCase())); text = text.replace(llmMatch[0], ' '); }
+    const llmMatch = text.match(/\b(?:llm|qa|answer):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false)\b)/i);
+    if (llmMatch) { toggleFeature('offer_llm', ['on', 'true'].includes((llmMatch[1]||llmMatch[2]||llmMatch[3]||'').toLowerCase())); text = text.replace(llmMatch[0], ' '); }
 
-    const dirMatch = text.match(/\b(?:dirlist):(?:"(on|off|true|false|only)"|'(on|off|true|false|only)'|(on|off|true|false|only))|(--dirlist|--no-dirlist)\b|(?:^|\s)(\+dirlist|-dirlist)(?:\s|$)/i);
+    const dirMatch = text.match(/\b(?:dirlist):(?:"(only|on|off|true|false)"|'(only|on|off|true|false)'|(only|on|off|true|false)\b)|(--dirlist|--no-dirlist)\b|(?:^|\s)(\+dirlist|-dirlist)(?:\s|$)/i);
     if (dirMatch) {
         const rawVal = Array.from(dirMatch).slice(1).find(g => g !== undefined).toLowerCase();
         if (rawVal === 'only') {
