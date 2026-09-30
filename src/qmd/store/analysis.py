@@ -51,6 +51,8 @@ class AnalysisMixin:
             where_clauses.append("d.title LIKE ?")
             params.append(f"%{title}%")
 
+        where_clauses.append("(d.path NOT LIKE '%/.dirsummary' AND d.path != '.dirsummary')")
+
         if where_clauses:
             query_sql += " WHERE " + " AND ".join(where_clauses)
 
@@ -277,6 +279,8 @@ class AnalysisMixin:
         if title:
             where_clauses.append("d.title LIKE ?")
             params.append(f"%{title}%")
+
+        where_clauses.append("(d.path NOT LIKE '%/.dirsummary' AND d.path != '.dirsummary')")
 
         if where_clauses:
             query_sql += " WHERE " + " AND ".join(where_clauses)
