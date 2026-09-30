@@ -97,6 +97,15 @@ class RetrievalMixin:
         vec_limit: Optional[int],
         rerank_candidates: Optional[int]
     ) -> str:
+        dirlist_val = False
+        try:
+            import inspect
+            frame = inspect.currentframe().f_back
+            if frame and 'dirlist' in frame.f_locals:
+                dirlist_val = frame.f_locals['dirlist']
+        except Exception:
+            pass
+
         all_stores = [self] + getattr(self, "child_stores", [])
         db_last_updated = ",".join([get_db_meta(s.conn, "last_updated") or "" for s in all_stores])
         embed_model = getattr(self.config, "embed_model", "")
@@ -127,7 +136,8 @@ class RetrievalMixin:
             "rerank_candidates": rerank_candidates,
             "db_last_updated": db_last_updated,
             "embed_model": embed_model,
-            "rerank_model": rerank_model
+            "rerank_model": rerank_model,
+            "dirlist": str(dirlist_val)
         }
         return compute_hash(json.dumps(key_data, sort_keys=True))
 
@@ -260,6 +270,15 @@ class RetrievalMixin:
 
     def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False, dirlist: Union[bool, str] = False) -> List[Result]:
         """Lexical search directly on chunks across local and federated stores."""
+        if dirlist is False:
+            try:
+                import inspect
+                frame = inspect.currentframe().f_back
+                if frame and 'dirlist' in frame.f_locals:
+                    dirlist = frame.f_locals['dirlist']
+            except Exception:
+                pass
+
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
         target_stores = self._get_target_stores_for_collection(collection)
         if len(target_stores) == 1 and target_stores[0] is self:
@@ -602,6 +621,15 @@ class RetrievalMixin:
         return candidates
 
     def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False, dirlist: Union[bool, str] = False) -> List[Result]:
+        if dirlist is False:
+            try:
+                import inspect
+                frame = inspect.currentframe().f_back
+                if frame and 'dirlist' in frame.f_locals:
+                    dirlist = frame.f_locals['dirlist']
+            except Exception:
+                pass
+
         limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
         if query_vec is None:
             query_text = self.llm.format_query_for_embedding(query)
