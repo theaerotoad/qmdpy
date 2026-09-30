@@ -41,9 +41,9 @@ class SearchMixin:
                 "hybrid", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
             if dirlist == "only":
-                cache_key += "|dirlist:only_v2"
+                cache_key += "|dirlist:only"
             elif dirlist:
-                cache_key += "|dirlist:1_v2"
+                cache_key += "|dirlist:1"
             cached_json = get_cached_search_results(self.history_conn, cache_key)
             t_cache = (time.perf_counter() - t_cache_start) * 1000
             if cached_json:
@@ -338,9 +338,9 @@ class SearchMixin:
                 "w2n", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
             if dirlist == "only":
-                cache_key += "|dirlist:only_v2"
+                cache_key += "|dirlist:only"
             elif dirlist:
-                cache_key += "|dirlist:1_v2"
+                cache_key += "|dirlist:1"
             cached_json = get_cached_search_results(self.history_conn, cache_key)
             t_cache = (time.perf_counter() - t_cache_start) * 1000
             if cached_json:
@@ -517,9 +517,9 @@ class SearchMixin:
                 "discover", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
             if dirlist == "only":
-                cache_key += "|dirlist:only_v2"
+                cache_key += "|dirlist:only"
             elif dirlist:
-                cache_key += "|dirlist:1_v2"
+                cache_key += "|dirlist:1"
             cached_json = get_cached_search_results(self.history_conn, cache_key)
             t_cache = (time.perf_counter() - t_cache_start) * 1000
             if cached_json:
