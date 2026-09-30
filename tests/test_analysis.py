@@ -51,12 +51,19 @@ def mock_store(tmp_path):
     # Needs a corresponding vector and chunk metadata row
     cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (1, x'00')")
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (1, 'hash1', 0, 'mock chunk text')")
+
+    # Insert a .dirsummary file to verify it gets explicitly excluded from analysis
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('hash_dir', 'mock_dirsummary', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at, active) VALUES ('test_coll', 'subdir/.dirsummary', 'Dirsummary', 'hash_dir', 'now', 1)")
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (99, x'00')")
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (99, 'hash_dir', 0, 'mock dirsummary text')")
+    
     store.conn.commit()
     
     return store
 
 def test_analyze_target(mock_store):
-    # 1. First run, should successfully analyze the document
+    # 1. First run, should successfully analyze the regular document (and completely ignore .dirsummary)
     results = mock_store.analyze_target(limit=5, time_limit=1.0, verbose=True)
     
     assert len(results) == 1
