@@ -325,7 +325,7 @@ class RetrievalMixin:
         elif isinstance(path, (list, tuple, set)):
             paths = [str(p).strip() for p in path if str(p).strip()]
 
-        if getattr(self, 'usearch_index', None) is not None:
+        if getattr(self, 'usearch_index', None) is not None and dirlist != "only":
             try:
                 import numpy as np
                 extra_seen = (len(exclude_seen_set) * 2) if exclude_seen_set else 0
@@ -421,7 +421,7 @@ class RetrievalMixin:
             except Exception as e:
                 print(f"{YELLOW}Warning: usearch ANN query failed ({e}), using fallback scanner.{RESET}")
 
-        if is_sqlite_vec_active(self.conn):
+        if is_sqlite_vec_active(self.conn) and dirlist != "only":
             try:
                 query_blob = encode_vector(query_vec, quant_type)
                 extra_seen = (len(exclude_seen_set) * 2) if exclude_seen_set else 0

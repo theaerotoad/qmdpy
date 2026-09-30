@@ -621,6 +621,11 @@ def test_search_dirlist_exclusion(db_conn, monkeypatch):
     assert "normal.md" in paths_fts
     assert "subdir/.dirsummary" in paths_fts
 
+    # FTS search with dirlist="only": should show only dirsummary
+    res_fts_only = store.search_fts("document text", dirlist="only")
+    assert len(res_fts_only) == 1
+    assert res_fts_only[0].path == "subdir/.dirsummary"
+
     # Default VEC search: should hide .dirsummary
     res_vec_default = store.search_vec("document text", query_vec=[0.1]*768)
     assert len(res_vec_default) == 1
@@ -632,3 +637,8 @@ def test_search_dirlist_exclusion(db_conn, monkeypatch):
     paths_vec = {r.path for r in res_vec_dir}
     assert "normal.md" in paths_vec
     assert "subdir/.dirsummary" in paths_vec
+
+    # VEC search with dirlist="only": should show only dirsummary
+    res_vec_only = store.search_vec("document text", query_vec=[0.1]*768, dirlist="only")
+    assert len(res_vec_only) == 1
+    assert res_vec_only[0].path == "subdir/.dirsummary"
