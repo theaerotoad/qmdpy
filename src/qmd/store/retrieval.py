@@ -131,7 +131,7 @@ class RetrievalMixin:
         }
         return compute_hash(json.dumps(key_data, sort_keys=True))
 
-    def _search_fts_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False, dirlist: bool = False) -> List[Result]:
+    def _search_fts_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False, dirlist: Union[bool, str] = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
         sanitized = query.replace('"', '')
         if '"' in query or ' AND ' in query or ' OR ' in query or ' NOT ' in query:
@@ -186,7 +186,8 @@ class RetrievalMixin:
             """
         coll_sql, coll_params = _build_collection_sql_filter("f.collection", collection)
         filters_sql = coll_sql
-        if not dirlist: filters_sql += " AND f.filepath NOT LIKE '%/.dirsummary' AND f.filepath != '.dirsummary'"
+        if dirlist == "only": filters_sql += " AND (f.filepath LIKE '%/.dirsummary' OR f.filepath = '.dirsummary')"
+        elif not dirlist: filters_sql += " AND f.filepath NOT LIKE '%/.dirsummary' AND f.filepath != '.dirsummary'"
         if title: filters_sql += " AND f.title LIKE ?"
         if paths:
             path_clauses = " OR ".join(["f.filepath LIKE ?" for _ in paths])
@@ -257,7 +258,7 @@ class RetrievalMixin:
 
         return results
 
-    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False, dirlist: bool = False) -> List[Result]:
+    def search_fts(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, defer_text: bool = False, dirlist: Union[bool, str] = False) -> List[Result]:
         """Lexical search directly on chunks across local and federated stores."""
         limit = limit if limit is not None else getattr(self.config, 'fts_limit', 50)
         target_stores = self._get_target_stores_for_collection(collection)
@@ -305,7 +306,7 @@ class RetrievalMixin:
             return vecs[0]
         return []
 
-    def _search_vec_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False, dirlist: bool = False) -> List[Result]:
+    def _search_vec_local(self, query: str, limit: Optional[int] = None, collection: Optional[str] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False, dirlist: Union[bool, str] = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
         if query_vec is None:
             query_text = self.llm.format_query_for_embedding(query)
@@ -369,7 +370,9 @@ class RetrievalMixin:
                     query_sql += coll_sql
                     params.extend(coll_params)
                     
-                    if not dirlist:
+                    if dirlist == "only":
+                        query_sql += " AND (d.path LIKE '%/.dirsummary' OR d.path = '.dirsummary')"
+                    elif not dirlist:
                         query_sql += " AND d.path NOT LIKE '%/.dirsummary' AND d.path != '.dirsummary'"
 
                     if title:
@@ -463,7 +466,9 @@ class RetrievalMixin:
                 query_sql += coll_sql
                 params.extend(coll_params)
                 
-                if not dirlist:
+                if dirlist == "only":
+                    query_sql += " AND (d.path LIKE '%/.dirsummary' OR d.path = '.dirsummary')"
+                elif not dirlist:
                     query_sql += " AND d.path NOT LIKE '%/.dirsummary' AND d.path != '.dirsummary'"
 
                 if title:
@@ -540,7 +545,9 @@ class RetrievalMixin:
             where_clauses.append(coll_sql[5:])
             params.extend(coll_params)
             
-        if not dirlist:
+        if dirlist == "only":
+            where_clauses.append("(d.path LIKE '%/.dirsummary' OR d.path = '.dirsummary')")
+        elif not dirlist:
             where_clauses.append("(d.path NOT LIKE '%/.dirsummary' AND d.path != '.dirsummary')")
 
         if title:
@@ -594,7 +601,7 @@ class RetrievalMixin:
             ))
         return candidates
 
-    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False, dirlist: bool = False) -> List[Result]:
+    def search_vec(self, query: str, limit: Optional[int] = None, collection: Optional[Union[str, List[str]]] = None, title: Optional[str] = None, path: Optional[Union[str, List[str]]] = None, exclude_seen_set: Optional[set] = None, excluded_chunks_tracker: Optional[set] = None, query_vec: Optional[List[float]] = None, defer_text: bool = False, dirlist: Union[bool, str] = False) -> List[Result]:
         limit = limit if limit is not None else getattr(self.config, 'vec_limit', 50)
         if query_vec is None:
             query_text = self.llm.format_query_for_embedding(query)

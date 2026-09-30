@@ -29,7 +29,7 @@ class SearchMixin:
         exclude_seen_set: Optional[set] = None,
         use_cache: Optional[bool] = None,
         defer_text: bool = False,
-        dirlist: bool = False
+        dirlist: Union[bool, str] = False
     ) -> List[Result]:
         t_total_start = time.perf_counter()
         excluded_chunks_tracker: set = set()
@@ -40,7 +40,9 @@ class SearchMixin:
             cache_key = self._build_search_cache_key(
                 "hybrid", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
-            if dirlist:
+            if dirlist == "only":
+                cache_key += "|dirlist:only"
+            elif dirlist:
                 cache_key += "|dirlist:1"
             cached_json = get_cached_search_results(self.history_conn, cache_key)
             t_cache = (time.perf_counter() - t_cache_start) * 1000
@@ -325,7 +327,7 @@ class SearchMixin:
         exclude_seen_set: Optional[set] = None,
         use_cache: Optional[bool] = None,
         defer_text: bool = False,
-        dirlist: bool = False
+        dirlist: Union[bool, str] = False
     ) -> List[Result]:
         """Hierarchical Wide-to-Narrow (W2N) Search."""
         t_total_start = time.perf_counter()
@@ -335,7 +337,9 @@ class SearchMixin:
             cache_key = self._build_search_cache_key(
                 "w2n", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
-            if dirlist:
+            if dirlist == "only":
+                cache_key += "|dirlist:only"
+            elif dirlist:
                 cache_key += "|dirlist:1"
             cached_json = get_cached_search_results(self.history_conn, cache_key)
             t_cache = (time.perf_counter() - t_cache_start) * 1000
@@ -502,7 +506,7 @@ class SearchMixin:
         exclude_seen_set: Optional[set] = None,
         w2n: bool = False,
         use_cache: Optional[bool] = None,
-        dirlist: bool = False
+        dirlist: Union[bool, str] = False
     ) -> List[Result]:
         """Discover Search: Single top hit per document with aggregated match counts."""
         t_total_start = time.perf_counter()
@@ -512,7 +516,9 @@ class SearchMixin:
             cache_key = self._build_search_cache_key(
                 "discover", query, limit, rerank, reranker_only, collection, lexical_query, title, path, fts_limit, vec_limit, rerank_candidates
             )
-            if dirlist:
+            if dirlist == "only":
+                cache_key += "|dirlist:only"
+            elif dirlist:
                 cache_key += "|dirlist:1"
             cached_json = get_cached_search_results(self.history_conn, cache_key)
             t_cache = (time.perf_counter() - t_cache_start) * 1000
@@ -658,7 +664,7 @@ class SearchMixin:
         rerank_candidates: Optional[int] = None,
         exclude_seen_set: Optional[set] = None,
         use_cache: Optional[bool] = None,
-        dirlist: bool = False
+        dirlist: Union[bool, str] = False
     ) -> List[Dict[str, Any]]:
         """
         Executes a broad discover search and builds a scored, hierarchical directory tree
