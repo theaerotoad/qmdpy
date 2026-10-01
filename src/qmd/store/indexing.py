@@ -24,43 +24,34 @@ class IndexingMixin:
     """Handles collection scanning, file conversion, embedding generation, indexing, and orphan pruning."""
 
     def _get_collection_files(self, base_path: Path, collection_cfg: CollectionConfig) -> List[Path]:
+        is_only = (str(collection_cfg.dirlists).lower() == "only")
+        
+        # Fast-path for dirlist: only. We don't need to read, stat, or convert any files!
+        if is_only:
+            dirs = {base_path}
+            for path in base_path.glob("**/*"):
+                if path.is_dir():
+                    dirs.add(path)
+            return [d / ".dirsummary" for d in dirs]
+
         seen = set()
         unique_files = []
         dirs = set()
-        is_only = (str(collection_cfg.dirlists).lower() == "only")
 
         if collection_cfg.file_extensions is not None:
             exts = {
                 e.lower() if e.startswith('.') else f".{e.lower()}"
                 for e in collection_cfg.file_extensions
             }
-            files = []
             for f in base_path.glob("**/*"):
                 if f.is_file() and f.suffix.lower() in exts:
-                    files.append(f)
-            
-            for f in files:
-                if not is_only:
                     if f not in seen:
                         seen.add(f)
                         unique_files.append(f)
-                dirs.add(f.parent)
-            
-            if collection_cfg.dirlists:
-                dirs.add(base_path)
-                for d in dirs:
-                    ds = d / ".dirsummary"
-                    if ds not in seen:
-                        seen.add(ds)
-                        unique_files.append(ds)
-
-            return unique_files
+                    dirs.add(f.parent)
         else:
             glob_pattern = collection_cfg.glob
-            if glob_pattern in ("**/*.md", "**/*"):
-                candidates = list(base_path.glob("**/*"))
-            else:
-                candidates = list(base_path.glob(glob_pattern))
+            candidates = base_path.glob(glob_pattern) if glob_pattern not in ("**/*.md", "**/*") else base_path.glob("**/*")
             
             for f in candidates:
                 if not f.is_file():
@@ -69,27 +60,20 @@ class IndexingMixin:
                 if not collection_cfg.convert_non_md and ext not in {".md", ".markdown", ".txt"}:
                     continue
                 if ext in SUPPORTED_EXTENSIONS or ext in {".md", ".markdown", ".txt"}:
-                    if not is_only:
-                        if f not in seen:
-                            seen.add(f)
-                            unique_files.append(f)
+                    if f not in seen:
+                        seen.add(f)
+                        unique_files.append(f)
                     dirs.add(f.parent)
-            
-            # If no files matched the glob but dirlists is 'only', we still need to traverse to find the directories
-            if is_only and not dirs:
-                for d in base_path.glob("**/*"):
-                    if d.is_dir():
-                        dirs.add(d)
-            
-            if collection_cfg.dirlists:
-                dirs.add(base_path)
-                for d in dirs:
-                    ds = d / ".dirsummary"
-                    if ds not in seen:
-                        seen.add(ds)
-                        unique_files.append(ds)
+        
+        if collection_cfg.dirlists:
+            dirs.add(base_path)
+            for d in dirs:
+                ds = d / ".dirsummary"
+                if ds not in seen:
+                    seen.add(ds)
+                    unique_files.append(ds)
 
-            return unique_files
+        return unique_files
 
     def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False, verbose: bool = False, quick: bool = False):
         """Scans files, detects changes, chunks, embeds, and updates DB."""
