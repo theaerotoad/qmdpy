@@ -13,7 +13,7 @@ class CollectionConfig:
     contexts: Optional[Dict[str, str]] = None
     file_extensions: Optional[List[str]] = None
     convert_non_md: bool = True
-    dirlists: bool = False
+    dirlists: Union[bool, str] = False
 
 @dataclass
 class Config:

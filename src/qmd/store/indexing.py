@@ -24,6 +24,11 @@ class IndexingMixin:
     """Handles collection scanning, file conversion, embedding generation, indexing, and orphan pruning."""
 
     def _get_collection_files(self, base_path: Path, collection_cfg: CollectionConfig) -> List[Path]:
+        seen = set()
+        unique_files = []
+        dirs = set()
+        is_only = (str(collection_cfg.dirlists).lower() == "only")
+
         if collection_cfg.file_extensions is not None:
             exts = {
                 e.lower() if e.startswith('.') else f".{e.lower()}"
@@ -33,13 +38,12 @@ class IndexingMixin:
             for f in base_path.glob("**/*"):
                 if f.is_file() and f.suffix.lower() in exts:
                     files.append(f)
-            seen = set()
-            unique_files = []
-            dirs = set()
+            
             for f in files:
-                if f not in seen:
-                    seen.add(f)
-                    unique_files.append(f)
+                if not is_only:
+                    if f not in seen:
+                        seen.add(f)
+                        unique_files.append(f)
                 dirs.add(f.parent)
             
             if collection_cfg.dirlists:
@@ -57,9 +61,7 @@ class IndexingMixin:
                 candidates = list(base_path.glob("**/*"))
             else:
                 candidates = list(base_path.glob(glob_pattern))
-            seen = set()
-            unique_files = []
-            dirs = set()
+            
             for f in candidates:
                 if not f.is_file():
                     continue
@@ -67,10 +69,17 @@ class IndexingMixin:
                 if not collection_cfg.convert_non_md and ext not in {".md", ".markdown", ".txt"}:
                     continue
                 if ext in SUPPORTED_EXTENSIONS or ext in {".md", ".markdown", ".txt"}:
-                    if f not in seen:
-                        seen.add(f)
-                        unique_files.append(f)
+                    if not is_only:
+                        if f not in seen:
+                            seen.add(f)
+                            unique_files.append(f)
                     dirs.add(f.parent)
+            
+            # If no files matched the glob but dirlists is 'only', we still need to traverse to find the directories
+            if is_only and not dirs:
+                for d in base_path.glob("**/*"):
+                    if d.is_dir():
+                        dirs.add(d)
             
             if collection_cfg.dirlists:
                 dirs.add(base_path)
