@@ -16,7 +16,7 @@ HAS_WSLPATH = shutil.which("wslpath") is not None
 
 from qmd.config import load_config
 from qmd.store import Store
-from qmd.handlers import group_results_by_doc, handle_guide
+from qmd.commands import group_results_by_doc, handle_guide
 from qmd.formatters.xml import format_results_xml, format_doc_results_xml, format_discover_xml
 from qmd.formatters.core import escape_xml_attr
 from qmd.mcp_server import execute_qmd_command

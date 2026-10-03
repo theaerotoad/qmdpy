@@ -7,7 +7,7 @@ from qmd.config import load_config
 from qmd.store import Store
 from qmd.formatters.colors import Colors
 
-from qmd.handlers import (
+from qmd.commands import (
     handle_discover, handle_map, handle_search, handle_extract,
     handle_outline, handle_chunk, handle_collection_tree, handle_guide,
     handle_collections_list, handle_update, handle_report, handle_analyze,

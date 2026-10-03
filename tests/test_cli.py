@@ -367,7 +367,7 @@ def test_session_smart_defaults(monkeypatch):
     # With --session: exclude_seen should default to True
     monkeypatch.setattr(sys, "argv", ["qmd", "search", "query", "--session", "sess1"])
     with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"), \
-         patch("qmd.handlers.get_seen_chunks_for_session", return_value={("c", "p", 1)}):
+         patch("qmd.commands.search.get_seen_chunks_for_session", return_value={("c", "p", 1)}):
         mock_store = MockStore.return_value
         mock_store.hybrid_search.return_value = []
         main()
@@ -376,7 +376,7 @@ def test_session_smart_defaults(monkeypatch):
     # With --session and --include-seen: exclude_seen_set should be empty set
     monkeypatch.setattr(sys, "argv", ["qmd", "search", "query", "--session", "sess1", "--include-seen"])
     with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config"), \
-         patch("qmd.handlers.get_seen_chunks_for_session", return_value={("c", "p", 1)}):
+         patch("qmd.commands.search.get_seen_chunks_for_session", return_value={("c", "p", 1)}):
         mock_store = MockStore.return_value
         mock_store.hybrid_search.return_value = []
         main()
