@@ -66,7 +66,7 @@ def test_cli_session_implicit_deduplication(db_conn, tmp_path, monkeypatch):
     session_id = "agent_sess_42"
     monkeypatch.setattr(sys, "argv", ["qmd", "search", "test", "--session", session_id])
     with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config", return_value=config), \
-         patch("qmd.main.get_seen_chunks_for_session", return_value={("col", "doc.md", 0)}):
+         patch("qmd.handlers.get_seen_chunks_for_session", return_value={("col", "doc.md", 0)}):
         mock_store = MockStore.return_value
         mock_store.history_conn = MagicMock()
         mock_store.config = config
@@ -80,7 +80,7 @@ def test_cli_session_implicit_deduplication(db_conn, tmp_path, monkeypatch):
     # 2. Second run with --session and --include-seen
     monkeypatch.setattr(sys, "argv", ["qmd", "search", "test", "--session", session_id, "--include-seen"])
     with patch("qmd.main.Store") as MockStore, patch("qmd.main.load_config", return_value=config), \
-         patch("qmd.main.get_seen_chunks_for_session", return_value={("col", "doc.md", 0)}):
+         patch("qmd.handlers.get_seen_chunks_for_session", return_value={("col", "doc.md", 0)}):
         mock_store = MockStore.return_value
         mock_store.history_conn = MagicMock()
         mock_store.config = config
