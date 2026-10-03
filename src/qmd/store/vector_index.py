@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from qmd.formatting import YELLOW, GREEN, RED, RESET
+from qmd.formatters.colors import Colors
 from qmd.db import get_db_meta, ensure_vector_table, get_connection
 from .models import decode_vector
 
@@ -51,9 +51,9 @@ class VectorIndexMixin:
                     else:
                         self.usearch_index.load(self.usearch_path)
             except ImportError:
-                print(f"{YELLOW}Warning: .usearch index found but 'usearch' package is not installed. Ignoring.{RESET}")
+                print(f"{Colors.YELLOW}Warning: .usearch index found but 'usearch' package is not installed. Ignoring.{Colors.RESET}")
             except Exception as e:
-                print(f"{YELLOW}Warning: Failed to load .usearch index: {e}{RESET}")
+                print(f"{Colors.YELLOW}Warning: Failed to load .usearch index: {e}{Colors.RESET}")
 
     def build_usearch_index(self):
         """Builds a HNSW ANN index using usearch from the existing vectors table."""
@@ -61,7 +61,7 @@ class VectorIndexMixin:
             import usearch.index
             import numpy as np
         except ImportError:
-            print(f"{RED}Error: 'usearch' and 'numpy' packages are required to build the ANN index.{RESET}")
+            print(f"{Colors.RED}Error: 'usearch' and 'numpy' packages are required to build the ANN index.{Colors.RESET}")
             return False
 
         cursor = self.conn.cursor()
@@ -72,7 +72,7 @@ class VectorIndexMixin:
             cursor.execute("SELECT embedding FROM vectors LIMIT 1")
             row = cursor.fetchone()
             if not row or not row[0]:
-                print(f"{YELLOW}No vectors found in database. Skipping usearch index build.{RESET}")
+                print(f"{Colors.YELLOW}No vectors found in database. Skipping usearch index build.{Colors.RESET}")
                 return True
 
             blob_len = len(row[0])
@@ -84,7 +84,7 @@ class VectorIndexMixin:
                 dim = blob_len // 4
 
             ensure_vector_table(self.conn, dim=dim, quant_type=quant_type)
-            print(f"{YELLOW}Inferred vector dimension {dim} from existing database payload.{RESET}")
+            print(f"{Colors.YELLOW}Inferred vector dimension {dim} from existing database payload.{Colors.RESET}")
 
         dim = int(dim)
         dtype = "f32"
@@ -126,7 +126,7 @@ class VectorIndexMixin:
             parent_dir.mkdir(parents=True, exist_ok=True)
 
         index.save(self.usearch_path)
-        print(f"{GREEN}✓ Successfully built usearch index with {count} vectors at {self.usearch_path}{RESET}")
+        print(f"{Colors.GREEN}✓ Successfully built usearch index with {count} vectors at {self.usearch_path}{Colors.RESET}")
         self.usearch_index = index
         return True
 
