@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional, Dict, Union, Any
 
 from qmd.db import get_cached_search_results, save_cached_search_results
 from qmd.utils import build_spacy_fts_queries
-from qmd.formatting import DIM, YELLOW, CYAN, RESET, MAGENTA, GREEN
+from qmd.formatters.colors import Colors
 from .models import Result, _results_to_json, _json_to_results
 
 
@@ -51,15 +51,15 @@ class SearchMixin:
                 if verbose:
                     corpus_line = self._format_stats_line(self.get_stats(collection=collection))
                     t_total = (time.perf_counter() - t_total_start) * 1000
-                    print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
+                    print(f"\n{Colors.CYAN}--- Search Diagnostics ---{Colors.RESET}")
                     if corpus_line:
-                        print(f"{DIM}Corpus:{RESET} {corpus_line}")
-                    print(f"{DIM}Original Query:{RESET} {query}")
-                    print(f"{GREEN}[Cache Hit]{RESET} Loaded results from search cache in {t_cache:.2f}ms")
-                    print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                        print(f"{Colors.DIM}Corpus:{Colors.RESET} {corpus_line}")
+                    print(f"{Colors.DIM}Original Query:{Colors.RESET} {query}")
+                    print(f"{Colors.GREEN}[Cache Hit]{Colors.RESET} Loaded results from search cache in {t_cache:.2f}ms")
+                    print(f"\n{Colors.CYAN}--- Timing Breakdown ---{Colors.RESET}")
                     print(f"  • Cache Lookup:            {t_cache:>7.2f} ms")
                     print(f"  • Total Hybrid Search:     {t_total:>7.2f} ms")
-                    print(f"{CYAN}------------------------{RESET}\n")
+                    print(f"{Colors.CYAN}------------------------{Colors.RESET}\n")
                 return _json_to_results(cached_json)
 
         fts_lim = fts_limit if fts_limit is not None else getattr(self.config, 'fts_limit', 50)
@@ -191,21 +191,21 @@ class SearchMixin:
             if verbose:
                 corpus_line = self._format_stats_line(self.get_stats(collection=collection))
                 t_total = (time.perf_counter() - t_total_start) * 1000
-                print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
+                print(f"\n{Colors.CYAN}--- Search Diagnostics ---{Colors.RESET}")
                 if corpus_line:
-                    print(f"{DIM}Corpus:{RESET} {corpus_line}")
-                print(f"{DIM}Query:{RESET} {query}")
-                print(f"{YELLOW}Lexical (FTS):{RESET} {lex_queries}")
-                print(f"{MAGENTA}Vector (Semantic):{RESET} {vec_queries}")
-                print(f"{DIM}Candidates: FTS={len(fts_results)} | Vector={len(vec_results)} | RRF=0{RESET}")
-                print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                    print(f"{Colors.DIM}Corpus:{Colors.RESET} {corpus_line}")
+                print(f"{Colors.DIM}Query:{Colors.RESET} {query}")
+                print(f"{Colors.YELLOW}Lexical (FTS):{Colors.RESET} {lex_queries}")
+                print(f"{Colors.MAGENTA}Vector (Semantic):{Colors.RESET} {vec_queries}")
+                print(f"{Colors.DIM}Candidates: FTS={len(fts_results)} | Vector={len(vec_results)} | RRF=0{Colors.RESET}")
+                print(f"\n{Colors.CYAN}--- Timing Breakdown ---{Colors.RESET}")
                 print(f"  • Query Expansion:         {t_expand:>7.2f} ms")
                 print(f"  • Lexical (FTS) Search:    {t_fts:>7.2f} ms ({len(fts_results)} hits)")
                 print(f"  • Query Embedding (LLM):   {t_embed:>7.2f} ms")
                 print(f"  • Vector (KNN) Search:     {t_vec_knn:>7.2f} ms ({len(vec_results)} hits)")
                 print(f"  • RRF Fusion:              {t_rrf:>7.2f} ms")
                 print(f"  • Total Search:            {t_total:>7.2f} ms")
-                print(f"{CYAN}------------------------{RESET}\n")
+                print(f"{Colors.CYAN}------------------------{Colors.RESET}\n")
             return []
 
         final_results = []
@@ -288,14 +288,14 @@ class SearchMixin:
 
         if verbose:
             corpus_line = self._format_stats_line(self.get_stats(collection=collection))
-            print(f"\n{CYAN}--- Search Diagnostics ---{RESET}")
+            print(f"\n{Colors.CYAN}--- Search Diagnostics ---{Colors.RESET}")
             if corpus_line:
-                print(f"{DIM}Corpus:{RESET} {corpus_line}")
-            print(f"{DIM}Query:{RESET} {query}")
-            print(f"{YELLOW}Lexical (FTS):{RESET} {lex_queries}")
-            print(f"{MAGENTA}Vector (Semantic):{RESET} {vec_queries}")
-            print(f"{DIM}Candidates: FTS={len(fts_results)} | Vector={len(vec_results)} | RRF={len(top_candidates)}{RESET}")
-            print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                print(f"{Colors.DIM}Corpus:{Colors.RESET} {corpus_line}")
+            print(f"{Colors.DIM}Query:{Colors.RESET} {query}")
+            print(f"{Colors.YELLOW}Lexical (FTS):{Colors.RESET} {lex_queries}")
+            print(f"{Colors.MAGENTA}Vector (Semantic):{Colors.RESET} {vec_queries}")
+            print(f"{Colors.DIM}Candidates: FTS={len(fts_results)} | Vector={len(vec_results)} | RRF={len(top_candidates)}{Colors.RESET}")
+            print(f"\n{Colors.CYAN}--- Timing Breakdown ---{Colors.RESET}")
             print(f"  • Query Expansion:         {t_expand:>7.2f} ms")
             print(f"  • Lexical (FTS) Search:    {t_fts:>7.2f} ms ({len(fts_results)} hits)")
             print(f"  • Query Embedding (LLM):   {t_embed:>7.2f} ms")
@@ -305,7 +305,7 @@ class SearchMixin:
                 print(f"  • Cross-Encoder Rerank:    {t_rerank:>7.2f} ms ({len(top_candidates)} scored)")
             print(f"  • Dedup & Slicing:         {t_dedup:>7.2f} ms ({len(ret_results)} returned)")
             print(f"  • Total Search:            {t_total:>7.2f} ms")
-            print(f"{CYAN}------------------------{RESET}\n")
+            print(f"{Colors.CYAN}------------------------{Colors.RESET}\n")
 
         return ret_results
 
@@ -348,15 +348,15 @@ class SearchMixin:
                 if verbose:
                     corpus_line = self._format_stats_line(self.get_stats(collection=collection))
                     t_total = (time.perf_counter() - t_total_start) * 1000
-                    print(f"\n{CYAN}--- Wide-to-Narrow Diagnostics ---{RESET}")
+                    print(f"\n{Colors.CYAN}--- Wide-to-Narrow Diagnostics ---{Colors.RESET}")
                     if corpus_line:
-                        print(f"{DIM}Corpus:{RESET} {corpus_line}")
-                    print(f"{DIM}Original Query:{RESET} {query}")
-                    print(f"{GREEN}[Cache Hit]{RESET} Loaded results from search cache in {t_cache:.2f}ms")
-                    print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                        print(f"{Colors.DIM}Corpus:{Colors.RESET} {corpus_line}")
+                    print(f"{Colors.DIM}Original Query:{Colors.RESET} {query}")
+                    print(f"{Colors.GREEN}[Cache Hit]{Colors.RESET} Loaded results from search cache in {t_cache:.2f}ms")
+                    print(f"\n{Colors.CYAN}--- Timing Breakdown ---{Colors.RESET}")
                     print(f"  • Cache Lookup:            {t_cache:>7.2f} ms")
                     print(f"  • Total Wide-to-Narrow:    {t_total:>7.2f} ms")
-                    print(f"{CYAN}------------------------{RESET}\n")
+                    print(f"{Colors.CYAN}------------------------{Colors.RESET}\n")
                 return _json_to_results(cached_json)
 
         cfg_max = max(getattr(self.config, 'fts_limit', 50), getattr(self.config, 'vec_limit', 50))
@@ -470,14 +470,14 @@ class SearchMixin:
 
         if verbose:
             corpus_line = self._format_stats_line(self.get_stats(collection=collection))
-            print(f"\n{CYAN}--- Search Diagnostics (Wide-to-Narrow) ---{RESET}")
+            print(f"\n{Colors.CYAN}--- Search Diagnostics (Wide-to-Narrow) ---{Colors.RESET}")
             if corpus_line:
-                print(f"{DIM}Corpus:{RESET} {corpus_line}")
-            print(f"{DIM}Query:{RESET} {query}")
-            print(f"{YELLOW}Top Documents:{RESET} {list(top_docs)}")
-            print(f"{MAGENTA}Top Directories:{RESET} {list(top_dirs)}")
-            print(f"{DIM}Candidates: Wide={len(wide_results)} | Boosted={len(boosted_results)} | Returned={len(ret_results)}{RESET}")
-            print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                print(f"{Colors.DIM}Corpus:{Colors.RESET} {corpus_line}")
+            print(f"{Colors.DIM}Query:{Colors.RESET} {query}")
+            print(f"{Colors.YELLOW}Top Documents:{Colors.RESET} {list(top_docs)}")
+            print(f"{Colors.MAGENTA}Top Directories:{Colors.RESET} {list(top_dirs)}")
+            print(f"{Colors.DIM}Candidates: Wide={len(wide_results)} | Boosted={len(boosted_results)} | Returned={len(ret_results)}{Colors.RESET}")
+            print(f"\n{Colors.CYAN}--- Timing Breakdown ---{Colors.RESET}")
             print(f"  • Wide Retrieval:          {t_wide:>7.2f} ms ({len(wide_results)} chunks)")
             print(f"  • Container Aggregation:   {t_agg:>7.2f} ms ({len(top_docs)} docs, {len(top_dirs)} dirs)")
             print(f"  • Narrow Density Boosting: {t_boost:>7.2f} ms ({len(boosted_results)} boosted)")
@@ -485,7 +485,7 @@ class SearchMixin:
                 print(f"  • Cross-Encoder Rerank:    {t_rerank:>7.2f} ms ({len(candidate_pool)} scored)")
             print(f"  • Dedup & Slicing:         {t_dedup:>7.2f} ms ({len(ret_results)} returned)")
             print(f"  • Total Search:            {t_total:>7.2f} ms")
-            print(f"{CYAN}---------------------------------------{RESET}\n")
+            print(f"{Colors.CYAN}---------------------------------------{Colors.RESET}\n")
 
         return ret_results
 
@@ -527,15 +527,15 @@ class SearchMixin:
                 if verbose:
                     corpus_line = self._format_stats_line(self.get_stats(collection=collection))
                     t_total = (time.perf_counter() - t_total_start) * 1000
-                    print(f"\n{CYAN}--- Discover Diagnostics ---{RESET}")
+                    print(f"\n{Colors.CYAN}--- Discover Diagnostics ---{Colors.RESET}")
                     if corpus_line:
-                        print(f"{DIM}Corpus:{RESET} {corpus_line}")
-                    print(f"{DIM}Original Query:{RESET} {query}")
-                    print(f"{GREEN}[Cache Hit]{RESET} Loaded results from search cache in {t_cache:.2f}ms")
-                    print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                        print(f"{Colors.DIM}Corpus:{Colors.RESET} {corpus_line}")
+                    print(f"{Colors.DIM}Original Query:{Colors.RESET} {query}")
+                    print(f"{Colors.GREEN}[Cache Hit]{Colors.RESET} Loaded results from search cache in {t_cache:.2f}ms")
+                    print(f"\n{Colors.CYAN}--- Timing Breakdown ---{Colors.RESET}")
                     print(f"  • Cache Lookup:            {t_cache:>7.2f} ms")
                     print(f"  • Total Discover Search:   {t_total:>7.2f} ms")
-                    print(f"{CYAN}------------------------{RESET}\n")
+                    print(f"{Colors.CYAN}------------------------{Colors.RESET}\n")
                 return _json_to_results(cached_json)
 
         fetch_limit = max(limit * 6, getattr(self.config, 'fts_limit', 50), getattr(self.config, 'vec_limit', 50))
@@ -634,17 +634,17 @@ class SearchMixin:
 
         if verbose:
             corpus_line = self._format_stats_line(self.get_stats(collection=collection))
-            print(f"\n{CYAN}--- Search Diagnostics (Discover) ---{RESET}")
+            print(f"\n{Colors.CYAN}--- Search Diagnostics (Discover) ---{Colors.RESET}")
             if corpus_line:
-                print(f"{DIM}Corpus:{RESET} {corpus_line}")
-            print(f"{DIM}Query:{RESET} {query}")
-            print(f"{DIM}Mode:{RESET} {'Wide-to-Narrow' if w2n else 'Hybrid'} | {DIM}Rerank:{RESET} {rerank or reranker_only}")
-            print(f"{DIM}Candidates: {len(candidates)} chunks -> {len(final_results)} top documents{RESET}")
-            print(f"\n{CYAN}--- Timing Breakdown ---{RESET}")
+                print(f"{Colors.DIM}Corpus:{Colors.RESET} {corpus_line}")
+            print(f"{Colors.DIM}Query:{Colors.RESET} {query}")
+            print(f"{Colors.DIM}Mode:{Colors.RESET} {'Wide-to-Narrow' if w2n else 'Hybrid'} | {Colors.DIM}Rerank:{Colors.RESET} {rerank or reranker_only}")
+            print(f"{Colors.DIM}Candidates: {len(candidates)} chunks -> {len(final_results)} top documents{Colors.RESET}")
+            print(f"\n{Colors.CYAN}--- Timing Breakdown ---{Colors.RESET}")
             print(f"  • Candidate Retrieval:     {t_cand:>7.2f} ms ({len(candidates)} chunks)")
             print(f"  • Top-Hit Doc Grouping:    {t_group:>7.2f} ms ({len(final_results)} documents)")
             print(f"  • Total Search:            {t_total:>7.2f} ms")
-            print(f"{CYAN}---------------------------------{RESET}\n")
+            print(f"{Colors.CYAN}---------------------------------{Colors.RESET}\n")
 
         return final_results
 

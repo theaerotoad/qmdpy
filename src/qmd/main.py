@@ -11,14 +11,22 @@ from typing import List, Dict, Tuple, Optional, Set
 from qmd.config import load_config
 from qmd.store import Store, Result
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
-from qmd.formatting import (
-    format_results_cli, format_doc_results_cli, format_results_json, format_doc_results_json,
-    format_discover_cli, format_discover_json, format_discover_xml,
-    format_outline_cli, format_chunks_cli, format_results_xml, format_doc_results_xml,
-    format_chunks_xml, format_outline_xml, format_collection_tree_cli, format_collection_tree_xml,
-    format_map_cli, format_map_xml, format_report_cli, format_report_json, format_report_xml, format_report_csv,
-    set_plain_mode, strip_ansi, BOLD, CYAN, GREEN, RED, RESET, YELLOW
+from qmd.formatters.cli import (
+    format_results_cli, format_doc_results_cli, format_discover_cli,
+    format_outline_cli, format_chunks_cli, format_collection_tree_cli,
+    format_map_cli, format_report_cli
 )
+from qmd.formatters.json import (
+    format_results_json, format_doc_results_json, format_discover_json,
+    format_report_json, format_report_csv
+)
+from qmd.formatters.xml import (
+    format_discover_xml, format_results_xml, format_doc_results_xml,
+    format_chunks_xml, format_outline_xml, format_collection_tree_xml,
+    format_map_xml, format_report_xml
+)
+from qmd.formatters.core import set_plain_mode, strip_ansi
+from qmd.formatters.colors import Colors
 from qmd.utils import redact_pii, parse_target_spec, parse_int_ranges
 
 def _clean_header_part(part: str) -> str:
@@ -563,7 +571,7 @@ def handle_extract(args, store: Store):
             import json
             print(json.dumps({"error": str(e)}, indent=2))
         else:
-            print(f"{RED}Error: {e}{RESET}")
+            print(f"{Colors.RED}Error: {e}{Colors.RESET}")
         sys.exit(1)
 
     if not data:
@@ -571,7 +579,7 @@ def handle_extract(args, store: Store):
             import json
             print(json.dumps({"error": "Document not found"}, indent=2))
         else:
-            print(f"{RED}Error: Document not found matching path '{target_path}'{RESET}")
+            print(f"{Colors.RED}Error: Document not found matching path '{target_path}'{Colors.RESET}")
         sys.exit(1)
 
     if args.json:
@@ -584,10 +592,10 @@ def handle_extract(args, store: Store):
         
         print(json.dumps(data, indent=2))
     elif is_xml:
-        from qmd.formatting import format_extraction_xml
+        from qmd.formatters.xml import format_extraction_xml
         format_extraction_xml(data)
     else:
-        from qmd.formatting import format_extraction_cli
+        from qmd.formatters.cli import format_extraction_cli
         format_extraction_cli(data)
 
 def handle_outline(args, store: Store):
@@ -616,7 +624,7 @@ def handle_outline(args, store: Store):
             import json
             print(json.dumps({"error": "Document not found"}, indent=2))
         else:
-            print(f"{RED}Error: Document not found matching path '{target_path}'{RESET}")
+            print(f"{Colors.RED}Error: Document not found matching path '{target_path}'{Colors.RESET}")
         sys.exit(1)
 
     if args.json:
@@ -646,7 +654,7 @@ def handle_chunk(args, store: Store):
                 import json
                 print(json.dumps({"error": f"Invalid sequence range specification: '{args.seq}'"}, indent=2))
             else:
-                print(f"{RED}Error: Invalid sequence range specification: '{args.seq}'{RESET}")
+                print(f"{Colors.RED}Error: Invalid sequence range specification: '{args.seq}'{Colors.RESET}")
             sys.exit(1)
     else:
         seq_ids = spec["seq"]
@@ -666,7 +674,7 @@ def handle_chunk(args, store: Store):
             import json
             print(json.dumps({"error": "Chunk not found"}, indent=2))
         else:
-            print(f"{RED}Error: Chunk not found.{RESET}")
+            print(f"{Colors.RED}Error: Chunk not found.{Colors.RESET}")
         sys.exit(1)
 
     # Apply max_chunks_per_response cap to prevent context explosion
@@ -729,7 +737,7 @@ def handle_collection_tree(args, store: Store):
             import json
             print(json.dumps({"error": str(e)}, indent=2))
         else:
-            print(f"{RED}Error: {e}{RESET}")
+            print(f"{Colors.RED}Error: {e}{Colors.RESET}")
         sys.exit(1)
 
     if coll_name and tree_data is None:
@@ -737,7 +745,7 @@ def handle_collection_tree(args, store: Store):
             import json
             print(json.dumps({"error": f"Collection '{coll_name}' not found"}, indent=2))
         else:
-            print(f"{RED}Error: Collection '{coll_name}' not found.{RESET}")
+            print(f"{Colors.RED}Error: Collection '{coll_name}' not found.{Colors.RESET}")
         sys.exit(1)
 
     if args.json:
@@ -789,35 +797,35 @@ When requested to perform research or retrieve data using QMD, emit 1 to 5 comma
         print(guide_xml)
         return guide_xml
     else:
-        guide_md = f"""{BOLD}QMD LLM Agent Research & Inspection Guide{RESET}
+        guide_md = f"""{Colors.BOLD}QMD LLM Agent Research & Inspection Guide{Colors.RESET}
 
-{CYAN}## Workflow & Decision Matrix{RESET}
-1. {BOLD}Triage & Discovery:{RESET}
+{Colors.CYAN}## Workflow & Decision Matrix{Colors.RESET}
+1. {Colors.BOLD}Triage & Discovery:{Colors.RESET}
    - `qmd discover "question?"` - Single top hit per document SERP view (use natural language questions)
    - `qmd map "question?"` - Semantic directory tree mapping (density clustering)
    - `qmd collections` - List indexed collections and paths
    - `qmd tree [collection] [-p pattern]` - Explore document directory trees
 
-2. {BOLD}Retrieval & Search:{RESET}
+2. {Colors.BOLD}Retrieval & Search:{Colors.RESET}
    - `qmd search "question?"` - Document-ordered search results (natural language question)
    - `qmd search "question?" --deep` - Deep search: doc-grouped + LLM reranked
    - `qmd search "question?" --session <id>` - Session search (auto-deduplicates seen chunks)
    - `qmd search "question?" --broad` - Broad hierarchical search (wide-to-narrow)
 
-3. {BOLD}Document Structure & Orientation:{RESET}
+3. {Colors.BOLD}Document Structure & Orientation:{Colors.RESET}
    - `qmd outline "<target>"` - Table of contents with chunk sequence mappings
 
-4. {BOLD}Targeted Reading:{RESET}
+4. {Colors.BOLD}Targeted Reading:{Colors.RESET}
    - `qmd read "<target>"` - Read specific chunks, ranges, or surrounding context
    - Examples: `qmd read 'Books:doc.epub:10-15'`, `qmd read 'qmd://Books/doc.epub:3'`
 
-{CYAN}## Target Shorthand Syntax{RESET}
+{Colors.CYAN}## Target Shorthand Syntax{Colors.RESET}
 - Full URI: `qmd://<collection>/<path>[:<seq>]`
 - Shorthand: `<collection>:<path>[:<seq>]`
 - Relative: `<path>[:<seq>]`
 - Chunk Row IDs: `10-15` or `22,40,25-27`
 
-{CYAN}## Query Formulation & Agent Best Practices{RESET}
+{Colors.CYAN}## Query Formulation & Agent Best Practices{Colors.RESET}
 - Frame queries as clear natural language questions rather than keyword lists for optimal semantic retrieval.
 - Use `qmd discover` to scan across multiple documents without flooding context.
 - Pass `--session <id>` when conducting multi-turn research to avoid ingesting duplicate context.
@@ -838,7 +846,7 @@ def handle_collections_list(args, store: Store):
         print(json.dumps(data, indent=2))
     else:
         for name, cfg in store.config.collections.items():
-            print(f"{GREEN}{name}{RESET}: {cfg.path} ({cfg.glob})")
+            print(f"{Colors.GREEN}{name}{Colors.RESET}: {cfg.path} ({cfg.glob})")
 
 def handle_update(args, store: Store):
     if getattr(args, "verbose", False):
@@ -846,7 +854,7 @@ def handle_update(args, store: Store):
 
     config = store.config
     if getattr(config, "is_federated", False):
-        print(f"{RED}Error: Updating/indexing is disabled in federated include mode. Update individual collection configurations directly.{RESET}")
+        print(f"{Colors.RED}Error: Updating/indexing is disabled in federated include mode. Update individual collection configurations directly.{Colors.RESET}")
         sys.exit(1)
         
     if getattr(args, "build_ann", False):
@@ -872,9 +880,9 @@ def handle_update(args, store: Store):
                         capture_output=True, 
                         text=True
                     )
-                    print(f"{GREEN}✓ Git pull successful.{RESET}")
+                    print(f"{Colors.GREEN}✓ Git pull successful.{Colors.RESET}")
                 except subprocess.CalledProcessError as e:
-                    print(f"{RED}✗ Git pull failed for {name}: {e.stderr.strip()}{RESET}")
+                    print(f"{Colors.RED}✗ Git pull failed for {name}: {e.stderr.strip()}{Colors.RESET}")
             else:
                 print(f"Skipping git pull: {name} is not a git repository.")
         
@@ -891,13 +899,13 @@ def handle_update(args, store: Store):
     # 4. Report indexing errors if any remain
     errors = store.get_indexing_errors(collection=args.collection)
     if errors:
-        print(f"\n{YELLOW}Notice: {len(errors)} file(s) have unresolved indexing errors/degradations.{RESET}")
+        print(f"\n{Colors.YELLOW}Notice: {len(errors)} file(s) have unresolved indexing errors/degradations.{Colors.RESET}")
         for err in errors[:5]:
             print(f"  • [{err['collection']}] {err['path']} - {err['error_type']}: {err['error_message']}")
         if len(errors) > 5:
             print(f"  ... and {len(errors) - 5} more.")
     else:
-        print(f"{GREEN}✓ All files indexed cleanly with zero errors.{RESET}")
+        print(f"{Colors.GREEN}✓ All files indexed cleanly with zero errors.{Colors.RESET}")
 
 def handle_report(args, store: Store):
     is_xml = _is_xml_output(args)
@@ -912,7 +920,7 @@ def handle_report(args, store: Store):
             with open(args.yaml, 'r', encoding='utf-8') as f:
                 report_cfg = yaml.safe_load(f)
         except Exception as e:
-            print(f"{RED}Error loading YAML file: {e}{RESET}")
+            print(f"{Colors.RED}Error loading YAML file: {e}{Colors.RESET}")
             sys.exit(1)
     else:
         fields = []
@@ -990,9 +998,9 @@ def handle_analyze(args, store: Store):
         print(json.dumps(results, indent=2))
     else:
         if not results:
-            print(f"{YELLOW}No documents found to analyze or all matched documents are already analyzed.{RESET}")
+            print(f"{Colors.YELLOW}No documents found to analyze or all matched documents are already analyzed.{Colors.RESET}")
             return
-        print(f"\n{CYAN}--- Document Analysis Results ---{RESET}")
+        print(f"\n{Colors.CYAN}--- Document Analysis Results ---{Colors.RESET}")
         format_report_cli(results)
 
 class HelpAllAction(argparse.Action):
@@ -1317,14 +1325,14 @@ def main():
     config = load_config(config_path)
     is_write = args.command in ["update", "analyze", "analysis"]
     if is_write and getattr(config, "is_federated", False):
-        print(f"{RED}Error: Modifying databases (update/analyze) is disabled in federated include mode. Run against individual collections directly.{RESET}")
+        print(f"{Colors.RED}Error: Modifying databases (update/analyze) is disabled in federated include mode. Run against individual collections directly.{Colors.RESET}")
         sys.exit(1)
     store = Store(config, read_only=not is_write)
 
     try:
         execute_command(args, store)
     except Exception as e:
-        print(f"{RED}Error: {e}{RESET}")
+        print(f"{Colors.RED}Error: {e}{Colors.RESET}")
         sys.exit(1)
 
 if __name__ == "__main__":
