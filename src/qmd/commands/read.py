@@ -1,3 +1,4 @@
+import os
 import sys
 from qmd.store import Store
 from qmd.utils import parse_target_spec, parse_int_ranges
