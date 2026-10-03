@@ -22,8 +22,10 @@ def test_process_image_routing_and_concurrency(monkeypatch):
         calls.append(("vision", filename))
         return f"# Vision for {filename}"
 
-    monkeypatch.setattr("qmd.converters.images._process_image_multimodal_llm", mock_multimodal)
-    monkeypatch.setattr("qmd.converters.images._process_image_vision_api", mock_vision)
+    monkeypatch.setattr("qmd.converters._process_image_multimodal_llm", mock_multimodal, raising=False)
+    monkeypatch.setattr("qmd.converters._process_image_vision_api", mock_vision, raising=False)
+    monkeypatch.setattr("qmd.converters.images._process_image_multimodal_llm", mock_multimodal, raising=False)
+    monkeypatch.setattr("qmd.converters.images._process_image_vision_api", mock_vision, raising=False)
 
     cfg_multi = Config.from_dict({
         "multimodal_model": "gpt-4o-mini",
