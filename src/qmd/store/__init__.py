@@ -128,13 +128,20 @@ class Store(VectorIndexMixin, InspectionMixin, IndexingMixin, RetrievalMixin, Se
 
     def build_usearch_index(self):
         if getattr(self.config, "is_federated", False):
+            success = True
             for child in self.child_stores:
-                child.build_usearch_index()
+                res = child.build_usearch_index()
+                if res is False:
+                    success = False
             if self.conn is not None:
-                super().build_usearch_index()
+                res = super().build_usearch_index()
+                if res is False:
+                    success = False
+            return success
         else:
             if self.conn is not None:
-                super().build_usearch_index()
+                return super().build_usearch_index()
+            return True
 
 
 __all__ = [

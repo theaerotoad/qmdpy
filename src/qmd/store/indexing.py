@@ -77,9 +77,7 @@ class IndexingMixin:
 
     def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False, verbose: bool = False, quick: bool = False):
         """Scans files, detects changes, chunks, embeds, and updates DB."""
-        if self.read_only:
-            raise RuntimeError("Cannot index collection in read-only mode.")
-        if getattr(self.config, "is_federated", False) and not getattr(self.config, "includes_update", False):
+        if self.read_only or (getattr(self.config, "is_federated", False) and not getattr(self.config, "includes_update", False)):
             raise RuntimeError("Cannot index collection in read-only or federated include mode.")
 
         if getattr(self.config, "is_federated", False):
@@ -156,9 +154,7 @@ class IndexingMixin:
 
     def prune_orphaned_collections(self, active_collections: List[str]):
         """Removes documents, FTS entries, and orphaned vectors/content for collections no longer in config."""
-        if self.read_only:
-            raise RuntimeError("Cannot prune collections in read-only mode.")
-        if getattr(self.config, "is_federated", False) and not getattr(self.config, "includes_update", False):
+        if self.read_only or (getattr(self.config, "is_federated", False) and not getattr(self.config, "includes_update", False)):
             raise RuntimeError("Cannot prune collections in read-only or federated include mode.")
 
         if getattr(self.config, "is_federated", False):
