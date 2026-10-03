@@ -7,7 +7,9 @@ from qmd.config import Config
 from qmd.store import Store
 from qmd.store.models import Result
 from qmd.main import main
-from qmd.formatting import format_extraction_cli, format_extraction_xml, set_plain_mode
+from qmd.formatters.cli import format_extraction_cli
+from qmd.formatters.xml import format_extraction_xml
+from qmd.formatters.core import set_plain_mode
 
 
 def test_extract_document_fast_path(db_conn, temp_db_path):

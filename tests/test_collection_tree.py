@@ -3,7 +3,9 @@ import pytest
 from pathlib import Path
 from qmd.config import Config, CollectionConfig
 from qmd.store import Store
-from qmd.formatting import format_collection_tree_cli, format_collection_tree_xml, set_plain_mode
+from qmd.formatters.cli import format_collection_tree_cli
+from qmd.formatters.xml import format_collection_tree_xml
+from qmd.formatters.core import set_plain_mode
 from qmd.main import main
 
 

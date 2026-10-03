@@ -9,7 +9,7 @@ from qmd.db import (
     is_sqlite_vec_active, get_db_meta, get_cached_query_embedding, save_query_embedding
 )
 from qmd.utils import compute_hash, decompress_text
-from qmd.formatting import YELLOW, RESET
+from qmd.formatters.colors import Colors
 from .models import Result, encode_vector, decode_vector, _build_collection_sql_filter
 
 
@@ -213,7 +213,7 @@ class RetrievalMixin:
                 cursor.execute(base_sql + filters_sql + order_sql, tuple(build_params(f'"{sanitized}"')))
                 rows = cursor.fetchall()
             except sqlite3.OperationalError:
-                print(f"{YELLOW}FTS Warning (Skipping term '{query}'): {e}{RESET}")
+                print(f"{Colors.YELLOW}FTS Warning (Skipping term '{query}'): {e}{Colors.RESET}")
                 return []
 
         results = []
@@ -419,7 +419,7 @@ class RetrievalMixin:
                         ))
                     return candidates
             except Exception as e:
-                print(f"{YELLOW}Warning: usearch ANN query failed ({e}), using fallback scanner.{RESET}")
+                print(f"{Colors.YELLOW}Warning: usearch ANN query failed ({e}), using fallback scanner.{Colors.RESET}")
 
         if is_sqlite_vec_active(self.conn) and dirlist != "only":
             try:
@@ -513,7 +513,7 @@ class RetrievalMixin:
                     ))
                 return candidates
             except sqlite3.OperationalError as e:
-                print(f"{YELLOW}Warning: sqlite-vec accelerated query failed ({e}), using fallback scanner.{RESET}")
+                print(f"{Colors.YELLOW}Warning: sqlite-vec accelerated query failed ({e}), using fallback scanner.{Colors.RESET}")
 
         if getattr(self, '_has_analysis_table', None) is None:
             c = self.conn.cursor()

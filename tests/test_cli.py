@@ -118,7 +118,7 @@ def test_chunk_arg_parsing_seq_ranges(monkeypatch):
         mock_store.get_chunk_by_seq.assert_called_once_with("wiki", "notes.md", seq_id=[1, 2, 3, 5], window=0)
 
 def test_xml_formatting_flat_and_doc(capsys):
-    from qmd.formatting import format_results_xml, format_doc_results_xml, format_chunks_xml, format_outline_xml
+    from qmd.formatters.xml import format_results_xml, format_doc_results_xml, format_chunks_xml, format_outline_xml
     from qmd.store import Result
 
     r1 = Result(path="doc.md", title='Special "Doc" & Co', text="First snippet with **markdown**", score=0.95, source="hybrid", rank=1, collection="main", seq_id=10, headers="Intro > Overview")
@@ -277,7 +277,8 @@ def test_cli_discover_command(monkeypatch, capsys):
 
 def test_discover_xml_and_json_formatting(capsys):
     """Test format_discover_xml and format_discover_json."""
-    from qmd.formatting import format_discover_xml, format_discover_json
+    from qmd.formatters.xml import format_discover_xml
+    from qmd.formatters.json import format_discover_json
     from qmd.store import Result
 
     r = Result(collection="space", path="helios.md", title="Helios Mission", score=0.92, source="hybrid", rank=1, seq_id=10, headers="Overview", text="Helios solar probe mission", match_count=4)
@@ -383,7 +384,7 @@ def test_session_smart_defaults(monkeypatch):
 
 def test_actionable_xml_attributes(capsys):
     """Test that Phase 5 actionable XML attributes are rendered."""
-    from qmd.formatting import format_results_xml, format_doc_results_xml, format_outline_xml
+    from qmd.formatters.xml import format_results_xml, format_doc_results_xml, format_outline_xml
     from qmd.store import Result
 
     r = Result(path="space/apollo.epub", title="Apollo", text="Mission details here", score=0.88, source="hybrid", rank=1, collection="Books", seq_id=70, headers="Budget > FY67")

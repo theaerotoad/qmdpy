@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any, Union
 from tqdm import tqdm
 
 from qmd.config import CollectionConfig
-from qmd.formatting import YELLOW, RESET
+from qmd.formatters.colors import Colors
 from qmd.converters import convert_to_markdown, SUPPORTED_EXTENSIONS
 from qmd.utils import compute_hash, compress_text, decompress_text
 from qmd.docparse.parser import parse_markdown_to_blocks
@@ -104,7 +104,7 @@ class IndexingMixin:
                 except Exception as e:
                     tqdm.write(f"Error processing {file_path}: {e}")
         except KeyboardInterrupt:
-            tqdm.write(f"\n{YELLOW}Indexing interrupted by user. Safely committing {count_processed} new files to vector index...{RESET}")
+            tqdm.write(f"\n{Colors.YELLOW}Indexing interrupted by user. Safely committing {count_processed} new files to vector index...{Colors.RESET}")
             if count_processed > 0:
                 update_db_last_updated(self.conn)
                 if getattr(self, 'usearch_index', None) is not None and not self.read_only:
@@ -165,7 +165,7 @@ class IndexingMixin:
             self._cleanup_orphaned_data()
             return
 
-        print(f"{YELLOW}Pruning removed collections: {orphans}{RESET}")
+        print(f"{Colors.YELLOW}Pruning removed collections: {orphans}{Colors.RESET}")
 
         for orphan in orphans:
             cursor.execute("SELECT id FROM documents WHERE collection = ?", (orphan,))
@@ -523,7 +523,7 @@ class IndexingMixin:
             )
         except httpx.HTTPStatusError as e:
             if e.response.status_code in (400, 413):
-                tqdm.write(f"{YELLOW}Warning: Context size exceeded for '{disp_name}'. Applying raw chunking fallback...{RESET}")
+                tqdm.write(f"{Colors.YELLOW}Warning: Context size exceeded for '{disp_name}'. Applying raw chunking fallback...{Colors.RESET}")
                 from qmd.utils import chunk_text
                 import copy
                 
