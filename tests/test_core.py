@@ -416,3 +416,104 @@ collections:
     assert len(multi_stores) == 2
     assert store.child_stores[0] in multi_stores
     assert store.child_stores[1] in multi_stores
+
+
+def test_config_include_without_db_path(tmp_path):
+    child_db = tmp_path / "child.db"
+    child_yaml = tmp_path / "child.yml"
+    child_yaml.write_text(f"""
+db_path: "{child_db}"
+embed_model: "EmbeddingGemma 300m"
+collections:
+  child_coll:
+    path: /tmp/child
+    glob: "*.md"
+""")
+    master_yaml = tmp_path / "master.yml"
+    master_yaml.write_text(f"""
+embed_model: "EmbeddingGemma 300m"
+include:
+  - "{child_yaml.name}"
+""")
+    cfg = load_config(master_yaml)
+    assert cfg.db_path is None
+    assert cfg.is_federated is True
+    assert "child_coll" in cfg.collections
+
+    from qmd.db import get_connection, init_schema
+    conn = get_connection(child_db)
+    init_schema(conn)
+    conn.close()
+
+    from qmd.store import Store
+    store = Store(cfg, read_only=True)
+    assert store.conn is None
+    assert len(store.child_stores) == 1
+    assert store._get_target_stores_for_collection(None) == [store.child_stores[0]]
+
+
+def test_config_includes_update_flag(tmp_path, monkeypatch):
+    from qmd.db import get_connection, init_schema
+    from qmd.store import Store
+
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    doc_file = docs_dir / "note.md"
+    doc_file.write_text("# Hello World\nThis is a test document.")
+
+    child_db = tmp_path / "child.db"
+    conn = get_connection(child_db)
+    init_schema(conn)
+    conn.close()
+
+    child_yaml = tmp_path / "child.yml"
+    child_yaml.write_text(f"""
+db_path: "{child_db}"
+embed_model: "EmbeddingGemma 300m"
+collections:
+  test_coll:
+    path: "{docs_dir}"
+    glob: "*.md"
+""")
+
+    # 1. Default includes_update is False -> update rejected
+    master_yaml_default = tmp_path / "master_default.yml"
+    master_yaml_default.write_text(f"""
+embed_model: "EmbeddingGemma 300m"
+include:
+  - "{child_yaml.name}"
+""")
+    cfg_default = load_config(master_yaml_default)
+    assert cfg_default.includes_update is False
+    store_default = Store(cfg_default, read_only=False)
+    with pytest.raises(RuntimeError, match="federated include mode"):
+        store_default.index_collection("test_coll", cfg_default.collections["test_coll"])
+
+    # 2. includes_update: true -> updating allowed and delegates to child store
+    master_yaml_allowed = tmp_path / "master_allowed.yml"
+    master_yaml_allowed.write_text(f"""
+embed_model: "EmbeddingGemma 300m"
+includes_update: true
+include:
+  - "{child_yaml.name}"
+""")
+    cfg_allowed = load_config(master_yaml_allowed)
+    assert cfg_allowed.includes_update is True
+    store_allowed = Store(cfg_allowed, read_only=False)
+    assert store_allowed.child_stores[0].read_only is False
+
+    # Mock embed_batch so indexing doesn't require an active LLM endpoint
+    monkeypatch.setattr(
+        store_allowed.child_stores[0].llm,
+        "embed_batch",
+        lambda texts, *args, **kwargs: [[0.1] * 768 for _ in texts]
+    )
+
+    store_allowed.index_collection("test_coll", cfg_allowed.collections["test_coll"])
+    child_cursor = store_allowed.child_stores[0].conn.cursor()
+    child_cursor.execute("SELECT count(*) FROM documents WHERE collection = 'test_coll'")
+    assert child_cursor.fetchone()[0] == 1
+
+    # Verify pruning and usearch building succeed without error
+    store_allowed.prune_orphaned_collections(list(cfg_allowed.collections.keys()))
+    store_allowed.build_usearch_index()

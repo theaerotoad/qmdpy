@@ -241,14 +241,16 @@ def discover():
                     r.title = redact_pii(r.title)
 
         event_type = "discover"
-        db_last_updated = get_db_meta(store.conn, "last_updated")
+        db_last_updated = get_db_meta(store.conn, "last_updated") if store.conn else (
+            get_db_meta(store.child_stores[0].conn, "last_updated") if getattr(store, "child_stores", None) else None
+        )
         event_id = record_session_event(
             store.history_conn,
             session_id,
             event_type,
             query,
             lexical_query,
-            str(store.config.db_path),
+            str(store.config.db_path) if store.config.db_path else "",
             db_last_updated
         )
 
@@ -364,14 +366,16 @@ def search():
                     r.title = redact_pii(r.title)
 
         event_type = "doc_view" if doc_view else "search"
-        db_last_updated = get_db_meta(store.conn, "last_updated")
+        db_last_updated = get_db_meta(store.conn, "last_updated") if store.conn else (
+            get_db_meta(store.child_stores[0].conn, "last_updated") if getattr(store, "child_stores", None) else None
+        )
         event_id = record_session_event(
             store.history_conn,
             session_id,
             event_type,
             query,
             lexical_query,
-            str(store.config.db_path),
+            str(store.config.db_path) if store.config.db_path else "",
             db_last_updated
         )
 
@@ -728,15 +732,17 @@ def collections():
     store = get_store()
     colls = []
     is_fed = getattr(cfg, "is_federated", False)
+    includes_upd = getattr(cfg, "includes_update", False)
     for k, v in cfg.collections.items():
         doc_count = 0
         try:
             target_store = getattr(store, "collection_store_map", {}).get(k, store)
-            cursor = target_store.conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM documents WHERE collection = ?", (k,))
-            row = cursor.fetchone()
-            if row:
-                doc_count = row[0]
+            if target_store and target_store.conn:
+                cursor = target_store.conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM documents WHERE collection = ?", (k,))
+                row = cursor.fetchone()
+                if row:
+                    doc_count = row[0]
         except Exception:
             pass
         colls.append({
@@ -744,7 +750,7 @@ def collections():
             "path": str(v.path),
             "doc_count": doc_count,
             "is_federated": is_fed,
-            "can_reindex": not is_fed
+            "can_reindex": not is_fed or includes_upd
         })
     return jsonify(colls)
 
@@ -781,7 +787,7 @@ def get_collections_tree():
 @app.route('/api/update', methods=['POST'])
 def update():
     cfg = get_config()
-    if getattr(cfg, "is_federated", False):
+    if getattr(cfg, "is_federated", False) and not getattr(cfg, "includes_update", False):
         return jsonify({"status": "error", "message": "Updating/indexing is disabled in federated include mode. Update individual collection configurations directly."}), 400
 
     data = request.json or {}

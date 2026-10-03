@@ -45,6 +45,8 @@ embed_model: "EmbeddingGemma 300m"
 # include:
 #   - "./extra-collections.yml"
 #   - "/path/to/another-index.yml"
+# Note: When using includes, db_path is optional if this config does not define its own collections.
+includes_update: false  # Allow updating/indexing included collections in include mode (Default: false)
 
 collections:
   # Option 2: Explicit list of allowed file extensions

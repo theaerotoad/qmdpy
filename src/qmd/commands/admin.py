@@ -16,7 +16,7 @@ def handle_update(args, store: Store):
         os.environ["QMD_VERBOSE"] = "1"
 
     config = store.config
-    if getattr(config, "is_federated", False):
+    if getattr(config, "is_federated", False) and not getattr(config, "includes_update", False):
         print(f"{Colors.RED}Error: Updating/indexing is disabled in federated include mode. Update individual collection configurations directly.{Colors.RESET}")
         sys.exit(1)
         

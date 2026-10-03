@@ -23,6 +23,7 @@ class Config:
     config_path: Optional[str] = None
     include: List[str] = field(default_factory=list)
     is_federated: bool = False
+    includes_update: bool = False
     included_configs: List['Config'] = field(default_factory=list)
     
     # Core LLM Settings
@@ -96,14 +97,29 @@ class Config:
                 dirlists=cfg.get('dirlists', False)
             )
         
-        # Priority for db_path: Environment Var > YAML > Default
-        db_path_raw = os.environ.get("QMD_DB_PATH") or data.get('db_path')
+        # Pre-scan include directives to determine if include mode is active
+        include_raw_early = data.get('include') or data.get('includes') or []
+        if isinstance(include_raw_early, str):
+            include_raw_early = [include_raw_early]
+        elif not isinstance(include_raw_early, list):
+            include_raw_early = []
+        has_includes_early = bool([str(item).strip() for item in include_raw_early if str(item).strip()])
+
+        # Priority for db_path: Environment Var > YAML (db_path / vector_database) > Default
+        db_path_raw = (
+            os.environ.get("QMD_DB_PATH")
+            or data.get('db_path')
+            or data.get('vector_database')
+            or data.get('vector_db')
+        )
         if db_path_raw:
             p = Path(db_path_raw).expanduser()
             if not p.is_absolute() and config_path:
                 db_path = str((config_path.parent / p).resolve())
             else:
                 db_path = str(p.resolve())
+        elif has_includes_early:
+            db_path = None
         elif config_path and config_path.resolve() != DEFAULT_CONFIG_PATH.resolve():
             db_path = str((config_path.parent / "qmd.db").resolve())
         else:
@@ -180,6 +196,16 @@ class Config:
             cache_search_results = cache_results_env.strip().lower() in ("1", "true", "yes", "on")
         else:
             cache_search_results = data.get('cache_search_results', True)
+
+        inc_update_env = os.environ.get("QMD_INCLUDES_UPDATE")
+        if inc_update_env is not None:
+            includes_update = inc_update_env.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            raw_inc_update = data.get('includes_update', False)
+            if isinstance(raw_inc_update, str):
+                includes_update = raw_inc_update.strip().lower() in ("1", "true", "yes", "on")
+            else:
+                includes_update = bool(raw_inc_update)
 
         current_resolved_path = config_path.resolve() if config_path else None
         active_visited: Set[Path] = set(visited_configs) if visited_configs else set()
@@ -273,6 +299,7 @@ class Config:
             config_path=str(config_path.resolve()) if config_path else None,
             include=include_list,
             is_federated=len(included_configs) > 0,
+            includes_update=includes_update,
             included_configs=included_configs,
             llm_url=llm_url,
             api_key=api_key,

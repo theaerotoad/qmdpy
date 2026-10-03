@@ -77,8 +77,18 @@ class IndexingMixin:
 
     def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False, verbose: bool = False, quick: bool = False):
         """Scans files, detects changes, chunks, embeds, and updates DB."""
-        if self.read_only or getattr(self.config, "is_federated", False):
+        if self.read_only:
+            raise RuntimeError("Cannot index collection in read-only mode.")
+        if getattr(self.config, "is_federated", False) and not getattr(self.config, "includes_update", False):
             raise RuntimeError("Cannot index collection in read-only or federated include mode.")
+
+        if getattr(self.config, "is_federated", False):
+            target_store = getattr(self, "collection_store_map", {}).get(name)
+            if target_store is not None and target_store is not self:
+                return target_store.index_collection(name, collection_cfg, force=force, verbose=verbose, quick=quick)
+            if self.conn is None:
+                raise RuntimeError(f"Cannot index collection '{name}': No database defined for master store.")
+
         base_path = Path(collection_cfg.path).expanduser().resolve()
         if not base_path.exists():
             print(f"Skipping {name}: Path not found {base_path}")
@@ -146,8 +156,18 @@ class IndexingMixin:
 
     def prune_orphaned_collections(self, active_collections: List[str]):
         """Removes documents, FTS entries, and orphaned vectors/content for collections no longer in config."""
-        if self.read_only or getattr(self.config, "is_federated", False):
+        if self.read_only:
+            raise RuntimeError("Cannot prune collections in read-only mode.")
+        if getattr(self.config, "is_federated", False) and not getattr(self.config, "includes_update", False):
             raise RuntimeError("Cannot prune collections in read-only or federated include mode.")
+
+        if getattr(self.config, "is_federated", False):
+            for child_store in getattr(self, "child_stores", []):
+                child_store.prune_orphaned_collections(list(child_store.config.collections.keys()))
+            if not getattr(self, "conn", None):
+                return
+            active_collections = [c for c in active_collections if getattr(self, "collection_store_map", {}).get(c) is self]
+
         cursor = self.conn.cursor()
 
         if not active_collections:
@@ -222,6 +242,8 @@ class IndexingMixin:
         all_errors = []
         for store in target_stores:
             if store is self:
+                if self.conn is None:
+                    continue
                 local_errors = db_get_indexing_errors(self.conn, collection=collection, path=path)
                 filtered_errors = []
                 for err in local_errors:
