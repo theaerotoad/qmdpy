@@ -111,16 +111,33 @@ function applyDefaultPreferences(customDefaults = null) {
     }
     updateFeatureButtonsUI();
     updateHeroDefaultButtonUI(defaults.mode || 'discover');
+
+    const heroView = defaults.hero_view || 'questions';
+    const qView = document.getElementById('hero-view-questions');
+    const cView = document.getElementById('hero-view-collections');
+    if (qView && cView) {
+        if (heroView === 'collections') {
+            qView.classList.add('hidden');
+            cView.classList.remove('hidden');
+            cView.classList.add('flex');
+        } else {
+            cView.classList.remove('flex');
+            cView.classList.add('hidden');
+            qView.classList.remove('hidden');
+        }
+    }
 }
 
 function loadSettingsModalValues() {
     const defaults = JSON.parse(localStorage.getItem(DEFAULTS_KEY) || '{}');
+    const heroEl = document.getElementById('setting-hero-view');
     const limEl = document.getElementById('setting-default-limit');
     const modEl = document.getElementById('setting-default-mode');
     const llmEl = document.getElementById('setting-default-llm');
     const rkEl = document.getElementById('setting-default-rerank');
     const snEl = document.getElementById('setting-default-seen');
     const piEl = document.getElementById('setting-default-pii');
+    if (heroEl) heroEl.value = defaults.hero_view || 'questions';
     if (limEl) limEl.value = defaults.limit || '10';
     if (modEl) modEl.value = defaults.mode || 'discover';
     if (llmEl) llmEl.checked = defaults.offer_llm !== undefined ? !!defaults.offer_llm : false;
@@ -131,6 +148,7 @@ function loadSettingsModalValues() {
 
 function saveDefaults() {
     const defaults = {
+        hero_view: document.getElementById('setting-hero-view') ? document.getElementById('setting-hero-view').value : 'questions',
         limit: document.getElementById('setting-default-limit').value,
         mode: document.getElementById('setting-default-mode').value,
         offer_llm: document.getElementById('setting-default-llm') ? document.getElementById('setting-default-llm').checked : false,

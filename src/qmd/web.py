@@ -171,9 +171,30 @@ def index():
     try:
         store = get_store()
         random_questions = store.get_random_analysis_questions(limit=3)
+        
+        cfg = get_config()
+        colls = []
+        for k, v in cfg.collections.items():
+            doc_count = 0
+            try:
+                target_store = getattr(store, "collection_store_map", {}).get(k, store)
+                if target_store and target_store.conn:
+                    cursor = target_store.conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM documents WHERE collection = ?", (k,))
+                    row = cursor.fetchone()
+                    if row:
+                        doc_count = row[0]
+            except Exception:
+                pass
+            colls.append({
+                "name": k,
+                "path": str(v.path),
+                "doc_count": doc_count
+            })
     except Exception:
         random_questions = []
-    return render_template('index.html', sample_questions=random_questions)
+        colls = []
+    return render_template('index.html', sample_questions=random_questions, collections=colls)
 
 @app.route('/api/questions/random', methods=['GET'])
 def get_random_questions():

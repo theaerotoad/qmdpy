@@ -75,7 +75,7 @@
         </div>
 
         <!-- Sample Query Suggestions -->
-        <div class="mt-8 text-center text-sm text-gray-500 flex flex-col items-center gap-3">
+        <div id="hero-view-questions" class="mt-8 text-center text-sm text-gray-500 flex flex-col items-center gap-3">
             <span class="text-xs uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500">Suggested Questions</span>
             <div id="hero-questions-container" class="flex flex-col items-center gap-3 w-full">
                 {% if sample_questions and sample_questions|length > 0 %}
@@ -86,6 +86,67 @@
                     <button type="button" onclick="runSampleQuery('winston churchill habits')" class="text-blue-600 dark:text-blue-400 hover:underline max-w-full text-left">winston churchill habits</button>
                     <button type="button" onclick="runSampleQuery('quantum entanglement notes')" class="text-blue-600 dark:text-blue-400 hover:underline max-w-full text-left">quantum entanglement notes</button>
                     <button type="button" onclick="runSampleQuery('project roadmap Q3')" class="text-blue-600 dark:text-blue-400 hover:underline max-w-full text-left">project roadmap Q3</button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Quick Access Collections -->
+        <div id="hero-view-collections" class="mt-8 w-full hidden flex-col items-center gap-3">
+            <div class="flex items-center w-full mb-3">
+                <div class="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 whitespace-nowrap pr-4">Quick Access Collections</div>
+                <div class="flex-1 h-px bg-gray-200 dark:bg-gray-700"></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+                {% if collections and collections|length > 0 %}
+                    {% for c in collections %}
+                        {% set c_name_lower = c.name|lower %}
+                        {% if 'book' in c_name_lower or 'lit' in c_name_lower %}
+                            {% set icon_color = 'blue' %}
+                            {% set icon_svg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>' %}
+                            {% set fake_tags = ['PDF', 'EPUB'] %}
+                        {% elif 'tech' in c_name_lower or 'code' in c_name_lower or 'src' in c_name_lower or 'doc' in c_name_lower %}
+                            {% set icon_color = 'purple' %}
+                            {% set icon_svg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>' %}
+                            {% set fake_tags = ['MD', 'PY', 'JS'] %}
+                        {% elif 'personal' in c_name_lower or 'note' in c_name_lower or 'journal' in c_name_lower %}
+                            {% set icon_color = 'orange' %}
+                            {% set icon_svg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>' %}
+                            {% set fake_tags = ['DOCX', 'TXT'] %}
+                        {% else %}
+                            {% set icon_color = 'emerald' %}
+                            {% set icon_svg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>' %}
+                            {% set fake_tags = ['DOCS'] %}
+                        {% endif %}
+                        <div class="bg-white dark:bg-[#303134] border border-gray-100 dark:border-[#4a4d51] rounded-2xl p-5 hover:shadow-md transition cursor-pointer flex flex-col text-left" onclick="runSampleQuery('col:&#34;{{ c.name | e }}&#34; ')">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center 
+                                    {% if icon_color == 'blue' %} bg-blue-50 text-blue-500 dark:bg-blue-900/30 dark:text-blue-400
+                                    {% elif icon_color == 'purple' %} bg-purple-50 text-purple-500 dark:bg-purple-900/30 dark:text-purple-400
+                                    {% elif icon_color == 'orange' %} bg-orange-50 text-orange-500 dark:bg-orange-900/30 dark:text-orange-400
+                                    {% else %} bg-emerald-50 text-emerald-500 dark:bg-emerald-900/30 dark:text-emerald-400
+                                    {% endif %}">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">{{ icon_svg | safe }}</svg>
+                                </div>
+                                <div class="flex gap-1 text-[10px] font-bold text-gray-500 dark:text-gray-400">
+                                    {% for tag in fake_tags %}
+                                    <span class="px-1.5 py-0.5 border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-[#303134]">{{ tag }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <h3 class="font-bold text-gray-900 dark:text-white text-[15px] mb-1">{{ c.name | e }}</h3>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 truncate mb-5" title="{{ c.path | e }}">
+                                    {% if c.path|length > 25 %}...{{ c.path[-22:] }}{% else %}{{ c.path }}{% endif %}
+                                </p>
+                            </div>
+                            <div class="pt-3 border-t border-gray-100 dark:border-gray-700/60 flex justify-between items-center text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                                <span class="tracking-wide">ACTIVE</span>
+                                <span>{{ c.doc_count }} Files</span>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="col-span-full text-center text-gray-500 text-sm py-8 bg-gray-50 dark:bg-[#202124] rounded-xl border border-gray-200 dark:border-gray-700">No collections configured</div>
                 {% endif %}
             </div>
         </div>

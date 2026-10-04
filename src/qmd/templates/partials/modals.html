@@ -178,7 +178,14 @@
         <div class="p-5 overflow-y-auto flex-1 text-xs space-y-5">
             <!-- Tab: Defaults -->
             <div id="tab-content-defaults" class="settings-tab-panel space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="bg-gray-50 dark:bg-[#202124] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-1">
+                        <label class="block font-medium text-gray-700 dark:text-gray-300">Hero Screen View</label>
+                        <select id="setting-hero-view" onchange="saveDefaults()" class="w-full bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 rounded p-1.5 text-xs text-gray-800 dark:text-gray-200 outline-none">
+                            <option value="questions">Show Suggested Questions</option>
+                            <option value="collections">Show Quick Access Collections</option>
+                        </select>
+                    </div>
                     <div class="bg-gray-50 dark:bg-[#202124] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-1">
                         <label class="block font-medium text-gray-700 dark:text-gray-300">Default Result Limit</label>
                         <select id="setting-default-limit" onchange="saveDefaults()" class="w-full bg-white dark:bg-[#303134] border border-gray-300 dark:border-gray-600 rounded p-1.5 text-xs text-gray-800 dark:text-gray-200 outline-none">
