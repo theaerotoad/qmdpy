@@ -56,6 +56,18 @@ function updateScopePickerIndicators() {
             btn.className = `scope-toggle-btn w-6 h-6 flex items-center justify-center rounded-lg text-xs font-bold transition ${isSel ? 'bg-blue-600 text-white shadow-sm' : 'bg-white dark:bg-[#303134] text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600'}`;
         }
     });
+
+    // Update hero view collection cards if they exist
+    document.querySelectorAll('.hero-collection-card').forEach(card => {
+        const collName = card.dataset.collection;
+        if (isScopeSelected(collName, '')) {
+            card.classList.add('border-blue-500', 'bg-blue-50/50', 'dark:border-blue-500/50', 'dark:bg-blue-900/10');
+            card.classList.remove('border-gray-100', 'dark:border-[#4a4d51]', 'bg-white', 'dark:bg-[#303134]');
+        } else {
+            card.classList.remove('border-blue-500', 'bg-blue-50/50', 'dark:border-blue-500/50', 'dark:bg-blue-900/10');
+            card.classList.add('border-gray-100', 'dark:border-[#4a4d51]', 'bg-white', 'dark:bg-[#303134]');
+        }
+    });
 }
 
 // Scope Picker Modal

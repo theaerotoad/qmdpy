@@ -176,20 +176,25 @@ def index():
         colls = []
         for k, v in cfg.collections.items():
             doc_count = 0
+            ext_list = []
             try:
                 target_store = getattr(store, "collection_store_map", {}).get(k, store)
                 if target_store and target_store.conn:
                     cursor = target_store.conn.cursor()
-                    cursor.execute("SELECT COUNT(*) FROM documents WHERE collection = ?", (k,))
-                    row = cursor.fetchone()
-                    if row:
-                        doc_count = row[0]
+                    cursor.execute("SELECT path FROM documents WHERE collection = ?", (k,))
+                    rows = cursor.fetchall()
+                    doc_count = len(rows)
+                    
+                    from collections import Counter
+                    counts = Counter(Path(r[0]).suffix.lstrip('.').upper() for r in rows if Path(r[0]).suffix)
+                    ext_list = [ext for ext, _ in counts.most_common(4) if ext]
             except Exception:
                 pass
             colls.append({
                 "name": k,
                 "path": str(v.path),
-                "doc_count": doc_count
+                "doc_count": doc_count,
+                "exts": ext_list
             })
     except Exception:
         random_questions = []
@@ -756,20 +761,25 @@ def collections():
     includes_upd = getattr(cfg, "includes_update", False)
     for k, v in cfg.collections.items():
         doc_count = 0
+        ext_list = []
         try:
             target_store = getattr(store, "collection_store_map", {}).get(k, store)
             if target_store and target_store.conn:
                 cursor = target_store.conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM documents WHERE collection = ?", (k,))
-                row = cursor.fetchone()
-                if row:
-                    doc_count = row[0]
+                cursor.execute("SELECT path FROM documents WHERE collection = ?", (k,))
+                rows = cursor.fetchall()
+                doc_count = len(rows)
+                
+                from collections import Counter
+                counts = Counter(Path(r[0]).suffix.lstrip('.').upper() for r in rows if Path(r[0]).suffix)
+                ext_list = [ext for ext, _ in counts.most_common(4) if ext]
         except Exception:
             pass
         colls.append({
             "name": k,
             "path": str(v.path),
             "doc_count": doc_count,
+            "exts": ext_list,
             "is_federated": is_fed,
             "can_reindex": not is_fed or includes_upd
         })
