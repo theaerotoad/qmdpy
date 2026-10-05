@@ -42,7 +42,11 @@ function renderScopeChips() {
     
     containers.forEach(container => {
         container.classList.remove('hidden');
-        container.innerHTML = '';
+        if (container.id === 'hero-scope-chips') {
+            container.innerHTML = '<span class="text-xs text-gray-400 dark:text-gray-500 font-medium tracking-wide mt-1 mr-1">Only in</span>';
+        } else {
+            container.innerHTML = '';
+        }
         selectedScopes.forEach(s => {
             const full = s.path || s.collection;
             const chip = document.createElement('span');
