@@ -1044,6 +1044,35 @@ def start_server(port=5000, config_path=None, setup_mode=False, yamldir="."):
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
+        @setup_app.route('/api/proxy/models', methods=['POST'])
+        def proxy_models():
+            data = request.json or {}
+            base_url = data.get('url', '').strip().rstrip('/')
+            api_key = data.get('api_key', '').strip()
+            
+            if not base_url:
+                return jsonify({"models": []})
+                
+            if base_url.endswith('/v1'):
+                endpoint = f"{base_url}/models"
+            else:
+                endpoint = f"{base_url}/v1/models"
+                
+            import httpx
+            headers = {}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+                
+            try:
+                with httpx.Client(timeout=3.0) as client:
+                    r = client.get(endpoint, headers=headers)
+                    r.raise_for_status()
+                    js = r.json()
+                    models = [m.get("id") for m in js.get("data", []) if "id" in m]
+                    return jsonify({"models": models})
+            except Exception as e:
+                return jsonify({"error": str(e)}), 400
+
         @setup_app.route('/api/yamls/<path:filename>', methods=['DELETE'])
         def delete_yaml(filename):
             target_dir = Path(yamldir).expanduser().resolve()
