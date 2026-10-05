@@ -957,7 +957,70 @@ def get_guide():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def start_server(port=5000, config_path=None):
+def start_server(port=5000, config_path=None, setup_mode=False, yamldir="."):
+    if setup_mode:
+        import yaml
+        setup_app = Flask(__name__)
+        setup_app.wsgi_app = ReverseProxyPrefixMiddleware(ProxyFix(setup_app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1))
+
+        @setup_app.route('/')
+        def setup_index():
+            return render_template('setup.html')
+
+        @setup_app.route('/api/yamls', methods=['GET'])
+        def list_yamls():
+            target_dir = Path(yamldir).expanduser().resolve()
+            if not target_dir.exists() or not target_dir.is_dir():
+                return jsonify({"error": f"Directory not found: {yamldir}"}), 404
+            
+            files = []
+            for ext in ('*.yml', '*.yaml'):
+                for p in target_dir.rglob(ext):
+                    if p.is_file():
+                        files.append(str(p.relative_to(target_dir)))
+            return jsonify({"files": sorted(files), "base_dir": str(target_dir)})
+
+        @setup_app.route('/api/yamls/<path:filename>', methods=['GET'])
+        def get_yaml(filename):
+            target_dir = Path(yamldir).expanduser().resolve()
+            filepath = (target_dir / filename).resolve()
+            if not str(filepath).startswith(str(target_dir)):
+                return jsonify({"error": "Invalid path"}), 400
+            if not filepath.exists():
+                return jsonify({"error": "File not found"}), 404
+            
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f) or {}
+                return jsonify({"data": data})
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+        @setup_app.route('/api/yamls/<path:filename>', methods=['POST'])
+        def save_yaml(filename):
+            target_dir = Path(yamldir).expanduser().resolve()
+            filepath = (target_dir / filename).resolve()
+            if not str(filepath).startswith(str(target_dir)):
+                return jsonify({"error": "Invalid path"}), 400
+            
+            data = request.json
+            if data is None:
+                return jsonify({"error": "No JSON payload provided"}), 400
+            
+            try:
+                if filepath.exists():
+                    shutil.copy2(filepath, filepath.with_suffix(filepath.suffix + '.bak'))
+                
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    yaml.dump(data.get('data', {}), f, default_flow_style=False, sort_keys=False)
+                return jsonify({"status": "success", "message": f"Saved {filename} (backup created)"})
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+        print(f"Starting QMD Setup UI at http://127.0.0.1:{port} (yamldir: {yamldir})")
+        setup_app.run(host='127.0.0.1', port=port, debug=False)
+        return
+
     if config_path:
         app.config['CONFIG_PATH'] = config_path
         app.config['config'] = load_config(config_path)

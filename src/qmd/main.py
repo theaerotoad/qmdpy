@@ -280,6 +280,8 @@ def build_parser():
     serve_help = argparse.SUPPRESS if hide_advanced else "Start the web UI"
     serve_parser = subparsers.add_parser("serve", help=serve_help, parents=[parent_parser])
     serve_parser.add_argument("--port", type=int, default=5000, help="Port to run the server on")
+    serve_parser.add_argument("--setup", action="store_true", help="Start in configuration setup mode")
+    serve_parser.add_argument("--yamldir", type=str, default=".", help="Directory to look for YAML config files in setup mode")
 
     mcp_help = argparse.SUPPRESS if hide_advanced else "Start the stdio MCP server"
     mcp_parser = subparsers.add_parser("mcp", help=mcp_help, parents=[parent_parser])
@@ -318,7 +320,12 @@ def execute_command(args, store):
             handle_collection_tree(args, store)
     elif args.command == "serve":
         from qmd.web import start_server
-        start_server(port=args.port, config_path=getattr(args, "config", None))
+        start_server(
+            port=args.port, 
+            config_path=getattr(args, "config", None),
+            setup_mode=getattr(args, "setup", False),
+            yamldir=getattr(args, "yamldir", ".")
+        )
     elif args.command == "mcp":
         from qmd.mcp_server import run_mcp_server
         run_mcp_server(getattr(args, "config", None))
