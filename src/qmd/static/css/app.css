@@ -145,34 +145,33 @@
 .hero-collection-card {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
+/* Heatmap relies purely on border-color and glows to avoid clashing with selection rings */
 .hero-collection-card.heatmap-high {
-  border-color: #3b82f6 !important;
-  background-color: rgba(59, 130, 246, 0.08) !important;
-  box-shadow: 0 4px 20px -2px rgba(59, 130, 246, 0.25) !important;
+  border-color: #8b5cf6 !important; /* purple-500 */
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.35) !important;
   transform: translateY(-2px) scale(1.01) !important;
 }
 .dark .hero-collection-card.heatmap-high {
-  border-color: #60a5fa !important;
-  background-color: rgba(96, 165, 250, 0.12) !important;
-  box-shadow: 0 4px 20px -2px rgba(96, 165, 250, 0.2) !important;
+  border-color: #a78bfa !important; /* purple-400 */
+  box-shadow: 0 0 16px rgba(167, 139, 250, 0.3) !important;
 }
 .hero-collection-card.heatmap-med {
-  border-color: #93c5fd !important;
-  background-color: rgba(59, 130, 246, 0.04) !important;
+  border-color: #3b82f6 !important; /* blue-500 */
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.25) !important;
 }
 .dark .hero-collection-card.heatmap-med {
-  border-color: #3b82f6 !important;
-  background-color: rgba(59, 130, 246, 0.06) !important;
+  border-color: #60a5fa !important; /* blue-400 */
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.2) !important;
 }
 .hero-collection-card.heatmap-low {
-  border-color: #bfdbfe !important;
-  background-color: rgba(59, 130, 246, 0.015) !important;
+  border-color: #10b981 !important; /* emerald-500 */
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.15) !important;
 }
 .dark .hero-collection-card.heatmap-low {
-  border-color: #1e3a8a !important;
-  background-color: rgba(59, 130, 246, 0.03) !important;
+  border-color: #34d399 !important; /* emerald-400 */
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.12) !important;
 }
 .hero-collection-card.heatmap-none {
-  opacity: 0.5 !important;
-  filter: grayscale(0.8) !important;
+  opacity: 0.4 !important;
+  filter: grayscale(1) !important;
 }

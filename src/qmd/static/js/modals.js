@@ -78,11 +78,10 @@ function updateScopePickerIndicators() {
     document.querySelectorAll('.hero-collection-card').forEach(card => {
         const collName = card.dataset.collection;
         if (isScopeSelected(collName, '')) {
-            card.classList.add('border-blue-500', 'bg-blue-50/50', 'dark:border-blue-500/50', 'dark:bg-blue-900/10');
-            card.classList.remove('border-gray-100', 'dark:border-[#4a4d51]', 'bg-white', 'dark:bg-[#303134]');
+            // Explicitly use a ring to denote "Selected" to distinguish it from heatmap borders
+            card.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2', 'dark:ring-offset-[#202124]', 'bg-blue-50/30', 'dark:bg-blue-900/20');
         } else {
-            card.classList.remove('border-blue-500', 'bg-blue-50/50', 'dark:border-blue-500/50', 'dark:bg-blue-900/10');
-            card.classList.add('border-gray-100', 'dark:border-[#4a4d51]', 'bg-white', 'dark:bg-[#303134]');
+            card.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2', 'dark:ring-offset-[#202124]', 'bg-blue-50/30', 'dark:bg-blue-900/20');
         }
     });
 }

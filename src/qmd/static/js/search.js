@@ -496,23 +496,9 @@ function applyHeatmap(results) {
         
         card.classList.remove('heatmap-high', 'heatmap-med', 'heatmap-low', 'heatmap-none');
         
-        let badge = card.querySelector('.heatmap-badge');
         if (maxCount === 0) {
             card.classList.add('heatmap-none');
-            if (badge) badge.remove();
             return;
-        }
-        
-        if (count > 0) {
-            if (!badge) {
-                badge = document.createElement('div');
-                badge.className = 'heatmap-badge absolute -top-3 -right-3 bg-blue-600 dark:bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md z-10 transition-all border-2 border-white dark:border-[#303134]';
-                card.style.position = 'relative';
-                card.appendChild(badge);
-            }
-            badge.textContent = `${count} hit${count !== 1 ? 's' : ''}`;
-        } else if (badge) {
-            badge.remove();
         }
 
         const ratio = count / maxCount;
@@ -526,8 +512,6 @@ function applyHeatmap(results) {
 function resetHeatmap() {
     document.querySelectorAll('.hero-collection-card').forEach(card => {
         card.classList.remove('heatmap-high', 'heatmap-med', 'heatmap-low', 'heatmap-none');
-        const badge = card.querySelector('.heatmap-badge');
-        if (badge) badge.remove();
     });
 }
 
