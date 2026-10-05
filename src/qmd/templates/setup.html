@@ -376,11 +376,11 @@
                 { key: 'api_key', type: 'text', label: 'API Key (Optional)' },
                 { key: 'embed_url', type: 'text', label: 'Embed URL' },
                 { key: 'embed_api_key', type: 'text', label: 'Embed API Key' },
-                { key: 'embed_model', type: 'text', label: 'Embed Model' },
+                { key: 'embed_model', type: 'text', label: 'Embed Model', datalist: 'dl-embed_model' },
                 { key: 'rerank_url', type: 'text', label: 'Rerank URL' },
                 { key: 'rerank_api_key', type: 'text', label: 'Rerank API Key' },
-                { key: 'rerank_model', type: 'text', label: 'Rerank Model' },
-                { key: 'generate_model', type: 'text', label: 'Generate Model' },
+                { key: 'rerank_model', type: 'text', label: 'Rerank Model', datalist: 'dl-rerank_model' },
+                { key: 'generate_model', type: 'text', label: 'Generate Model', datalist: 'dl-generate_model' },
                 { key: 'request_timeout', type: 'number', label: 'Request Timeout' },
                 { key: 'embed_batch_size', type: 'number', label: 'Embed Batch Size' }
             ]
@@ -392,7 +392,7 @@
                 { key: 'vision_api_key', type: 'text', label: 'Vision API Key' },
                 { key: 'multimodal_url', type: 'text', label: 'Multimodal LLM URL' },
                 { key: 'multimodal_api_key', type: 'text', label: 'Multimodal API Key' },
-                { key: 'multimodal_model', type: 'text', label: 'Multimodal Model' },
+                { key: 'multimodal_model', type: 'text', label: 'Multimodal Model', datalist: 'dl-multimodal_model' },
                 { key: 'multimodal_prompt', type: 'text', label: 'Multimodal Prompt' },
                 { key: 'max_image_concurrency', type: 'number', label: 'Max Image Concurrency' }
             ]
@@ -432,7 +432,13 @@
         
         let inputHtml = '';
         if (field.type === 'text' || field.type === 'number') {
-            inputHtml = `<input type="${field.type}" id="${id}" class="form-input" value="${val}" />`;
+            let dl = '';
+            let listAttr = '';
+            if (field.datalist) {
+                listAttr = `list="${field.datalist}"`;
+                dl = `<datalist id="${field.datalist}"></datalist>`;
+            }
+            inputHtml = `<input type="${field.type}" id="${id}" class="form-input" value="${val}" ${listAttr} />${dl}`;
         } else if (field.type === 'checkbox') {
             const checked = val ? 'checked' : '';
             inputHtml = `<label class="flex items-center"><input type="checkbox" id="${id}" class="form-checkbox h-4 w-4 text-blue-600 rounded" ${checked} /><span class="ml-2 text-sm">${field.label}</span></label>`;
@@ -521,11 +527,61 @@
                                    field.type === 'number' ? Number(e.target.value) : 
                                    e.target.value;
                     onChange(field.key, newVal);
+                    
+                    if (['llm_url', 'api_key', 'embed_url', 'embed_api_key', 'rerank_url', 'rerank_api_key', 'multimodal_url', 'multimodal_api_key'].includes(field.key)) {
+                        refreshAllModels();
+                    }
                 });
             }
         }, 0);
 
         return div;
+    }
+
+    const modelDependencies = [
+        { urlKey: 'llm_url', keyKey: 'api_key', listId: 'dl-generate_model' },
+        { urlKey: 'embed_url', keyKey: 'embed_api_key', fallbackUrl: 'llm_url', fallbackKey: 'api_key', listId: 'dl-embed_model' },
+        { urlKey: 'rerank_url', keyKey: 'rerank_api_key', fallbackUrl: 'llm_url', fallbackKey: 'api_key', listId: 'dl-rerank_model' },
+        { urlKey: 'multimodal_url', keyKey: 'multimodal_api_key', fallbackUrl: 'llm_url', fallbackKey: 'api_key', listId: 'dl-multimodal_model' },
+    ];
+
+    async function refreshDatalist(url, key, datalistId) {
+        if (!url) return;
+        try {
+            const res = await fetch('/api/proxy/models', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url, api_key: key})
+            });
+            const data = await res.json();
+            if (data.models && data.models.length > 0) {
+                const dl = document.getElementById(datalistId);
+                if (dl) {
+                    dl.innerHTML = data.models.map(m => `<option value="${m}"></option>`).join('');
+                }
+            }
+        } catch(e) { console.warn("Failed to fetch models for", url, e); }
+    }
+
+    async function refreshAllModels() {
+        for (const dep of modelDependencies) {
+            const urlEl = document.getElementById('field-' + dep.urlKey);
+            const keyEl = document.getElementById('field-' + dep.keyKey);
+            
+            let url = urlEl ? urlEl.value : configData[dep.urlKey];
+            let key = keyEl ? keyEl.value : configData[dep.keyKey];
+            
+            if (!url && dep.fallbackUrl) {
+                const fbUrlEl = document.getElementById('field-' + dep.fallbackUrl);
+                const fbKeyEl = document.getElementById('field-' + dep.fallbackKey);
+                url = fbUrlEl ? fbUrlEl.value : configData[dep.fallbackUrl];
+                key = fbKeyEl ? fbKeyEl.value : configData[dep.fallbackKey];
+            }
+            
+            if (url) {
+                await refreshDatalist(url, key, dep.listId);
+            }
+        }
     }
 
     function renderForm() {
@@ -573,6 +629,7 @@
         });
 
         renderCollections();
+        refreshAllModels();
     }
 
     function renderCollections() {
