@@ -72,6 +72,7 @@ function triggerSearchWithTab(tab, source) {
 
 // Form Submit & Search Execution
 async function handleFormSubmit(e, source) {
+    if (typeof heroDebounceTimer !== 'undefined') clearTimeout(heroDebounceTimer);
     if (window.QuickAnswer && typeof window.QuickAnswer.abort === 'function') {
         window.QuickAnswer.abort();
     }
@@ -432,6 +433,103 @@ document.querySelectorAll('.limit-select').forEach(sel => {
         document.querySelectorAll('.limit-select').forEach(s => s.value = val);
     });
 });
+
+// Real-time Hero Heatmap Logic
+let heroDebounceTimer;
+const heroInputEl = document.getElementById('hero-query');
+if (heroInputEl) {
+    heroInputEl.addEventListener('input', (e) => {
+        clearTimeout(heroDebounceTimer);
+        const query = e.target.value.trim();
+        const collView = document.getElementById('hero-view-collections');
+        
+        // Only trigger if on hero screen and collections view is active
+        if (!collView || collView.classList.contains('hidden')) return;
+
+        if (!query) {
+            resetHeatmap();
+            return;
+        }
+
+        heroDebounceTimer = setTimeout(() => {
+            runHeatmapSearch(query);
+        }, 1000);
+    });
+}
+
+async function runHeatmapSearch(query) {
+    try {
+        const parsed = parseQueryDirectives(query);
+        const payload = {
+            query: parsed.cleanQuery || query,
+            flat: true,
+            rerank: false,
+            limit: 400,
+            session_id: 'heatmap_preview' // Prevent polluting user's current session stats
+        };
+        const res = await fetch(apiUrl('api/search'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.results) {
+            applyHeatmap(data.results);
+        }
+    } catch (e) {
+        console.error("Heatmap search failed", e);
+    }
+}
+
+function applyHeatmap(results) {
+    const counts = {};
+    let maxCount = 0;
+    results.forEach(r => {
+        const c = r.collection;
+        counts[c] = (counts[c] || 0) + 1;
+        if (counts[c] > maxCount) maxCount = counts[c];
+    });
+
+    document.querySelectorAll('.hero-collection-card').forEach(card => {
+        const cName = card.dataset.collection;
+        const count = counts[cName] || 0;
+        
+        card.classList.remove('heatmap-high', 'heatmap-med', 'heatmap-low', 'heatmap-none');
+        
+        let badge = card.querySelector('.heatmap-badge');
+        if (maxCount === 0) {
+            card.classList.add('heatmap-none');
+            if (badge) badge.remove();
+            return;
+        }
+        
+        if (count > 0) {
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.className = 'heatmap-badge absolute -top-3 -right-3 bg-blue-600 dark:bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md z-10 transition-all border-2 border-white dark:border-[#303134]';
+                card.style.position = 'relative';
+                card.appendChild(badge);
+            }
+            badge.textContent = `${count} hit${count !== 1 ? 's' : ''}`;
+        } else if (badge) {
+            badge.remove();
+        }
+
+        const ratio = count / maxCount;
+        if (ratio > 0.66) card.classList.add('heatmap-high');
+        else if (ratio > 0.33) card.classList.add('heatmap-med');
+        else if (ratio > 0) card.classList.add('heatmap-low');
+        else card.classList.add('heatmap-none');
+    });
+}
+
+function resetHeatmap() {
+    document.querySelectorAll('.hero-collection-card').forEach(card => {
+        card.classList.remove('heatmap-high', 'heatmap-med', 'heatmap-low', 'heatmap-none');
+        const badge = card.querySelector('.heatmap-badge');
+        if (badge) badge.remove();
+    });
+}
 
 // Initialize on Startup
 initSession();

@@ -267,6 +267,7 @@ function setAppState(state) {
 async function returnToHero() {
     setAppState('hero');
     generateNewSession();
+    if (typeof resetHeatmap === 'function') resetHeatmap();
     document.getElementById('hero-query').value = '';
     document.getElementById('serp-query').value = '';
     document.getElementById('results').innerHTML = '';
