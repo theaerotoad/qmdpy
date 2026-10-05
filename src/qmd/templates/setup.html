@@ -149,6 +149,7 @@
 
     let currentFile = null;
     let configData = {};
+    let availableYamls = [];
 
     const fileListEl = document.getElementById('file-list');
     const editorEmptyEl = document.getElementById('editor-empty');
@@ -178,6 +179,7 @@
             const res = await fetch('/api/yamls');
             const data = await res.json();
             if (data.files) {
+                availableYamls = data.files;
                 fileListEl.innerHTML = '';
                 data.files.forEach(f => {
                     const li = document.createElement('li');
@@ -284,7 +286,10 @@
         
         let baseData = {};
         const buttons = document.querySelectorAll('#file-list button');
-        const hasDefaults = Array.from(buttons).find(b => b.textContent === 'defaults.yml' || b.textContent === 'defaults.yaml');
+        const hasDefaults = Array.from(buttons).find(b => {
+            const t = b.textContent.toLowerCase();
+            return t === 'default.yml' || t === 'default.yaml' || t === 'defaults.yml' || t === 'defaults.yaml';
+        });
         if (hasDefaults) {
             try {
                 const defRes = await fetch(`/api/yamls/${encodeURIComponent(hasDefaults.textContent)}`);
@@ -414,7 +419,7 @@
         {
             title: "System Integration",
             fields: [
-                { key: 'include', type: 'textarea', label: 'Included YAMLs (one path per line)' },
+                { key: 'include', type: 'include-picker', label: 'Included YAMLs' },
                 { key: 'allow_open_file', type: 'checkbox', label: 'Allow Open File' },
                 { key: 'includes_update', type: 'checkbox', label: 'Allow Includes Update' }
             ]
@@ -434,13 +439,74 @@
         } else if (field.type === 'select') {
             const options = field.options.map(opt => `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`).join('');
             inputHtml = `<select id="${id}" class="form-input">${options}</select>`;
-        } else if (field.type === 'textarea') {
-            const displayVal = Array.isArray(val) ? val.join('\n') : (val || '');
-            inputHtml = `<textarea id="${id}" class="form-input" rows="3" placeholder="...">${displayVal}</textarea>`;
         }
 
         const div = document.createElement('div');
         div.className = 'form-group col-span-1';
+        
+        if (field.type === 'include-picker') {
+            div.innerHTML = `<label>${field.label}</label>`;
+            const arr = Array.isArray(val) ? [...val] : (val ? [val] : []);
+            const wrapper = document.createElement('div');
+            
+            const listDiv = document.createElement('div');
+            listDiv.className = 'space-y-2 mb-2';
+            
+            const updateList = () => {
+                listDiv.innerHTML = '';
+                arr.forEach((inc, idx) => {
+                    const item = document.createElement('div');
+                    item.className = 'flex items-center justify-between bg-gray-50 dark:bg-[#202124] border border-gray-200 dark:border-gray-700 px-2 py-1 rounded text-sm';
+                    item.innerHTML = `<span class="truncate pr-2">${inc}</span> <button type="button" class="text-red-500 hover:text-red-700 font-bold" title="Remove">×</button>`;
+                    item.querySelector('button').onclick = () => {
+                        arr.splice(idx, 1);
+                        updateList();
+                        onChange(field.key, arr.length ? arr : '');
+                    };
+                    listDiv.appendChild(item);
+                });
+            };
+            updateList();
+
+            const controlsDiv = document.createElement('div');
+            controlsDiv.className = 'flex gap-2';
+            const select = document.createElement('select');
+            select.className = 'form-input flex-1';
+            const defaultOpt = document.createElement('option');
+            defaultOpt.value = '';
+            defaultOpt.textContent = '-- Select YAML --';
+            select.appendChild(defaultOpt);
+            
+            availableYamls.forEach(y => {
+                if (y !== currentFile) { // prevent self inclusion
+                    const opt = document.createElement('option');
+                    opt.value = y;
+                    opt.textContent = y;
+                    select.appendChild(opt);
+                }
+            });
+
+            const addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.className = 'px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-[#303134] dark:hover:bg-[#3c4043] rounded border border-gray-300 dark:border-gray-600 text-sm font-medium';
+            addBtn.textContent = 'Add';
+            addBtn.onclick = () => {
+                if (select.value && !arr.includes(select.value)) {
+                    arr.push(select.value);
+                    select.value = '';
+                    updateList();
+                    onChange(field.key, arr);
+                }
+            };
+
+            controlsDiv.appendChild(select);
+            controlsDiv.appendChild(addBtn);
+            wrapper.appendChild(listDiv);
+            wrapper.appendChild(controlsDiv);
+            div.appendChild(wrapper);
+            return div;
+        }
+
         if (field.type !== 'checkbox') {
             div.innerHTML = `<label for="${id}">${field.label}</label>${inputHtml}`;
         } else {
@@ -453,7 +519,6 @@
                 el.addEventListener('change', (e) => {
                     const newVal = field.type === 'checkbox' ? e.target.checked : 
                                    field.type === 'number' ? Number(e.target.value) : 
-                                   field.type === 'textarea' ? e.target.value.split('\n').map(s=>s.trim()).filter(s=>s) :
                                    e.target.value;
                     onChange(field.key, newVal);
                 });
