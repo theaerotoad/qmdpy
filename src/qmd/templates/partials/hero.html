@@ -103,21 +103,22 @@
                         {% if 'book' in c_name_lower or 'lit' in c_name_lower %}
                             {% set icon_color = 'blue' %}
                             {% set icon_svg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>' %}
-                            {% set fake_tags = ['PDF', 'EPUB'] %}
+                            {% set fallback_tags = ['PDF', 'EPUB'] %}
                         {% elif 'tech' in c_name_lower or 'code' in c_name_lower or 'src' in c_name_lower or 'doc' in c_name_lower %}
                             {% set icon_color = 'purple' %}
                             {% set icon_svg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>' %}
-                            {% set fake_tags = ['MD', 'PY', 'JS'] %}
+                            {% set fallback_tags = ['MD', 'PY', 'JS'] %}
                         {% elif 'personal' in c_name_lower or 'note' in c_name_lower or 'journal' in c_name_lower %}
                             {% set icon_color = 'orange' %}
                             {% set icon_svg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>' %}
-                            {% set fake_tags = ['DOCX', 'TXT'] %}
+                            {% set fallback_tags = ['DOCX', 'TXT'] %}
                         {% else %}
                             {% set icon_color = 'emerald' %}
                             {% set icon_svg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>' %}
-                            {% set fake_tags = ['DOCS'] %}
+                            {% set fallback_tags = ['DOCS'] %}
                         {% endif %}
-                        <div class="bg-white dark:bg-[#303134] border border-gray-100 dark:border-[#4a4d51] rounded-2xl p-5 hover:shadow-md transition cursor-pointer flex flex-col text-left" onclick="runSampleQuery('col:&#34;{{ c.name | e }}&#34; ')">
+                        {% set display_tags = c.exts if (c.exts and c.exts|length > 0) else fallback_tags %}
+                        <div data-collection="{{ c.name | e }}" class="hero-collection-card bg-white dark:bg-[#303134] border border-gray-100 dark:border-[#4a4d51] rounded-2xl p-5 hover:shadow-md transition cursor-pointer flex flex-col text-left" onclick="toggleScope('{{ c.name | e }}', '', 'collection', '{{ c.name | e }}/'); document.getElementById('hero-query').focus();">
                             <div class="flex justify-between items-start mb-4">
                                 <div class="w-10 h-10 rounded-xl flex items-center justify-center 
                                     {% if icon_color == 'blue' %} bg-blue-50 text-blue-500 dark:bg-blue-900/30 dark:text-blue-400
@@ -128,8 +129,8 @@
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">{{ icon_svg | safe }}</svg>
                                 </div>
                                 <div class="flex gap-1 text-[10px] font-bold text-gray-500 dark:text-gray-400">
-                                    {% for tag in fake_tags %}
-                                    <span class="px-1.5 py-0.5 border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-[#303134]">{{ tag }}</span>
+                                    {% for tag in display_tags %}
+                                    <span class="px-1.5 py-0.5 border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-[#303134] uppercase">{{ tag }}</span>
                                     {% endfor %}
                                 </div>
                             </div>
