@@ -174,6 +174,13 @@ def index():
         
         cfg = get_config()
         colls = []
+        
+        def _format_num(n):
+            if not isinstance(n, (int, float)): return str(n)
+            if n >= 1000000: return f"{n/1000000:.1f}m".replace('.0m', 'm')
+            if n >= 1000: return f"{n/1000:.1f}k".replace('.0k', 'k')
+            return str(n)
+
         for k, v in cfg.collections.items():
             doc_count = 0
             folder_count = 0
@@ -223,8 +230,11 @@ def index():
                 "name": k,
                 "path": str(v.path),
                 "doc_count": doc_count,
+                "doc_count_str": _format_num(doc_count),
                 "folder_count": folder_count,
+                "folder_count_str": _format_num(folder_count),
                 "chunk_count": chunk_count,
+                "chunk_count_str": _format_num(chunk_count),
                 "exts": ext_list,
                 "last_updated": updated_str
             })
