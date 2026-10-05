@@ -113,6 +113,28 @@
         </div>
     </div>
 
+    <!-- Directory Picker Modal -->
+    <div id="dir-picker-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity">
+        <div class="bg-white dark:bg-[#282a2d] rounded-lg shadow-xl max-w-lg w-full p-6 mx-4 flex flex-col max-h-[80vh]">
+            <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">Select Directory</h3>
+            <div class="flex items-center gap-2 mb-4">
+                <button id="dir-picker-up" class="p-1 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                </button>
+                <input type="text" id="dir-picker-path" class="form-input flex-1 font-mono text-sm bg-gray-50 dark:bg-[#202124]" readonly>
+            </div>
+            <div class="flex-1 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded mb-4">
+                <ul id="dir-picker-list" class="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+                    <!-- dirs go here -->
+                </ul>
+            </div>
+            <div class="flex justify-end gap-3 shrink-0">
+                <button id="cancel-dir-btn" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#3c4043] rounded transition-colors">Cancel</button>
+                <button id="confirm-dir-btn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded transition-colors">Select</button>
+            </div>
+        </div>
+    </div>
+
 <script>
     // Theme logic
     const toggleBtn = document.getElementById('theme-toggle');
@@ -141,6 +163,7 @@
     // Modals
     const deleteModal = document.getElementById('delete-modal');
     const newFileModal = document.getElementById('new-file-modal');
+    const dirPickerModal = document.getElementById('dir-picker-modal');
 
     function showToast(msg) {
         toastMsg.textContent = msg;
@@ -259,11 +282,30 @@
             filename += '.yml';
         }
         
+        let baseData = {};
+        const buttons = document.querySelectorAll('#file-list button');
+        const hasDefaults = Array.from(buttons).find(b => b.textContent === 'defaults.yml' || b.textContent === 'defaults.yaml');
+        if (hasDefaults) {
+            try {
+                const defRes = await fetch(`/api/yamls/${encodeURIComponent(hasDefaults.textContent)}`);
+                const defData = await defRes.json();
+                if (defData.data) {
+                    baseData = defData.data;
+                }
+            } catch (e) {
+                console.warn("Could not load defaults config", e);
+            }
+        }
+        
+        // Auto-set db_path
+        const dbName = filename.replace(/\.yaml$/, '').replace(/\.yml$/, '') + '.db';
+        baseData.db_path = `./${dbName}`;
+
         try {
             const res = await fetch(`/api/yamls/${encodeURIComponent(filename)}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data: {} })
+                body: JSON.stringify({ data: baseData })
             });
             const result = await res.json();
             if (result.status === 'success') {
@@ -372,6 +414,7 @@
         {
             title: "System Integration",
             fields: [
+                { key: 'include', type: 'textarea', label: 'Included YAMLs (one path per line)' },
                 { key: 'allow_open_file', type: 'checkbox', label: 'Allow Open File' },
                 { key: 'includes_update', type: 'checkbox', label: 'Allow Includes Update' }
             ]
@@ -391,6 +434,9 @@
         } else if (field.type === 'select') {
             const options = field.options.map(opt => `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`).join('');
             inputHtml = `<select id="${id}" class="form-input">${options}</select>`;
+        } else if (field.type === 'textarea') {
+            const displayVal = Array.isArray(val) ? val.join('\n') : (val || '');
+            inputHtml = `<textarea id="${id}" class="form-input" rows="3" placeholder="...">${displayVal}</textarea>`;
         }
 
         const div = document.createElement('div');
@@ -406,7 +452,9 @@
             if(el) {
                 el.addEventListener('change', (e) => {
                     const newVal = field.type === 'checkbox' ? e.target.checked : 
-                                   field.type === 'number' ? Number(e.target.value) : e.target.value;
+                                   field.type === 'number' ? Number(e.target.value) : 
+                                   field.type === 'textarea' ? e.target.value.split('\n').map(s=>s.trim()).filter(s=>s) :
+                                   e.target.value;
                     onChange(field.key, newVal);
                 });
             }
@@ -484,7 +532,10 @@
                     </div>
                     <div class="form-group col-span-2 md:col-span-1">
                         <label>Path</label>
-                        <input type="text" class="form-input coll-path-input" value="${coll.path || ''}" />
+                        <div class="flex gap-2">
+                            <input type="text" class="form-input coll-path-input flex-1" value="${coll.path || ''}" />
+                            <button type="button" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-[#303134] dark:hover:bg-[#3c4043] rounded border border-gray-300 dark:border-gray-600 text-sm browse-btn" title="Browse Directory">📁</button>
+                        </div>
                     </div>
                     <div class="form-group col-span-2 md:col-span-1">
                         <label>Glob Pattern</label>
@@ -506,9 +557,70 @@
                 renderCollections();
             });
 
+            div.querySelector('.browse-btn').addEventListener('click', () => {
+                const input = div.querySelector('.coll-path-input');
+                openDirPicker(input.value, (newPath) => {
+                    input.value = newPath;
+                    syncCollectionsFromDOM();
+                });
+            });
+
             container.appendChild(div);
         });
     }
+
+    // Directory Picker Logic
+    let currentDirCallback = null;
+
+    async function openDirPicker(currentPath, callback) {
+        currentDirCallback = callback;
+        await loadDir(currentPath || '');
+        dirPickerModal.classList.remove('hidden');
+    }
+
+    async function loadDir(path) {
+        try {
+            const res = await fetch(`/api/fs/directories?path=${encodeURIComponent(path)}`);
+            const data = await res.json();
+            if(data.error) throw new Error(data.error);
+            
+            document.getElementById('dir-picker-path').value = data.current;
+            const upBtn = document.getElementById('dir-picker-up');
+            if (data.parent) {
+                upBtn.onclick = () => loadDir(data.parent);
+                upBtn.disabled = false;
+                upBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                upBtn.onclick = null;
+                upBtn.disabled = true;
+                upBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
+            const list = document.getElementById('dir-picker-list');
+            list.innerHTML = '';
+            data.dirs.forEach(d => {
+                const li = document.createElement('li');
+                const btn = document.createElement('button');
+                btn.className = 'w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2';
+                btn.innerHTML = `<svg class="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg> <span>${d}</span>`;
+                btn.onclick = () => loadDir(data.current + (data.current.endsWith('/') || data.current.endsWith('\\') ? '' : '/') + d);
+                li.appendChild(btn);
+                list.appendChild(li);
+            });
+        } catch(e) {
+            showToast("Error loading directory");
+        }
+    }
+
+    document.getElementById('cancel-dir-btn').addEventListener('click', () => {
+        dirPickerModal.classList.add('hidden');
+    });
+    document.getElementById('confirm-dir-btn').addEventListener('click', () => {
+        if(currentDirCallback) {
+            currentDirCallback(document.getElementById('dir-picker-path').value);
+        }
+        dirPickerModal.classList.add('hidden');
+    });
 
     function syncCollectionsFromDOM() {
         const container = document.getElementById('collections-container');

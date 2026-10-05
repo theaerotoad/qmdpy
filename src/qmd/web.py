@@ -1017,6 +1017,33 @@ def start_server(port=5000, config_path=None, setup_mode=False, yamldir="."):
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
+        @setup_app.route('/api/fs/directories', methods=['GET'])
+        def list_directories():
+            req_path = request.args.get('path', '')
+            if not req_path:
+                req_path = str(Path.home())
+            
+            try:
+                target = Path(req_path).expanduser().resolve()
+                if not target.exists() or not target.is_dir():
+                    target = Path.home()
+                
+                dirs = []
+                for p in target.iterdir():
+                    try:
+                        if p.is_dir() and not p.name.startswith('.'):
+                            dirs.append(p.name)
+                    except PermissionError:
+                        pass
+                
+                return jsonify({
+                    "current": str(target),
+                    "parent": str(target.parent) if target.parent != target else None,
+                    "dirs": sorted(dirs)
+                })
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
         @setup_app.route('/api/yamls/<path:filename>', methods=['DELETE'])
         def delete_yaml(filename):
             target_dir = Path(yamldir).expanduser().resolve()
