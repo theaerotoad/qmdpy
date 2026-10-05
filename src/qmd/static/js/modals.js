@@ -26,10 +26,23 @@ function updateScopeUI() {
 
 function renderScopeChips() {
     const containers = [document.getElementById('hero-scope-chips'), document.getElementById('serp-scope-chips')].filter(Boolean);
-    containers.forEach(c => { c.innerHTML = ''; });
-    if (!selectedScopes.length) { containers.forEach(c => c.classList.add('hidden')); return; }
+    
+    if (!selectedScopes.length) {
+        containers.forEach(c => {
+            if (c.id === 'hero-scope-chips') {
+                c.classList.remove('hidden');
+                c.innerHTML = '<span class="text-xs text-gray-400 dark:text-gray-500 font-medium tracking-wide mt-1">Searching All Collections</span>';
+            } else {
+                c.classList.add('hidden');
+                c.innerHTML = '';
+            }
+        });
+        return;
+    }
+    
     containers.forEach(container => {
         container.classList.remove('hidden');
+        container.innerHTML = '';
         selectedScopes.forEach(s => {
             const full = s.path || s.collection;
             const chip = document.createElement('span');
@@ -522,7 +535,7 @@ function ensureOpenFileSettingInSettings() {
         </div>
         <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
             <input type="checkbox" id="setting-allow-open-file" class="sr-only peer">
-            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
         </label>
     `;
     container.appendChild(row);
