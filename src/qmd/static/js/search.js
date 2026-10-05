@@ -105,7 +105,10 @@ async function handleFormSubmit(e, source) {
     const scopedPaths = selectedScopes.filter(s => s.path).map(s => s.path);
     if (parsed.path && !scopedPaths.includes(parsed.path)) scopedPaths.push(parsed.path);
 
-    const collFilter = parsed.collection || null;
+    const scopedColls = [...new Set(selectedScopes.filter(s => s.collection).map(s => s.collection))];
+    if (parsed.collection && !scopedColls.includes(parsed.collection)) scopedColls.push(parsed.collection);
+    const collFilter = scopedColls.length === 1 ? scopedColls[0] : (scopedColls.length > 1 ? scopedColls : null);
+
     const limitSelectEl = document.getElementById('filter-limit');
     const limitVal = parsed.limit || (limitSelectEl ? parseInt(limitSelectEl.value) : 10) || 10;
 
