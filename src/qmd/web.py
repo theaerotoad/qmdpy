@@ -176,7 +176,10 @@ def index():
         colls = []
         for k, v in cfg.collections.items():
             doc_count = 0
+            folder_count = 0
+            chunk_count = 0
             ext_list = []
+            updated_str = "Never"
             try:
                 target_store = getattr(store, "collection_store_map", {}).get(k, store)
                 if target_store and target_store.conn:
@@ -185,16 +188,45 @@ def index():
                     rows = cursor.fetchall()
                     doc_count = len(rows)
                     
+                    folders = set()
+                    for r in rows:
+                        p = Path(r[0])
+                        if p.parent and str(p.parent) not in ('.', '/', ''):
+                            folders.add(str(p.parent))
+                    folder_count = len(folders)
+                    
                     from collections import Counter
                     counts = Counter(Path(r[0]).suffix.lstrip('.').upper() for r in rows if Path(r[0]).suffix)
                     ext_list = [ext for ext, _ in counts.most_common(4) if ext]
+                    
+                    try:
+                        stats = target_store.get_stats(collection=k)
+                        if isinstance(stats, dict):
+                            chunk_count = stats.get('total_chunks', stats.get('chunks', chunk_count))
+                    except Exception:
+                        pass
+                        
+                    if chunk_count == 0:
+                        try:
+                            cursor.execute("SELECT COUNT(*) FROM content WHERE hash IN (SELECT hash FROM documents WHERE collection = ?)", (k,))
+                            row = cursor.fetchone()
+                            if row: chunk_count = row[0]
+                        except Exception:
+                            pass
+                            
+                    last_updated = get_db_meta(target_store.conn, "last_updated")
+                    if last_updated:
+                        updated_str = str(last_updated).split('T')[0]
             except Exception:
                 pass
             colls.append({
                 "name": k,
                 "path": str(v.path),
                 "doc_count": doc_count,
-                "exts": ext_list
+                "folder_count": folder_count,
+                "chunk_count": chunk_count,
+                "exts": ext_list,
+                "last_updated": updated_str
             })
     except Exception:
         random_questions = []
