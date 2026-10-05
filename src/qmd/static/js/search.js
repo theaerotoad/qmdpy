@@ -439,6 +439,9 @@ document.querySelectorAll('.limit-select').forEach(sel => {
 
 // Real-time Hero Heatmap Logic
 let heroDebounceTimer;
+let lastHeatmapQuery = '';
+let heatmapAbortController = null;
+
 const heroInputEl = document.getElementById('hero-query');
 if (heroInputEl) {
     heroInputEl.addEventListener('input', (e) => {
@@ -450,17 +453,31 @@ if (heroInputEl) {
         if (!collView || collView.classList.contains('hidden')) return;
 
         if (!query) {
+            lastHeatmapQuery = '';
+            if (heatmapAbortController) {
+                heatmapAbortController.abort();
+                heatmapAbortController = null;
+            }
             resetHeatmap();
             return;
         }
 
+        // Prevent re-triggering for the exact same query
+        if (query === lastHeatmapQuery) return;
+
         heroDebounceTimer = setTimeout(() => {
             runHeatmapSearch(query);
-        }, 1000);
+        }, 250);
     });
 }
 
 async function runHeatmapSearch(query) {
+    if (heatmapAbortController) {
+        heatmapAbortController.abort();
+    }
+    heatmapAbortController = new AbortController();
+    lastHeatmapQuery = query;
+
     try {
         const parsed = parseQueryDirectives(query);
         const payload = {
@@ -473,14 +490,19 @@ async function runHeatmapSearch(query) {
         const res = await fetch(apiUrl('api/search'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal: heatmapAbortController.signal
         });
         const data = await res.json();
         if (data.results) {
             applyHeatmap(data.results);
         }
     } catch (e) {
-        console.error("Heatmap search failed", e);
+        if (e.name !== 'AbortError') {
+            console.error("Heatmap search failed", e);
+        }
+    } finally {
+        heatmapAbortController = null;
     }
 }
 
