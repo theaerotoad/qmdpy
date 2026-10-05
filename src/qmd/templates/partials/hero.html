@@ -120,7 +120,7 @@
                             {% set fallback_tags = ['DOCS'] %}
                         {% endif %}
                         {% set display_tags = c.exts if (c.exts and c.exts|length > 0) else fallback_tags %}
-                        <div data-collection="{{ c.name | e }}" class="hero-collection-card bg-white dark:bg-[#303134] border border-gray-100 dark:border-[#4a4d51] rounded-2xl p-4 md:p-5 hover:shadow-md transition cursor-pointer flex flex-col text-left" onclick="toggleScope('{{ c.name | e }}', '', 'collection', '{{ c.name | e }}/'); document.getElementById('hero-query').focus();">
+                        <div data-collection="{{ c.name | e }}" class="hero-collection-card bg-white dark:bg-[#303134] border border-gray-100 dark:border-[#4a4d51] rounded-2xl p-4 md:p-5 hover:shadow-md transition cursor-pointer flex flex-col text-left" onclick="toggleScope('{{ c.name | e }}', '', 'collection', '{{ c.name | e }}/');">
                             <div class="flex justify-between items-start mb-3 md:mb-4">
                                 <div class="w-9 h-9 md:w-10 md:h-10 rounded-xl flex items-center justify-center shrink-0 
                                     {% if icon_color == 'blue' %} bg-blue-50 text-blue-500 dark:bg-blue-900/30 dark:text-blue-400
