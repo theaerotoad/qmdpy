@@ -147,29 +147,29 @@
 }
 /* Heatmap relies purely on border-color and glows to avoid clashing with selection rings */
 .hero-collection-card.heatmap-high {
-  border-color: #8b5cf6 !important; /* purple-500 */
-  box-shadow: 0 0 16px rgba(139, 92, 246, 0.35) !important;
+  border-color: #ef4444 !important; /* red-500 */
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.35) !important;
   transform: translateY(-2px) scale(1.01) !important;
 }
 .dark .hero-collection-card.heatmap-high {
-  border-color: #a78bfa !important; /* purple-400 */
-  box-shadow: 0 0 16px rgba(167, 139, 250, 0.3) !important;
+  border-color: #ef4444 !important; /* red-500 */
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.3) !important;
 }
 .hero-collection-card.heatmap-med {
-  border-color: #3b82f6 !important; /* blue-500 */
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.25) !important;
+  border-color: #f97316 !important; /* orange-500 */
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.25) !important;
 }
 .dark .hero-collection-card.heatmap-med {
-  border-color: #60a5fa !important; /* blue-400 */
-  box-shadow: 0 0 12px rgba(96, 165, 250, 0.2) !important;
+  border-color: #f97316 !important; /* orange-500 */
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.2) !important;
 }
 .hero-collection-card.heatmap-low {
-  border-color: #10b981 !important; /* emerald-500 */
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.15) !important;
+  border-color: #eab308 !important; /* yellow-500 */
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.15) !important;
 }
 .dark .hero-collection-card.heatmap-low {
-  border-color: #34d399 !important; /* emerald-400 */
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.12) !important;
+  border-color: #eab308 !important; /* yellow-500 */
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.12) !important;
 }
 .hero-collection-card.heatmap-none {
   opacity: 0.4 !important;
