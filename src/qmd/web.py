@@ -975,7 +975,7 @@ def start_server(port=5000, config_path=None, setup_mode=False, yamldir="."):
             
             files = []
             for ext in ('*.yml', '*.yaml'):
-                for p in target_dir.rglob(ext):
+                for p in target_dir.glob(ext):
                     if p.is_file():
                         files.append(str(p.relative_to(target_dir)))
             return jsonify({"files": sorted(files), "base_dir": str(target_dir)})
@@ -1014,6 +1014,21 @@ def start_server(port=5000, config_path=None, setup_mode=False, yamldir="."):
                 with open(filepath, 'w', encoding='utf-8') as f:
                     yaml.dump(data.get('data', {}), f, default_flow_style=False, sort_keys=False)
                 return jsonify({"status": "success", "message": f"Saved {filename} (backup created)"})
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+        @setup_app.route('/api/yamls/<path:filename>', methods=['DELETE'])
+        def delete_yaml(filename):
+            target_dir = Path(yamldir).expanduser().resolve()
+            filepath = (target_dir / filename).resolve()
+            if not str(filepath).startswith(str(target_dir)):
+                return jsonify({"error": "Invalid path"}), 400
+            
+            try:
+                if filepath.exists():
+                    filepath.unlink()
+                    return jsonify({"status": "success", "message": f"Deleted {filename}"})
+                return jsonify({"error": "File not found"}), 404
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
