@@ -230,6 +230,7 @@ def build_parser():
     update_parser.add_argument("-f", "--force", action="store_true", help="Force re-indexing of all files, ignoring hash checks")
     update_parser.add_argument("-q", "--quick", action="store_true", help="Quick update: skip hashing for files with unchanged size and modification time")
     update_parser.add_argument("-c", "--collection", type=str, help="Only update a specific collection")
+    update_parser.add_argument("--re-embed-only", action="store_true", help="Recompute embeddings for existing chunks without re-reading files")
     update_parser.add_argument("--build-ann", action="store_true", help="Build a usearch HNSW approximate nearest neighbor index from the existing vector table")
     update_parser.add_argument("--no-ann", action="store_true", help="Skip automatic HNSW ANN index build/update")
     update_parser.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info during update")

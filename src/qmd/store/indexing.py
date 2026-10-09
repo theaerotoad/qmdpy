@@ -152,6 +152,92 @@ class IndexingMixin:
 
         print(f"Done. Processed: {count_processed}, Skipped/Unchanged: {count_skipped}")
 
+    def recompute_embeddings(self, collection: Optional[str] = None):
+        """Recomputes embeddings for all existing chunks from DB without reading files."""
+        if self.read_only or (getattr(self.config, "is_federated", False) and not getattr(self.config, "includes_update", False)):
+            raise RuntimeError("Cannot recompute embeddings in read-only or federated include mode.")
+
+        if getattr(self.config, "is_federated", False):
+            if collection:
+                target_store = getattr(self, "collection_store_map", {}).get(collection)
+                if target_store is not None and target_store is not self:
+                    return target_store.recompute_embeddings(collection)
+            else:
+                for child_store in getattr(self, "child_stores", []):
+                    child_store.recompute_embeddings()
+                if not getattr(self, "conn", None):
+                    return
+
+        cursor = self.conn.cursor()
+
+        query = """
+            SELECT m.rowid, m.chunk_text, m.headers, d.title, d.path
+            FROM chunk_metadata m
+            JOIN documents d ON m.doc_hash = d.hash
+        """
+        params = []
+        if collection:
+            query += " WHERE d.collection = ?"
+            params.append(collection)
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        if not rows:
+            print(f"{Colors.YELLOW}No chunks found to re-embed.{Colors.RESET}")
+            return
+
+        batch_size = getattr(self.config, "embed_batch_size", 16)
+        print(f"Recomputing embeddings for {len(rows)} chunks...")
+
+        stored_quant = get_db_meta(self.conn, "vector_quantization")
+        quant_type = stored_quant or getattr(self.config, "vector_quantization", "none") or "none"
+
+        self.conn.execute("BEGIN")
+        try:
+            for i in tqdm(range(0, len(rows), batch_size), desc="Re-embedding", unit="batch"):
+                batch = rows[i:i+batch_size]
+                rowids = []
+                texts_to_embed = []
+                
+                for row in batch:
+                    rid, comp_text, headers, title, path = row
+                    chunk_text = decompress_text(comp_text)
+                    
+                    if headers and headers.strip():
+                        text_to_embed = f"Context: {headers}\n\n{chunk_text}"
+                    else:
+                        text_to_embed = chunk_text
+                        
+                    formatted = self.llm.format_doc_for_embedding(title, text_to_embed)
+                    rowids.append(rid)
+                    texts_to_embed.append(formatted)
+
+                batch_embs = self.llm.embed_batch(
+                    texts_to_embed,
+                    batch_size=batch_size,
+                    show_progress=False
+                )
+
+                if not batch_embs or len(batch_embs) != len(rowids):
+                    raise RuntimeError("Mismatch between requested embeddings and returned embeddings.")
+
+                if i == 0:
+                    dim = len(batch_embs[0])
+                    ensure_vector_table(self.conn, dim=dim, quant_type=quant_type)
+
+                for rid, emb in zip(rowids, batch_embs):
+                    emb_blob = encode_vector(emb, quant_type=quant_type)
+                    self.conn.execute("UPDATE vectors SET embedding = ? WHERE rowid = ?", (emb_blob, rid))
+
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            raise e
+
+        update_db_last_updated(self.conn)
+        print(f"{Colors.GREEN}✓ Embeddings recomputed successfully.{Colors.RESET}")
+
     def prune_orphaned_collections(self, active_collections: List[str]):
         """Removes documents, FTS entries, and orphaned vectors/content for collections no longer in config."""
         if self.read_only or (getattr(self.config, "is_federated", False) and not getattr(self.config, "includes_update", False)):

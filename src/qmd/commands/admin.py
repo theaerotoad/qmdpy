@@ -24,6 +24,12 @@ def handle_update(args, store: Store):
         store.build_usearch_index()
         return
 
+    if getattr(args, "re_embed_only", False):
+        store.recompute_embeddings(collection=getattr(args, "collection", None))
+        if not getattr(args, "no_ann", False):
+            store.build_usearch_index()
+        return
+
     # 1. Update existing collections
     for name, coll_cfg in config.collections.items():
         if args.collection:
