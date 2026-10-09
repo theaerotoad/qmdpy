@@ -807,6 +807,52 @@ def test_indexing_context_size_fallback(db_conn, temp_db_path, tmp_path, mock_ll
     assert chunk_count >= 3
 
 
+def test_recompute_embeddings(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Test that recompute_embeddings regenerates embeddings directly from DB chunks."""
+    notes_dir = tmp_path / "reembed_notes"
+    notes_dir.mkdir()
+    
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path)
+    )
+    store = Store(config, connection=db_conn)
+    
+    file1 = notes_dir / "doc1.md"
+    file1.write_text("# Test Header\n\nChunk text one.")
+    
+    # Initial index
+    store.index_collection("test", config.collections["test"])
+    assert mock_llm_client.embed_batch.called
+    
+    # Verify initial vectors
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT rowid, embedding FROM vectors")
+    initial_vectors = cursor.fetchall()
+    
+    # Reset mock
+    mock_llm_client.embed_batch.reset_mock()
+    
+    # Change the mock to return different embeddings to verify the update
+    def side_effect_embed_new(texts, *args, **kwargs):
+        return [[0.9] * 768 for _ in texts]
+    mock_llm_client.embed_batch.side_effect = side_effect_embed_new
+    
+    # Re-embed
+    store.recompute_embeddings(collection="test")
+    
+    # Verify embed_batch was called again
+    assert mock_llm_client.embed_batch.called
+    
+    # Verify vectors were updated in DB
+    cursor.execute("SELECT rowid, embedding FROM vectors")
+    new_vectors = cursor.fetchall()
+    
+    assert len(initial_vectors) == len(new_vectors)
+    assert initial_vectors[0][0] == new_vectors[0][0]
+    assert initial_vectors[0][1] != new_vectors[0][1]
+
+
 def test_indexing_dirsummary_virtual_files(db_conn, temp_db_path, tmp_path, mock_llm_client):
     """Test that virtual .dirsummary files are generated when dirlists=True and ignored when False."""
     notes_dir = tmp_path / "dir_notes"
