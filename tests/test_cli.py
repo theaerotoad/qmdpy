@@ -85,6 +85,28 @@ def test_update_re_embed_only_flag(monkeypatch):
         MockStore.return_value.build_usearch_index.assert_not_called()
 
 
+def test_update_re_embed_only_flag(monkeypatch):
+    """Test that --re-embed-only triggers recompute_embeddings and prevents normal index."""
+    monkeypatch.setattr(sys, "argv", ["qmd", "update", "-c", "Docs", "--re-embed-only", "--no-ann"])
+    
+    from qmd.config import Config, CollectionConfig
+    mock_cfg = Config(collections={"Docs": CollectionConfig(path=".")})
+    
+    with patch("qmd.main.Store") as MockStore, \
+         patch("qmd.main.load_config", return_value=mock_cfg):
+        
+        MockStore.return_value.config = mock_cfg
+        
+        main()
+        
+        # Verify recompute_embeddings was called
+        MockStore.return_value.recompute_embeddings.assert_called_once_with(collection="Docs")
+        # Verify index_collection was NOT called
+        MockStore.return_value.index_collection.assert_not_called()
+        # Verify build_usearch_index was NOT called (due to --no-ann)
+        MockStore.return_value.build_usearch_index.assert_not_called()
+
+
 def test_git_pull_trigger(monkeypatch, tmp_path):
     """Test that --pull attempts a git command."""
     monkeypatch.setattr(sys, "argv", ["qmd", "update", "--pull"])
