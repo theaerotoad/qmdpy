@@ -294,15 +294,7 @@ async function returnToHero() {
 // Navigation Tabs
 function setSearchTab(tabName) {
     activeTab = tabName;
-    ['all', 'passages', 'documents'].forEach(tab => {
-        const btn = document.getElementById(`tab-${tab}`);
-        if (!btn) return;
-        if (tab === tabName) {
-            btn.className = "h-10 border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1.5 px-2";
-        } else {
-            btn.className = "h-10 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-white flex items-center gap-1.5 px-2 font-medium";
-        }
-    });
+    highlightTab(tabName);
 
     if (tabName === 'documents') {
         activeMode = 'discover';
