@@ -70,6 +70,19 @@ function triggerSearchWithTab(tab, source) {
     }
 }
 
+// Search Mode Badge Helper
+function getSearchModeBadge(mode) {
+    const styles = {
+        search: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800',
+        passages: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800',
+        discover: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+    };
+    const labels = { search: 'Search', passages: 'Passages', discover: 'Discover' };
+    const s = styles[mode] || styles.search;
+    const l = labels[mode] || mode;
+    return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${s}">${l}</span>`;
+}
+
 // Form Submit & Search Execution
 async function handleFormSubmit(e, source) {
     if (typeof heroDebounceTimer !== 'undefined') clearTimeout(heroDebounceTimer);
@@ -100,7 +113,7 @@ async function handleFormSubmit(e, source) {
 
     if (progressEl) progressEl.classList.remove('hidden');
     resultsEl.innerHTML = `<div class="flex items-center justify-center py-20 text-gray-500 gap-3"><svg class="animate-spin h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg><span>Searching knowledge base...</span></div>`;
-    statsEl.textContent = "Querying multi-corpus index...";
+    statsEl.innerHTML = `<span id="search-mode-badge"></span><span class="ml-2">Querying multi-corpus index...</span>`;
 
     const scopedPaths = selectedScopes.filter(s => s.path).map(s => s.path);
     if (parsed.path && !scopedPaths.includes(parsed.path)) scopedPaths.push(parsed.path);
@@ -142,7 +155,7 @@ async function handleFormSubmit(e, source) {
             currentExcludedCount = data.excluded_count || 0;
             updateSessionBadges();
 
-            statsEl.innerHTML = `About <strong class="text-gray-700 dark:text-gray-200">${data.results.length} documents</strong> across indexed repositories (<span class="font-mono">${data.time_taken || 0} seconds</span>)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
+            statsEl.innerHTML = `${getSearchModeBadge('discover')}<span class="ml-2">About <strong class="text-gray-700 dark:text-gray-200">${data.results.length} documents</strong> across indexed repositories (<span class="font-mono">${data.time_taken || 0} seconds</span>)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}</span>`;
             renderResults(data.results, 'discover', parsed.cleanQuery || rawVal);
 
             if (featureStates.offer_llm && data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
@@ -176,7 +189,8 @@ async function handleFormSubmit(e, source) {
             currentExcludedCount = data.excluded_count || 0;
             updateSessionBadges();
 
-            statsEl.innerHTML = `About <strong class="text-gray-700 dark:text-gray-200">${data.results.length} ${data.type === 'doc' ? 'documents' : 'passages'}</strong> across indexed repositories (<span class="font-mono">${data.time_taken || 0} seconds</span>)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}`;
+            const searchModeLabel = isPassagesMode ? 'passages' : 'search';
+            statsEl.innerHTML = `${getSearchModeBadge(searchModeLabel)}<span class="ml-2">About <strong class="text-gray-700 dark:text-gray-200">${data.results.length} ${data.type === 'doc' ? 'documents' : 'passages'}</strong> across indexed repositories (<span class="font-mono">${data.time_taken || 0} seconds</span>)${currentExcludedCount ? ` • <span class="text-amber-500 font-semibold">-${currentExcludedCount} seen</span>` : ''}</span>`;
             renderResults(data.results, data.type, parsed.cleanQuery || rawVal);
 
             if (featureStates.offer_llm && data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
@@ -189,11 +203,13 @@ async function handleFormSubmit(e, source) {
             window.QuickAnswer.hide();
         }
         resultsEl.innerHTML = `<div class="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-5 text-red-700 dark:text-red-300 text-sm font-semibold">${escapeHtml(e.message)}</div>`;
-        statsEl.textContent = "Search encountered an error";
+        statsEl.innerHTML = `<span class="ml-2 text-red-600 dark:text-red-400">Search encountered an error</span>`;
     } finally {
         if (progressEl) progressEl.classList.add('hidden');
     }
 }
+
+// (placeholder to keep block unique)
 
 // Collapsible Skipped Chunks Handler
 function toggleSkipped(btn) {
