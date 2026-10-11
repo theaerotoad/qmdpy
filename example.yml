@@ -12,13 +12,22 @@ llm_url: "http://127.0.0.1:9888" # Default: http://127.0.0.1:8888
 # rerank_api_key: "sk-..."               # API key for reranker endpoint
 
 # --- Vision & Multimodal Image Processing ---
-# Option A: OpenAI-compatible Multimodal LLM endpoint for OCR & markdown extraction
+# Option A: Native Image Storage & Vector Indexing (Recommended for Multimodal RAG)
+# Extracts, downscales, compresses (WebP), deduplicates (SHA-256), and saves images to disk, 
+# then computes embeddings so image-text matching boosts document search relevance.
+# embed_images: false                  # Set to true to enable native image embedding
+# max_image_megapixels: 1.0            # Downscale images larger than this (Default: 1.0)
+# image_compression_quality: 80        # WebP compression quality (Default: 80)
+# image_storage_dir: "./.qmd_images"   # Local directory for WebP files (Default: next to DB)
+
+# Option B: Multimodal LLM endpoint for text OCR & markdown extraction
+# Note: This is disabled/bypassed if `embed_images` is set to true.
 # multimodal_url: "http://127.0.0.1:9888" # Or "https://api.openai.com"
 # multimodal_api_key: "sk-..."
 # multimodal_model: "gpt-4o-mini"         # e.g. "gpt-4o-mini", "qwen-vl-max"
 # multimodal_prompt: ""                   # Optional custom OCR/markdown prompt
 
-# Option B: Dedicated Vision API endpoint
+# Option C: Dedicated Vision API endpoint (Legacy)
 # vision_url: "http://127.0.0.1:8891/detect"
 # vision_api_key: "sk-..."
 
