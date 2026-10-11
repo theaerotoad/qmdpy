@@ -187,6 +187,8 @@ def _wrap_vision_xml(text: str) -> str:
 def _is_image_processing_enabled(config) -> bool:
     if not config:
         return False
+    if getattr(config, "embed_images", False):
+        return True
     return bool(
         getattr(config, "vision_url", None)
         or getattr(config, "multimodal_url", None)
@@ -249,9 +251,76 @@ def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config, err
         return ""
 
 
+def _process_image_for_embedding(image_bytes: bytes, filename: str, config, errors_out: Optional[List[dict]] = None) -> str:
+    if not image_bytes or not config or not getattr(config, "image_storage_dir", None):
+        return ""
+        
+    try:
+        from PIL import Image
+        import io
+        import hashlib
+    except ImportError:
+        if errors_out is not None:
+            errors_out.append({"error_type": "import_error", "message": "Pillow is required for embed_images. Install with `pip install Pillow`."})
+        return ""
+        
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        
+        # Resize if needed
+        max_mp = getattr(config, "max_image_megapixels", 1.0)
+        max_pixels = int(max_mp * 1000000)
+        width, height = img.size
+        if width * height > max_pixels:
+            ratio = (max_pixels / (width * height)) ** 0.5
+            new_w = int(width * ratio)
+            new_h = int(height * ratio)
+            resample = getattr(Image, "Resampling", Image).LANCZOS
+            img = img.resize((new_w, new_h), resample)
+            
+        # Convert to RGB/RGBA for saving as WebP
+        if img.mode not in ('RGB', 'RGBA'):
+            img = img.convert('RGBA')
+        
+        out_io = io.BytesIO()
+        quality = getattr(config, "image_compression_quality", 80)
+        img.save(out_io, format="WEBP", quality=quality)
+        webp_bytes = out_io.getvalue()
+        
+        # Hash
+        h = hashlib.sha256(webp_bytes).hexdigest()
+        
+        # Save to disk
+        from pathlib import Path
+        storage_dir = Path(config.image_storage_dir)
+        rel_path = f"{h[:2]}/{h[2:4]}/{h[4:6]}/{h}.webp"
+        full_path = storage_dir / rel_path
+        
+        if not full_path.exists():
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            full_path.write_bytes(webp_bytes)
+            
+        return f"![qmd-image](qmd-img://{h})"
+        
+    except Exception as e:
+        if errors_out is not None:
+            errors_out.append({"error_type": "image_processing_error", "message": f"{filename}: {e}"})
+        if _is_verbose(config):
+            return f"\n\n> **[DEBUG: Image Embedding Error for `{filename}`: {e}]**\n\n"
+        return ""
+
+
 def _process_image(image_bytes: bytes, filename: str, config, errors_out: Optional[List[dict]] = None) -> str:
     if not config or not image_bytes:
         return ""
+        
+    if getattr(config, "embed_images", False):
+        embed_fn = _get_converter_fn("_process_image_for_embedding", _process_image_for_embedding)
+        try:
+            return embed_fn(image_bytes, filename, config, errors_out=errors_out)
+        except TypeError:
+            return embed_fn(image_bytes, filename, config)
+
     if getattr(config, "multimodal_url", None) or getattr(config, "multimodal_model", None):
         multi_fn = _get_converter_fn("_process_image_multimodal_llm", _process_image_multimodal_llm)
         try:

@@ -246,6 +246,45 @@ class LLMClient:
         """Formats query text according to Nomic/Gemma rules."""
         return f"task: search result | query: {query}"
 
+    def embed_image_batch(
+        self, 
+        b64_uris: List[str], 
+        batch_size: int = 16, 
+        show_progress: bool = False, 
+        desc: str = "Embedding images"
+    ) -> List[List[float]]:
+        """
+        Calls /v1/embeddings in batches with image URIs.
+        """
+        if not b64_uris:
+            return []
+
+        batches = [b64_uris[i:i + batch_size] for i in range(0, len(b64_uris), batch_size)]
+        all_embeddings = []
+
+        batch_iter = tqdm(batches, desc=desc, leave=False, unit="batch") if (show_progress and len(batches) > 1) else batches
+
+        for batch in batch_iter:
+            try:
+                # Passing in both input and images to maximize compatibility with differing proxy specs
+                response = self.embed_client.post("/v1/embeddings", json={
+                    "input": batch,
+                    "images": batch,
+                    "model": self.embed_model
+                })
+                response.raise_for_status()
+                data = response.json()
+                items = data.get("data", [])
+                items.sort(key=lambda x: x["index"])
+                all_embeddings.extend([item["embedding"] for item in items])
+            except httpx.TimeoutException as e:
+                raise RuntimeError(
+                    f"Image embedding request timed out for a batch of {len(batch)} item(s). "
+                    f"Consider increasing 'request_timeout' (current: {self.timeout}s) or decreasing 'embed_batch_size'."
+                ) from e
+
+        return all_embeddings
+
     def embed_batch(
         self, 
         texts: List[str], 

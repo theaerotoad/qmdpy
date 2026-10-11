@@ -310,6 +310,40 @@ class IndexingMixin:
         cursor.execute("""
             DELETE FROM chunk_metadata WHERE doc_hash NOT IN (SELECT DISTINCT hash FROM documents)
         """)
+        
+        # Cleanup Image Metadata
+        cursor.execute("""
+            DELETE FROM image_metadata WHERE doc_hash NOT IN (SELECT DISTINCT hash FROM documents)
+        """)
+        
+        # Cleanup Orphaned Image Vectors
+        cursor.execute("SELECT rowid FROM vectors WHERE rowid NOT IN (SELECT rowid FROM chunk_metadata) AND rowid NOT IN (SELECT rowid FROM image_metadata)")
+        orphan_vec_rowids = [row[0] for row in cursor.fetchall()]
+        if orphan_vec_rowids:
+            placeholders = ','.join(['?'] * len(orphan_vec_rowids))
+            cursor.execute(f"DELETE FROM vectors WHERE rowid IN ({placeholders})", tuple(orphan_vec_rowids))
+            if getattr(self, 'usearch_index', None) is not None and not self.read_only:
+                for rid in orphan_vec_rowids:
+                    try:
+                        self.usearch_index.remove(rid)
+                    except Exception:
+                        pass
+
+        # Cleanup Orphaned Images and Disk Files
+        cursor.execute("SELECT hash, storage_path FROM images WHERE hash NOT IN (SELECT DISTINCT image_hash FROM image_metadata)")
+        orphaned_images = cursor.fetchall()
+        if orphaned_images and getattr(self.config, "image_storage_dir", None):
+            storage_dir = Path(self.config.image_storage_dir)
+            import os
+            for img_hash, rel_path in orphaned_images:
+                full_path = storage_dir / rel_path
+                try:
+                    if full_path.exists():
+                        os.remove(full_path)
+                except Exception:
+                    pass
+        cursor.execute("DELETE FROM images WHERE hash NOT IN (SELECT DISTINCT image_hash FROM image_metadata)")
+
         cursor.execute("""
             DELETE FROM content WHERE hash NOT IN (SELECT DISTINCT hash FROM documents)
         """)
@@ -693,6 +727,19 @@ class IndexingMixin:
                     except Exception:
                         pass
 
+        # Cleanup Image Metadata for this document
+        cursor.execute("SELECT rowid FROM image_metadata WHERE doc_hash = ?", (doc_hash,))
+        old_img_rowids = [r[0] for r in cursor.fetchall()]
+        cursor.execute("DELETE FROM image_metadata WHERE doc_hash = ?", (doc_hash,))
+        
+        for r_id in old_img_rowids:
+            cursor.execute("SELECT 1 FROM image_metadata WHERE rowid = ?", (r_id,))
+            if not cursor.fetchone():
+                cursor.execute("DELETE FROM vectors WHERE rowid = ?", (r_id,))
+                if getattr(self, 'usearch_index', None) is not None and not self.read_only:
+                    try: self.usearch_index.remove(r_id)
+                    except Exception: pass
+
         new_rowids = []
         new_vectors = []
         for i, (chunk_text, embedding, context_str) in enumerate(zip(final_chunk_texts, embeddings, chunk_headers)):
@@ -710,6 +757,67 @@ class IndexingMixin:
                 INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (vector_rowid, collection_name, rel_path, title, chunk_text, context_str))
+
+        # Handle Image Embeddings
+        if getattr(self.config, "embed_images", False):
+            image_hashes = list(set(re.findall(r'qmd-img://([a-f0-9]{64})', markdown_body)))
+            if image_hashes:
+                storage_dir = Path(self.config.image_storage_dir) if getattr(self.config, "image_storage_dir", None) else None
+                if storage_dir:
+                    for img_hash in image_hashes:
+                        rel_path_img = f"{img_hash[:2]}/{img_hash[2:4]}/{img_hash[4:6]}/{img_hash}.webp"
+                        full_path = storage_dir / rel_path_img
+                        
+                        if not full_path.exists():
+                            continue
+                            
+                        # Insert into images table if not exists
+                        cursor.execute("SELECT hash FROM images WHERE hash = ?", (img_hash,))
+                        if not cursor.fetchone():
+                            try:
+                                from PIL import Image
+                                with Image.open(full_path) as img_file:
+                                    img_w, img_h = img_file.size
+                            except Exception:
+                                img_w, img_h = 0, 0
+                            
+                            now_ts = datetime.now().isoformat()
+                            cursor.execute(
+                                "INSERT INTO images(hash, storage_path, width, height, created_at) VALUES (?, ?, ?, ?, ?)",
+                                (img_hash, rel_path_img, img_w, img_h, now_ts)
+                            )
+                        
+                        # Check if vector already exists
+                        cursor.execute("SELECT rowid FROM image_metadata WHERE image_hash = ? LIMIT 1", (img_hash,))
+                        existing_meta = cursor.fetchone()
+                        
+                        if existing_meta:
+                            vec_rowid = existing_meta[0]
+                        else:
+                            import base64
+                            webp_bytes = full_path.read_bytes()
+                            b64 = base64.b64encode(webp_bytes).decode('utf-8')
+                            b64_uri = f"data:image/webp;base64,{b64}"
+                            
+                            try:
+                                img_embs = self.llm.embed_image_batch([b64_uri], show_progress=False)
+                                if img_embs:
+                                    emb_blob = encode_vector(img_embs[0], quant_type=quant_type)
+                                    cursor.execute("INSERT INTO vectors(embedding) VALUES (?)", (emb_blob,))
+                                    vec_rowid = cursor.lastrowid
+                                    
+                                    new_rowids.append(vec_rowid)
+                                    new_vectors.append(img_embs[0])
+                                else:
+                                    continue
+                            except Exception as e:
+                                tqdm.write(f"Warning: Failed to embed image {img_hash}: {e}")
+                                continue
+                                
+                        cursor.execute(
+                            "INSERT INTO image_metadata(rowid, image_hash, doc_hash) VALUES (?, ?, ?)",
+                            (vec_rowid, img_hash, doc_hash)
+                        )
 
         if getattr(self, 'usearch_index', None) is not None and not self.read_only:
             import numpy as np
