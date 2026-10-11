@@ -45,6 +45,12 @@ class Config:
     multimodal_prompt: Optional[str] = None
     max_image_concurrency: int = 4
     
+    # Image Storage & Embedding Settings
+    embed_images: bool = False
+    max_image_megapixels: float = 1.0
+    image_compression_quality: int = 80
+    image_storage_dir: Optional[str] = None
+
     # Model Configurations
     embed_model: str = "EmbeddingGemma 300m"
     rerank_model: str = "Qwen Rerank 0.6B"
@@ -164,6 +170,27 @@ class Config:
         )
         max_image_concurrency = int(max_img_concurrency_raw) if max_img_concurrency_raw else 4
 
+        embed_images_raw = os.environ.get("QMD_EMBED_IMAGES") or data.get("embed_images", False)
+        if isinstance(embed_images_raw, str):
+            embed_images = embed_images_raw.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            embed_images = bool(embed_images_raw)
+
+        max_image_megapixels = float(os.environ.get("QMD_MAX_IMAGE_MEGAPIXELS") or data.get("max_image_megapixels", 1.0))
+        image_compression_quality = int(os.environ.get("QMD_IMAGE_COMPRESSION_QUALITY") or data.get("image_compression_quality", 80))
+        
+        image_storage_dir_raw = os.environ.get("QMD_IMAGE_STORAGE_DIR") or data.get("image_storage_dir")
+        if image_storage_dir_raw:
+            p = Path(image_storage_dir_raw).expanduser()
+            if not p.is_absolute() and config_path:
+                image_storage_dir = str((config_path.parent / p).resolve())
+            else:
+                image_storage_dir = str(p.resolve())
+        elif config_path and config_path.resolve() != DEFAULT_CONFIG_PATH.resolve():
+            image_storage_dir = str((config_path.parent / ".qmd_images").resolve())
+        else:
+            image_storage_dir = str((Path.home() / ".config" / "qmd" / ".qmd_images").resolve())
+
         if (multimodal_model or data.get("multimodal_url")) and not multimodal_url:
             multimodal_url = llm_url
         if multimodal_url and not multimodal_api_key:
@@ -279,6 +306,10 @@ class Config:
             child_cfg.multimodal_model = multimodal_model
             child_cfg.multimodal_prompt = multimodal_prompt
             child_cfg.max_image_concurrency = max_image_concurrency
+            child_cfg.embed_images = embed_images
+            child_cfg.max_image_megapixels = max_image_megapixels
+            child_cfg.image_compression_quality = image_compression_quality
+            child_cfg.image_storage_dir = image_storage_dir
             child_cfg.request_timeout = request_timeout
             child_cfg.embed_batch_size = embed_batch_size
             child_cfg.rerank_model = rerank_model
@@ -314,6 +345,10 @@ class Config:
             multimodal_model=multimodal_model,
             multimodal_prompt=multimodal_prompt,
             max_image_concurrency=max_image_concurrency,
+            embed_images=embed_images,
+            max_image_megapixels=max_image_megapixels,
+            image_compression_quality=image_compression_quality,
+            image_storage_dir=image_storage_dir,
             request_timeout=request_timeout,
             embed_batch_size=embed_batch_size,
             embed_model=embed_model,

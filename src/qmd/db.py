@@ -506,6 +506,30 @@ def init_schema(conn: sqlite3.Connection):
     except sqlite3.OperationalError:
         pass
 
+    # 2.5 Images and Image Metadata
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS images (
+        hash TEXT PRIMARY KEY,
+        storage_path TEXT NOT NULL,
+        width INTEGER,
+        height INTEGER,
+        created_at TEXT NOT NULL
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS image_metadata (
+        rowid INTEGER PRIMARY KEY, -- FK to vectors.rowid
+        image_hash TEXT NOT NULL,
+        doc_hash TEXT NOT NULL,
+        FOREIGN KEY (rowid) REFERENCES vectors(rowid) ON DELETE CASCADE,
+        FOREIGN KEY (image_hash) REFERENCES images(hash) ON DELETE CASCADE
+    );
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_metadata_doc_hash ON image_metadata(doc_hash);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_metadata_image_hash ON image_metadata(image_hash);")
+
     # 3. View for FTS5 External Content
     cursor.execute("DROP VIEW IF EXISTS document_search_view;")
     cursor.execute("""
