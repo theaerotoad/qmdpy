@@ -28,6 +28,7 @@ from .models import (
     _json_to_results,
 )
 from .vector_index import VectorIndexMixin
+from .image_index import ImageIndexMixin
 from .inspection import InspectionMixin
 from .indexing import IndexingMixin
 from .search import SearchMixin
@@ -36,7 +37,7 @@ from .analysis import AnalysisMixin
 from .extraction import ExtractionMixin
 
 
-class Store(VectorIndexMixin, InspectionMixin, IndexingMixin, RetrievalMixin, SearchMixin, AnalysisMixin, ExtractionMixin):
+class Store(ImageIndexMixin, VectorIndexMixin, InspectionMixin, IndexingMixin, RetrievalMixin, SearchMixin, AnalysisMixin, ExtractionMixin):
     def __init__(self, config: Config, connection: Optional[sqlite3.Connection] = None, read_only: bool = False):
         self.config = config
         self.read_only = read_only
