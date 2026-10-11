@@ -579,6 +579,76 @@ collections:
         store.index_collection("master_coll", cfg.collections["master_coll"])
 
 
+def test_image_relevance_boosting(db_conn, monkeypatch):
+    """Verify that semantic image hits boost the score of their parent document chunks."""
+    from qmd.utils import compress_text
+    from qmd.store import encode_vector
+    from qmd.db import ensure_vector_table, set_db_meta
+    config = Config(db_path=":memory:", embed_images=True)
+    store = Store(config, connection=db_conn)
+
+    class MockLLM:
+        def format_query_for_embedding(self, q): return q
+        def embed_batch(self, texts):
+            return [[1.0, 0.0]] * len(texts)
+
+    monkeypatch.setattr(store, "llm", MockLLM())
+
+    ensure_vector_table(db_conn, dim=2, quant_type="none")
+
+    cursor = db_conn.cursor()
+    # Create two identical text documents
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'base doc text', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'doc_no_image.md', 'No Img', 'h1', 'now')")
+    id1 = cursor.lastrowid
+    
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'base doc text with image', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'doc_with_image.md', 'With Img', 'h2', 'now')")
+    id2 = cursor.lastrowid
+
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'c', 'doc_no_image.md', 'No Img', 'base doc text')", (id1,))
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (?, 'c', 'doc_with_image.md', 'With Img', 'base doc text with image')", (id2,))
+
+    vec_no_match = encode_vector([0.0, 1.0])
+    vec_perfect_match = encode_vector([1.0, 0.0])
+
+    # Text vectors for both documents are weak non-matches
+    cursor.execute("INSERT INTO vectors (embedding) VALUES (?)", (vec_no_match,))
+    text_vec1 = cursor.lastrowid
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'h1', 0, ?, '')", (text_vec1, compress_text("base doc text")))
+
+    cursor.execute("INSERT INTO vectors (embedding) VALUES (?)", (vec_no_match,))
+    text_vec2 = cursor.lastrowid
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text, headers) VALUES (?, 'h2', 0, ?, '')", (text_vec2, compress_text("base doc text with image")))
+
+    # Now we insert an image metadata record. The image vector is a PERFECT MATCH [1.0, 0.0] 
+    # to the query vector returning from the mock LLM.
+    cursor.execute("INSERT INTO vectors (embedding) VALUES (?)", (vec_perfect_match,))
+    img_vec = cursor.lastrowid
+    cursor.execute("INSERT INTO images(hash, storage_path, width, height, created_at) VALUES ('ihash1', 'path.webp', 100, 100, 'now')")
+    cursor.execute("INSERT INTO image_metadata(rowid, image_hash, doc_hash) VALUES (?, 'ihash1', 'h2')", (img_vec,))
+
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'c', 'doc_no_image.md', 'No Img', 'base doc text', '')", (text_vec1,))
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'c', 'doc_with_image.md', 'With Img', 'base doc text with image', '')", (text_vec2,))
+
+    db_conn.commit()
+
+    # We must build the usearch index for vector search to function
+    store.build_usearch_index()
+
+    # Search: both documents match FTS equally well, and neither matches text semantic vector well.
+    # But doc_with_image has a perfectly matching image vector.
+    results = store.hybrid_search("base doc")
+    
+    assert len(results) == 2
+    
+    res_img = next(r for r in results if r.path == 'doc_with_image.md')
+    res_no = next(r for r in results if r.path == 'doc_no_image.md')
+    
+    # Verify the image-containing doc was boosted above the identical non-image doc
+    assert res_img.score > res_no.score
+
+
 def test_search_dirlist_exclusion(db_conn, monkeypatch):
     """Verify that .dirsummary files are excluded from FTS and VEC searches unless dirlist=True."""
     from qmd.utils import compress_text

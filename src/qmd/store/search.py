@@ -132,10 +132,48 @@ class SearchMixin:
 
         t_vec_start = time.perf_counter()
         vec_results = []
+        img_results = []
+        
         for vq in vec_queries:
             q_vec = vec_query_embeddings.get(vq)
             if q_vec:
+                # 1. Fetch text chunk vectors
                 vec_results.extend(self.search_vec(vq, limit=vec_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=q_vec, defer_text=True, dirlist=dirlist))
+                
+                # 2. Fetch image vectors (if embed_images is active)
+                if getattr(self.config, "embed_images", False):
+                    try:
+                        # Direct usearch query against the index for raw rowids to cross-check image_metadata
+                        if getattr(self, "usearch_index", None):
+                            import numpy as np
+                            q_arr = np.array(q_vec, dtype=np.float32)
+                            matches = self.usearch_index.search(q_arr, vec_lim)
+                            if matches and hasattr(matches, 'keys'):
+                                match_keys = matches.keys.tolist() if hasattr(matches.keys, 'tolist') else list(matches.keys)
+                                match_distances = matches.distances.tolist() if hasattr(matches.distances, 'tolist') else list(matches.distances)
+                                
+                                cursor = self.conn.cursor()
+                                for i, vec_rowid in enumerate(match_keys):
+                                    sim = float(1.0 - match_distances[i])
+                                    if sim < 0.6:  # Threshold to avoid irrelevant noise boosts
+                                        continue
+                                        
+                                    cursor.execute("""
+                                        SELECT im.doc_hash, d.collection, d.path
+                                        FROM image_metadata im
+                                        JOIN documents d ON im.doc_hash = d.hash
+                                        WHERE im.rowid = ?
+                                    """, (vec_rowid,))
+                                    img_rows = cursor.fetchall()
+                                    for img_row in img_rows:
+                                        img_results.append({
+                                            "collection": img_row[1],
+                                            "path": img_row[2],
+                                            "score": sim,
+                                            "doc_hash": img_row[0]
+                                        })
+                    except Exception:
+                        pass
         t_vec_knn = (time.perf_counter() - t_vec_start) * 1000
 
         self.last_exclusion_stats = {
@@ -174,9 +212,20 @@ class SearchMixin:
         apply_rrf(fts_results, "fts")
         apply_rrf(vec_results, "vec")
 
+        # Apply image vector similarity bonuses to any matching parent documents
+        for img_res in img_results:
+            bonus = img_res["score"] * 0.15  # Scale the image cosine similarity heavily down to act as a supplement, not the primary decider
+            # Apply to any chunk matching the document
+            for rrf_key in list(rrf_scores.keys()):
+                if rrf_key[0] == img_res["collection"] and rrf_key[1] == img_res["path"]:
+                    rrf_scores[rrf_key] += bonus
+                    sources_found[rrf_key].add("img")
+
         for key, srcs in sources_found.items():
             if "fts" in srcs and "vec" in srcs:
                 rrf_scores[key] *= 1.35
+            if "img" in srcs:
+                rrf_scores[key] *= 1.10  # Additional 10% multiplier if the chunk also has a relevant image
 
         fused = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
         for rrf_idx, (key, rrf_score) in enumerate(fused):

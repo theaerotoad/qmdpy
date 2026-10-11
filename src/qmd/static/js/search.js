@@ -319,6 +319,9 @@ function renderResults(results, type, query) {
                             : '';
 
                         let parsedChunkText = marked.parse(chunk.text || '');
+                        // Intercept QMD image placeholders and convert to viewable APIs
+                        parsedChunkText = parsedChunkText.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+                        
                         if (item.path.endsWith('.dirsummary')) {
                             const basePath = item.path.replace(/\.dirsummary$/, '');
                             parsedChunkText = parsedChunkText.replace(/<li>(.*?)<\/li>/g, (match, inner) => {
@@ -341,6 +344,9 @@ function renderResults(results, type, query) {
         } else {
             const rawBody = item.text || (item.snippets ? item.snippets[0] : '');
             let parsedRawBody = marked.parse(rawBody || '');
+            // Intercept QMD image placeholders and convert to viewable APIs
+            parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+            
             if (item.path.endsWith('.dirsummary')) {
                 const basePath = item.path.replace(/\.dirsummary$/, '');
                 parsedRawBody = parsedRawBody.replace(/<li>(.*?)<\/li>/g, (match, inner) => {

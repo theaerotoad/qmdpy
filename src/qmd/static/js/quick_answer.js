@@ -299,6 +299,9 @@
         .replace(/\n/g, "<br>");
     }
 
+    // Intercept QMD image placeholders and convert to viewable APIs
+    html = html.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+
     // Replace citations like [1], [2], [1, 2] with interactive badges
     html = html.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, function (match, group) {
       const nums = group.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
