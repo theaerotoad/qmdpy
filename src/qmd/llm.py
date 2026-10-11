@@ -266,10 +266,18 @@ class LLMClient:
 
         for batch in batch_iter:
             try:
-                # Passing in both input and images to maximize compatibility with differing proxy specs
+                # Structure multimodal input properly to avoid tokenizing base64 strings as raw text
+                structured_input = []
+                for b64_uri in batch:
+                    structured_input.append({
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": b64_uri}},
+                            {"type": "text", "text": " "}  # Required padding for BOS/EOS pooling tokens
+                        ]
+                    })
+
                 response = self.embed_client.post("/v1/embeddings", json={
-                    "input": batch,
-                    "images": batch,
+                    "input": structured_input,
                     "model": self.embed_model
                 })
                 response.raise_for_status()
