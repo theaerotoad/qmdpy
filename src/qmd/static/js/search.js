@@ -319,8 +319,12 @@ function renderResults(results, type, query) {
                             : '';
 
                         let parsedChunkText = marked.parse(chunk.text || '');
-                        // Intercept QMD image placeholders and convert to viewable APIs
-                        parsedChunkText = parsedChunkText.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+                        // Intercept QMD image placeholders and convert to viewable APIs or compact badges
+                        if (typeof featureStates !== 'undefined' && featureStates.show_serp_images) {
+                            parsedChunkText = parsedChunkText.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+                        } else {
+                            parsedChunkText = parsedChunkText.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<span class="inline-flex items-center gap-1 text-[10px] bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 mx-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-700 transition" title="Image available in document viewer">🖼️ Image</span>');
+                        }
                         
                         if (item.path.endsWith('.dirsummary')) {
                             const basePath = item.path.replace(/\.dirsummary$/, '');
@@ -344,8 +348,12 @@ function renderResults(results, type, query) {
         } else {
             const rawBody = item.text || (item.snippets ? item.snippets[0] : '');
             let parsedRawBody = marked.parse(rawBody || '');
-            // Intercept QMD image placeholders and convert to viewable APIs
-            parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+            // Intercept QMD image placeholders and convert to viewable APIs or compact badges
+            if (typeof featureStates !== 'undefined' && featureStates.show_serp_images) {
+                parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+            } else {
+                parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<span class="inline-flex items-center gap-1 text-[10px] bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 mx-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-700 transition" title="Image available in document viewer">🖼️ Image</span>');
+            }
             
             if (item.path.endsWith('.dirsummary')) {
                 const basePath = item.path.replace(/\.dirsummary$/, '');

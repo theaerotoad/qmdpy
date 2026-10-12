@@ -15,7 +15,7 @@ let lastSearchType = 'discover';
 let currentSessionId = null;
 let currentExcludedCount = 0;
 let selectedScopes = [];
-let featureStates = { offer_llm: false, rerank: false, exclude_seen: false, redact_pii: false };
+let featureStates = { offer_llm: false, rerank: false, exclude_seen: false, redact_pii: false, show_serp_images: false };
 let treeFilterTimer = null, scopeFilterTimer = null;
 
 const DEFAULTS_KEY = 'qmd_search_defaults';
@@ -106,6 +106,7 @@ function applyDefaultPreferences(customDefaults = null) {
     featureStates.rerank = defaults.rerank !== undefined ? !!defaults.rerank : false;
     featureStates.exclude_seen = defaults.exclude_seen !== undefined ? !!defaults.exclude_seen : false;
     featureStates.redact_pii = defaults.redact_pii !== undefined ? !!defaults.redact_pii : false;
+    featureStates.show_serp_images = defaults.show_serp_images !== undefined ? !!defaults.show_serp_images : false;
     if (!featureStates.offer_llm && window.QuickAnswer && typeof window.QuickAnswer.hide === 'function') {
         window.QuickAnswer.hide();
     }
@@ -137,6 +138,7 @@ function loadSettingsModalValues() {
     const rkEl = document.getElementById('setting-default-rerank');
     const snEl = document.getElementById('setting-default-seen');
     const piEl = document.getElementById('setting-default-pii');
+    const imgEl = document.getElementById('setting-default-serp-images');
     if (heroEl) heroEl.value = defaults.hero_view || 'questions';
     if (limEl) limEl.value = defaults.limit || '10';
     if (modEl) modEl.value = defaults.mode || 'discover';
@@ -144,6 +146,7 @@ function loadSettingsModalValues() {
     if (rkEl) rkEl.checked = defaults.rerank !== undefined ? !!defaults.rerank : false;
     if (snEl) snEl.checked = !!defaults.exclude_seen;
     if (piEl) piEl.checked = !!defaults.redact_pii;
+    if (imgEl) imgEl.checked = !!defaults.show_serp_images;
 }
 
 function saveDefaults() {
@@ -154,7 +157,8 @@ function saveDefaults() {
         offer_llm: document.getElementById('setting-default-llm') ? document.getElementById('setting-default-llm').checked : false,
         rerank: document.getElementById('setting-default-rerank') ? document.getElementById('setting-default-rerank').checked : false,
         exclude_seen: document.getElementById('setting-default-seen') ? document.getElementById('setting-default-seen').checked : false,
-        redact_pii: document.getElementById('setting-default-pii') ? document.getElementById('setting-default-pii').checked : false
+        redact_pii: document.getElementById('setting-default-pii') ? document.getElementById('setting-default-pii').checked : false,
+        show_serp_images: document.getElementById('setting-default-serp-images') ? document.getElementById('setting-default-serp-images').checked : false
     };
     localStorage.setItem(DEFAULTS_KEY, JSON.stringify(defaults));
     applyDefaultPreferences(defaults);
@@ -182,10 +186,12 @@ function updateFeatureButtonsUI() {
     const rerankEl = document.getElementById('filter-rerank');
     const seenEl = document.getElementById('filter-exclude-seen');
     const redactEl = document.getElementById('filter-redact');
+    const imgEl = document.getElementById('filter-show-images');
     if (llmEl) llmEl.checked = !!featureStates.offer_llm;
     if (rerankEl) rerankEl.checked = !!featureStates.rerank;
     if (seenEl) seenEl.checked = !!featureStates.exclude_seen;
     if (redactEl) redactEl.checked = !!featureStates.redact_pii;
+    if (imgEl) imgEl.checked = !!featureStates.show_serp_images;
 }
 
 // Smart Query Parser for Cheat Codes
@@ -339,6 +345,7 @@ function resetToolsFilters() {
     toggleFeature('rerank', false);
     toggleFeature('exclude_seen', false);
     toggleFeature('redact_pii', false);
+    toggleFeature('show_serp_images', false);
     showToast("Filters reset to default");
     const query = document.getElementById('serp-query').value.trim();
     if (query) handleFormSubmit(new Event('submit'), 'serp');
