@@ -159,7 +159,7 @@ class SearchMixin:
                                         continue
                                         
                                     cursor.execute("""
-                                        SELECT im.doc_hash, d.collection, d.path
+                                        SELECT im.doc_hash, d.collection, d.path, im.image_hash, im.seq_id, d.title
                                         FROM image_metadata im
                                         JOIN documents d ON im.doc_hash = d.hash
                                         WHERE im.rowid = ?
@@ -170,7 +170,10 @@ class SearchMixin:
                                             "collection": img_row[1],
                                             "path": img_row[2],
                                             "score": sim,
-                                            "doc_hash": img_row[0]
+                                            "doc_hash": img_row[0],
+                                            "image_hash": img_row[3],
+                                            "seq_id": img_row[4],
+                                            "title": img_row[5]
                                         })
                     except Exception:
                         pass
@@ -212,14 +215,31 @@ class SearchMixin:
         apply_rrf(fts_results, "fts")
         apply_rrf(vec_results, "vec")
 
-        # Apply image vector similarity bonuses to any matching parent documents
+        # Integrate visual search results into RRF
         for img_res in img_results:
-            bonus = img_res["score"] * 0.15  # Scale the image cosine similarity heavily down to act as a supplement, not the primary decider
-            # Apply to any chunk matching the document
-            for rrf_key in list(rrf_scores.keys()):
-                if rrf_key[0] == img_res["collection"] and rrf_key[1] == img_res["path"]:
-                    rrf_scores[rrf_key] += bonus
-                    sources_found[rrf_key].add("img")
+            key = (img_res["collection"], img_res["path"], img_res["seq_id"])
+            if key not in rrf_scores:
+                rrf_scores[key] = 0.0
+                metadata[key] = Result(
+                    path=img_res["path"],
+                    title=img_res["title"],
+                    text="",  # Will be hydrated later if needed
+                    score=img_res["score"],
+                    source="img",
+                    collection=img_res["collection"],
+                    seq_id=img_res["seq_id"],
+                    image_hash=img_res["image_hash"],
+                    vec_score=img_res["score"]
+                )
+                sources_found[key] = set()
+
+            # Ensure we attach the visual hash to an existing text chunk if the text search found it first
+            if not getattr(metadata[key], "image_hash", None):
+                metadata[key].image_hash = img_res["image_hash"]
+                
+            bonus = img_res["score"] * 0.15  # Boost multiplier
+            rrf_scores[key] += bonus
+            sources_found[key].add("img")
 
         for key, srcs in sources_found.items():
             if "fts" in srcs and "vec" in srcs:
