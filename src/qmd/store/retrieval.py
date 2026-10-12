@@ -22,6 +22,11 @@ class RetrievalMixin:
             return
 
         cursor = self.conn.cursor()
+        if getattr(self, '_has_image_metadata_table', None) is None:
+            c = self.conn.cursor()
+            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='image_metadata'")
+            self._has_image_metadata_table = c.fetchone() is not None
+
         with_rowids = [r for r in needed if r.rowid is not None]
         without_rowids = [r for r in needed if r.rowid is None]
 
@@ -34,9 +39,11 @@ class RetrievalMixin:
             )
             text_map = {row[0]: decompress_text(row[1]) for row in cursor.fetchall()}
             
-            # Also fetch image hashes
-            cursor.execute(f"SELECT rowid, image_hash FROM image_metadata WHERE rowid IN ({placeholders})", tuple(unique_rowids))
-            img_map = {row[0]: row[1] for row in cursor.fetchall()}
+            # Also fetch image hashes if supported
+            img_map = {}
+            if self._has_image_metadata_table:
+                cursor.execute(f"SELECT rowid, image_hash FROM image_metadata WHERE rowid IN ({placeholders})", tuple(unique_rowids))
+                img_map = {row[0]: row[1] for row in cursor.fetchall()}
             
             for r in with_rowids:
                 if r.rowid in text_map:
@@ -58,7 +65,7 @@ class RetrievalMixin:
                     if r.rowid is None and row[1] is not None:
                         r.rowid = row[1]
 
-                if getattr(r, "image_hash", None) is None:
+                if self._has_image_metadata_table and getattr(r, "image_hash", None) is None:
                     cursor.execute("""
                         SELECT im.image_hash 
                         FROM image_metadata im
