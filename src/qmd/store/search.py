@@ -6,7 +6,7 @@ from typing import List, Tuple, Optional, Dict, Union, Any
 from qmd.db import get_cached_search_results, save_cached_search_results
 from qmd.utils import build_spacy_fts_queries
 from qmd.formatters.colors import Colors
-from .models import Result, _results_to_json, _json_to_results
+from .models import Result, _results_to_json, _json_to_results, _build_collection_sql_filter
 
 
 class SearchMixin:
