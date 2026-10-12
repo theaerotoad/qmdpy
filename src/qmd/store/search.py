@@ -828,10 +828,14 @@ class SearchMixin:
         collection: Optional[str] = None,
         path: Optional[Union[str, List[str]]] = None,
         exclude_seen_set: Optional[set] = None,
+        visual_only: bool = False,
+        semantic_only: bool = False,
     ) -> List[Result]:
-        """Blended image search: Visual KNN + Text Hybrid -> RRF."""
+        """Blended image search: Visual KNN + Text Hybrid -> RRF (or purely Visual KNN if visual_only/semantic_only)."""
         if not getattr(self.config, "embed_images", False):
             return []
+
+        pure_visual = visual_only or semantic_only
 
         # 1. Visual KNN Search
         visual_candidates = []
@@ -885,6 +889,44 @@ class SearchMixin:
                             "title": img_row[5],
                             "source": "visual"
                         })
+
+        if pure_visual:
+            if not visual_candidates:
+                return []
+
+            seen_hashes = set()
+            deduped = []
+            visual_candidates.sort(key=lambda x: x["score"], reverse=True)
+            for cand in visual_candidates:
+                if cand["image_hash"] not in seen_hashes:
+                    seen_hashes.add(cand["image_hash"])
+                    deduped.append(cand)
+
+            final_results = []
+            for i, cand in enumerate(deduped[:limit]):
+                res = Result(
+                    path=cand["path"],
+                    title=cand["title"],
+                    text="",
+                    score=cand["score"],
+                    source="img",
+                    collection=cand["collection"],
+                    seq_id=cand["seq_id"],
+                    image_hash=cand["image_hash"],
+                    vec_score=cand["score"]
+                )
+                res.rank = i + 1
+                final_results.append(res)
+
+            self._hydrate_results_text(final_results)
+
+            if exclude_seen_set:
+                final_results = [
+                    r for r in final_results
+                    if (r.collection, r.path, r.seq_id) not in exclude_seen_set
+                ]
+
+            return final_results
 
         # 2. Text Hybrid Search
         text_results = self.hybrid_search(

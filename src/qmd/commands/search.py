@@ -24,12 +24,20 @@ def handle_gallery(args, store: Store):
     if "limit" in directives:
         limit = directives["limit"]
 
+    visual_only = (
+        getattr(args, "visual_only", False)
+        or getattr(args, "semantic_only", False)
+        or directives.get("visual_only", False)
+        or directives.get("semantic_only", False)
+    )
+
     search_kwargs = {
         "query": query,
         "limit": limit,
         "collection": directives.get("collection", getattr(args, "collection", None)),
         "path": directives.get("path", getattr(args, "path", None)),
         "exclude_seen_set": set(),
+        "visual_only": visual_only,
     }
 
     results = store.image_search(**search_kwargs)
@@ -200,6 +208,10 @@ def handle_map(args, store: Store):
         format_map_cli(tree_results, query=query)
 
 def handle_search(args, store: Store):
+    if getattr(args, "media", False) or getattr(args, "images", False):
+        handle_gallery(args, store)
+        return
+
     is_xml = _is_xml_output(args)
     if getattr(args, "plain", False) or is_xml:
         set_plain_mode(True)
