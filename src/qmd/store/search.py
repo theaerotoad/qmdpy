@@ -928,10 +928,11 @@ class SearchMixin:
 
             return final_results
 
-        # 2. Text Hybrid Search
+        # 2. Text Hybrid Search (capped to keep hybrid execution fast when image limit is high)
+        text_candidate_limit = min(limit * 3, 120)
         text_results = self.hybrid_search(
             query=query,
-            limit=limit * 5,
+            limit=text_candidate_limit,
             rerank=False,
             collection=collection,
             path=path,

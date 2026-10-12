@@ -547,7 +547,7 @@ def gallery():
         clean_query, directives = parse_query_directives(raw_query)
         query = clean_query if clean_query else raw_query
 
-        limit = directives.get('limit') if directives.get('limit') is not None else int(data.get('limit', 20))
+        limit = directives.get('limit') if directives.get('limit') is not None else int(data.get('limit', 60))
         session_id = data.get('session_id') or secrets.token_hex(4)
 
         exclude_seen = directives.get('exclude_seen') if directives.get('exclude_seen') is not None else data.get('exclude_seen', False)

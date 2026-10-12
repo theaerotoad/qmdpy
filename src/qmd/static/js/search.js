@@ -146,10 +146,12 @@ async function handleFormSubmit(e, source) {
         }
 
         if (isGalleryMode) {
+            // Scale limit up for gallery mode (e.g. 10 -> 60, min 50)
+            const galleryLimit = parsed.limit || Math.max(50, limitVal * 6);
             const payload = {
                 query: parsed.cleanQuery || rawVal,
                 exclude_seen: featureStates.exclude_seen,
-                limit: limitVal,
+                limit: galleryLimit,
                 collection: collFilter,
                 path: scopedPaths.length === 1 ? scopedPaths[0] : (scopedPaths.length > 1 ? scopedPaths : null),
                 paths: scopedPaths.length > 0 ? scopedPaths : undefined,
