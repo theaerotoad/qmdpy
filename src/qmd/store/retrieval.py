@@ -33,9 +33,16 @@ class RetrievalMixin:
                 tuple(unique_rowids)
             )
             text_map = {row[0]: decompress_text(row[1]) for row in cursor.fetchall()}
+            
+            # Also fetch image hashes
+            cursor.execute(f"SELECT rowid, image_hash FROM image_metadata WHERE rowid IN ({placeholders})", tuple(unique_rowids))
+            img_map = {row[0]: row[1] for row in cursor.fetchall()}
+            
             for r in with_rowids:
                 if r.rowid in text_map:
                     r.text = text_map[r.rowid]
+                if r.rowid in img_map and not getattr(r, "image_hash", None):
+                    r.image_hash = img_map[r.rowid]
 
         if without_rowids:
             for r in without_rowids:
@@ -50,6 +57,18 @@ class RetrievalMixin:
                     r.text = decompress_text(row[0])
                     if r.rowid is None and row[1] is not None:
                         r.rowid = row[1]
+
+                if getattr(r, "image_hash", None) is None:
+                    cursor.execute("""
+                        SELECT im.image_hash 
+                        FROM image_metadata im
+                        JOIN documents d ON im.doc_hash = d.hash
+                        WHERE d.collection = ? AND d.path = ? AND im.seq_id = ?
+                        LIMIT 1
+                    """, (r.collection, r.path, r.seq_id))
+                    img_row = cursor.fetchone()
+                    if img_row:
+                        r.image_hash = img_row[0]
 
                 # While we're hydrating, fetch image_hash if the chunk is known to have one but wasn't set by visual search
                 if getattr(r, "image_hash", None) is None:

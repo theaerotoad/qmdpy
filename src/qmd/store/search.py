@@ -215,31 +215,17 @@ class SearchMixin:
         apply_rrf(fts_results, "fts")
         apply_rrf(vec_results, "vec")
 
-        # Integrate visual search results into RRF
+        # Apply image vector similarity bonuses to any matching parent documents
         for img_res in img_results:
-            key = (img_res["collection"], img_res["path"], img_res["seq_id"])
-            if key not in rrf_scores:
-                rrf_scores[key] = 0.0
-                metadata[key] = Result(
-                    path=img_res["path"],
-                    title=img_res["title"],
-                    text="",  # Will be hydrated later if needed
-                    score=img_res["score"],
-                    source="img",
-                    collection=img_res["collection"],
-                    seq_id=img_res["seq_id"],
-                    image_hash=img_res["image_hash"],
-                    vec_score=img_res["score"]
-                )
-                sources_found[key] = set()
-
-            # Ensure we attach the visual hash to an existing text chunk if the text search found it first
-            if not getattr(metadata[key], "image_hash", None):
-                metadata[key].image_hash = img_res["image_hash"]
-                
-            bonus = img_res["score"] * 0.15  # Boost multiplier
-            rrf_scores[key] += bonus
-            sources_found[key].add("img")
+            bonus = img_res["score"] * 0.15  # Scale the image cosine similarity heavily down to act as a supplement, not the primary decider
+            # Apply to any chunk matching the document
+            for rrf_key in list(rrf_scores.keys()):
+                if rrf_key[0] == img_res["collection"] and rrf_key[1] == img_res["path"]:
+                    rrf_scores[rrf_key] += bonus
+                    sources_found[rrf_key].add("img")
+                    # Attach image_hash to the exact matching chunk
+                    if img_res.get("seq_id") == rrf_key[2] and not getattr(metadata[rrf_key], "image_hash", None):
+                        metadata[rrf_key].image_hash = img_res["image_hash"]
 
         for key, srcs in sources_found.items():
             if "fts" in srcs and "vec" in srcs:
@@ -834,3 +820,139 @@ class SearchMixin:
 
         trees.sort(key=lambda x: x["score"], reverse=True)
         return trees
+
+    def image_search(
+        self,
+        query: str,
+        limit: int = 10,
+        collection: Optional[str] = None,
+        path: Optional[Union[str, List[str]]] = None,
+        exclude_seen_set: Optional[set] = None,
+    ) -> List[Result]:
+        """Blended image search: Visual KNN + Text Hybrid -> RRF."""
+        if not getattr(self.config, "embed_images", False):
+            return []
+
+        # 1. Visual KNN Search
+        visual_candidates = []
+        query_text = self.llm.format_query_for_embedding(query)
+        q_vec = self.get_query_embedding(query_text)
+        
+        if q_vec and getattr(self, "usearch_index", None):
+            import numpy as np
+            q_arr = np.array(q_vec, dtype=np.float32)
+            matches = self.usearch_index.search(q_arr, limit * 5)
+            if matches and hasattr(matches, 'keys'):
+                match_keys = matches.keys.tolist() if hasattr(matches.keys, 'tolist') else list(matches.keys)
+                match_distances = matches.distances.tolist() if hasattr(matches.distances, 'tolist') else list(matches.distances)
+                
+                cursor = self.conn.cursor()
+                for i, vec_rowid in enumerate(match_keys):
+                    sim = float(1.0 - match_distances[i])
+                    if sim < 0.5:
+                        continue
+                    
+                    sql = """
+                        SELECT im.doc_hash, d.collection, d.path, im.image_hash, im.seq_id, d.title
+                        FROM image_metadata im
+                        JOIN documents d ON im.doc_hash = d.hash
+                        WHERE im.rowid = ?
+                    """
+                    params = [vec_rowid]
+                    
+                    coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
+                    if coll_sql:
+                        sql += coll_sql
+                        params.extend(coll_params)
+                        
+                    if path:
+                        paths = [p.strip() for p in path.split(',')] if isinstance(path, str) else path
+                        path_clauses = " OR ".join(["d.path LIKE ?" for _ in paths])
+                        sql += f" AND ({path_clauses})"
+                        for p_val in paths:
+                            params.append(f"%{p_val}%")
+
+                    cursor.execute(sql, tuple(params))
+                    img_rows = cursor.fetchall()
+                    for img_row in img_rows:
+                        visual_candidates.append({
+                            "collection": img_row[1] or "",
+                            "path": img_row[2],
+                            "score": sim,
+                            "doc_hash": img_row[0],
+                            "image_hash": img_row[3],
+                            "seq_id": img_row[4] or 0,
+                            "title": img_row[5],
+                            "source": "visual"
+                        })
+
+        # 2. Text Hybrid Search
+        text_results = self.hybrid_search(
+            query=query,
+            limit=limit * 5,
+            rerank=False,
+            collection=collection,
+            path=path,
+            defer_text=False
+        )
+
+        # 3. Apply RRF
+        rrf_scores = {}
+        metadata = {}
+
+        def _add_to_rrf(img_hash: str, coll: str, doc_path: str, seq_id: int, title: str, rank: int, score: float, source: str):
+            key = img_hash
+            if key not in rrf_scores:
+                rrf_scores[key] = 0.0
+                metadata[key] = Result(
+                    path=doc_path,
+                    title=title,
+                    text="",
+                    score=0.0,
+                    source="img",
+                    collection=coll,
+                    seq_id=seq_id,
+                    image_hash=img_hash
+                )
+            
+            rrf_score = 1.0 / (60 + rank)
+            if rank == 0: rrf_score += 0.05
+            elif rank < 3: rrf_score += 0.02
+            rrf_scores[key] += rrf_score
+
+        visual_candidates.sort(key=lambda x: x["score"], reverse=True)
+        for rank, cand in enumerate(visual_candidates):
+            _add_to_rrf(cand["image_hash"], cand["collection"], cand["path"], cand["seq_id"], cand["title"], rank, cand["score"], "visual")
+
+        text_rank = 0
+        for res in text_results:
+            if not res.text:
+                continue
+            # Find all images in this chunk
+            hashes = set(re.findall(r'qmd-img://([a-f0-9]{64})', res.text))
+            for h in hashes:
+                _add_to_rrf(h, res.collection, res.path, res.seq_id, res.title, text_rank, res.score, "text")
+                text_rank += 1
+
+        if not rrf_scores:
+            return []
+
+        # Sort and return
+        fused = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+        final_results = []
+        for i, (img_hash, score) in enumerate(fused[:limit]):
+            res = metadata[img_hash]
+            res.score = score
+            res.rank = i + 1
+            final_results.append(res)
+            
+        self._hydrate_results_text(final_results)
+        
+        # Filter seen items
+        if exclude_seen_set:
+            final_results = [
+                r for r in final_results 
+                if (r.collection, r.path, r.seq_id) not in exclude_seen_set
+            ]
+            
+        return final_results
