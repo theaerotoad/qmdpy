@@ -626,7 +626,7 @@ def test_image_relevance_boosting(db_conn, monkeypatch):
     cursor.execute("INSERT INTO vectors (embedding) VALUES (?)", (vec_perfect_match,))
     img_vec = cursor.lastrowid
     cursor.execute("INSERT INTO images(hash, storage_path, width, height, created_at) VALUES ('ihash1', 'path.webp', 100, 100, 'now')")
-    cursor.execute("INSERT INTO image_metadata(rowid, image_hash, doc_hash) VALUES (?, 'ihash1', 'h2')", (img_vec,))
+    cursor.execute("INSERT INTO image_metadata(rowid, image_hash, doc_hash, seq_id) VALUES (?, 'ihash1', 'h2', 0)", (img_vec,))
 
     cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'c', 'doc_no_image.md', 'No Img', 'base doc text', '')", (text_vec1,))
     cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (?, 'c', 'doc_with_image.md', 'With Img', 'base doc text with image', '')", (text_vec2,))

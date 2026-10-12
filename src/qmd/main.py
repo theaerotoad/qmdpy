@@ -13,6 +13,7 @@ from qmd.commands import (
     handle_collections_list, handle_update, handle_report, handle_analyze,
     group_results_by_doc, merge_overlapping_snippets
 )
+from qmd.commands.search import handle_gallery
 
 class HelpAllAction(argparse.Action):
     root_parser: Optional[argparse.ArgumentParser] = None
@@ -123,6 +124,18 @@ def build_parser():
     m_output_group.add_argument("--json", action="store_true", help="Output results in JSON format")
     m_output_group.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
     m_output_group.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
+
+    gallery_parser = subparsers.add_parser("gallery", aliases=["images", "media"], help="Search for images and visual media", parents=[parent_parser])
+    gallery_parser.add_argument("query", nargs="+", help="The natural language question or search terms")
+    gallery_filter_group = gallery_parser.add_argument_group("Target & Filters")
+    gallery_filter_group.add_argument("-c", "--collection", type=str, help="Filter results by a specific collection")
+    gallery_filter_group.add_argument("-p", "--path", type=str, help="Filter results by a specific path (substring match)")
+    gallery_mode_group = gallery_parser.add_argument_group("Search Mode & Quality")
+    gallery_mode_group.add_argument("--limit", type=int, default=10, help="Number of final results to show")
+    gallery_output_group = gallery_parser.add_argument_group("Output & Formatting")
+    gallery_output_group.add_argument("--json", action="store_true", help="Output results in JSON format")
+    gallery_output_group.add_argument("--plain", action="store_true", help="Disable ASCII color formatting in search output")
+    gallery_output_group.add_argument("-v", "--verbose", action="store_true", help="Show diagnostic info")
 
     search_parser = subparsers.add_parser("search", aliases=["query", "q"], help="Hybrid vector + lexical search (document-ordered by default)", parents=[parent_parser])
     search_parser.add_argument("query", nargs="+", help="The natural language question or search terms")
@@ -290,7 +303,9 @@ def build_parser():
     return parser
 
 def execute_command(args, store):
-    if args.command in ["discover", "find", "disc"]:
+    if args.command in ["gallery", "images", "media"]:
+        handle_gallery(args, store)
+    elif args.command in ["discover", "find", "disc"]:
         handle_discover(args, store)
     elif args.command in ["map", "m"]:
         handle_map(args, store)

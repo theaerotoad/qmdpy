@@ -5,12 +5,39 @@ from typing import Optional, Set
 from qmd.store import Store
 from qmd.db import get_seen_chunks_for_session, record_session_event, record_session_results, get_db_meta
 from qmd.utils import redact_pii
-from qmd.formatters.cli import format_discover_cli, format_map_cli, format_results_cli, format_doc_results_cli
+from qmd.formatters.cli import format_discover_cli, format_map_cli, format_results_cli, format_doc_results_cli, format_gallery_cli
 from qmd.formatters.json import format_discover_json, format_results_json, format_doc_results_json
 from qmd.formatters.xml import format_discover_xml, format_map_xml, format_results_xml, format_doc_results_xml
 from qmd.formatters.core import set_plain_mode
 
 from .helpers import _is_xml_output, group_results_by_doc
+
+def handle_gallery(args, store: Store):
+    if getattr(args, "plain", False):
+        set_plain_mode(True)
+
+    query = " ".join(args.query)
+    from qmd.utils import parse_query_directives
+    query, directives = parse_query_directives(query)
+
+    limit = args.limit if getattr(args, "limit", None) is not None else getattr(store.config, "default_limit", 10)
+    if "limit" in directives:
+        limit = directives["limit"]
+
+    search_kwargs = {
+        "query": query,
+        "limit": limit,
+        "collection": directives.get("collection", getattr(args, "collection", None)),
+        "path": directives.get("path", getattr(args, "path", None)),
+        "exclude_seen_set": set(),
+    }
+
+    results = store.image_search(**search_kwargs)
+
+    if getattr(args, "json", False):
+        format_results_json(results, verbose=getattr(args, "verbose", False))
+    else:
+        format_gallery_cli(results, query=query, store=store)
 
 def handle_discover(args, store: Store):
     is_xml = _is_xml_output(args)

@@ -2,6 +2,41 @@ from typing import List, Dict, Optional, Tuple, Any, Union
 from .colors import c
 from .core import highlight_keywords
 
+def format_gallery_cli(results: List, query: str = "", store: Any = None):
+    """Prints image gallery search results."""
+    if not results:
+        print(f"\n{c.RED}No images found.{c.RESET}")
+        return
+
+    print(f"\n{c.DIM}Found {len(results)} images:{c.RESET}\n")
+
+    storage_dir = None
+    if store and getattr(store.config, "image_storage_dir", None):
+        from pathlib import Path
+        storage_dir = Path(store.config.image_storage_dir).resolve()
+
+    for i, res in enumerate(results):
+        rank_str = f"{i+1}."
+        path_str = f"qmd://{res.collection}/{res.path}" if res.collection else res.path
+        
+        img_hash = getattr(res, "image_hash", "")
+        local_path = ""
+        if storage_dir and img_hash:
+            rel_path = f"{img_hash[:2]}/{img_hash[2:4]}/{img_hash[4:6]}/{img_hash}.webp"
+            full_path = storage_dir / rel_path
+            if full_path.exists():
+                local_path = f"file://{full_path}"
+        
+        print(f"{c.GREEN}{rank_str}{c.RESET} {c.BOLD}{res.title}{c.RESET} {c.DIM}({path_str}){c.RESET}")
+        if local_path:
+            print(f"   {c.CYAN}Image Path: {local_path}{c.RESET}")
+        
+        snippet = res.text[:200].replace("\n", " ") + "..." if res.text else "[No context text]"
+        highlighted = highlight_keywords(snippet, query)
+        print(f"   {c.DIM}Context:{c.RESET} {highlighted}")
+        print(f"   {c.DIM}Score: {res.score:.4f} | Hash: {img_hash[:8]}...{c.RESET}\n")
+
+
 def format_results_cli(results: List, query: str = "", verbose: bool = False, session_id: Optional[str] = None, exclusion_stats: Optional[Dict] = None, truncation_info: Optional[Dict] = None):
     """Prints standard search results (snippets)."""
     if session_id:
