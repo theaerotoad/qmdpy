@@ -522,10 +522,16 @@ def init_schema(conn: sqlite3.Connection):
         rowid INTEGER PRIMARY KEY, -- FK to vectors.rowid
         image_hash TEXT NOT NULL,
         doc_hash TEXT NOT NULL,
+        seq_id INTEGER,
         FOREIGN KEY (rowid) REFERENCES vectors(rowid) ON DELETE CASCADE,
         FOREIGN KEY (image_hash) REFERENCES images(hash) ON DELETE CASCADE
     );
     """)
+
+    try:
+        cursor.execute("ALTER TABLE image_metadata ADD COLUMN seq_id INTEGER")
+    except sqlite3.OperationalError:
+        pass
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_metadata_doc_hash ON image_metadata(doc_hash);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_metadata_image_hash ON image_metadata(image_hash);")

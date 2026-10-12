@@ -166,6 +166,7 @@ class Result:
     rrf_rank: Optional[int] = None
     match_count: int = 1
     rowid: Optional[int] = None
+    image_hash: Optional[str] = None
 
 
 def _results_to_json(results: List[Result]) -> str:
@@ -193,6 +194,7 @@ def _results_to_json(results: List[Result]) -> str:
             "rrf_rank": getattr(r, "rrf_rank", None),
             "match_count": getattr(r, "match_count", 1),
             "rowid": getattr(r, "rowid", None),
+            "image_hash": getattr(r, "image_hash", None),
         })
     return json.dumps(data)
 
@@ -223,5 +225,6 @@ def _json_to_results(json_str: str) -> List[Result]:
             rrf_rank=item.get("rrf_rank"),
             match_count=item.get("match_count", 1),
             rowid=item.get("rowid"),
+            image_hash=item.get("image_hash"),
         ))
     return results

@@ -716,7 +716,7 @@ class IndexingMixin:
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (vector_rowid, collection_name, rel_path, title, chunk_text, context_str))
 
-        self._process_document_images(cursor, doc_hash, markdown_body, new_rowids, new_vectors)
+        self._process_document_images(cursor, doc_hash, final_chunk_texts, new_rowids, new_vectors)
 
         if getattr(self, 'usearch_index', None) is not None and not self.read_only:
             import numpy as np

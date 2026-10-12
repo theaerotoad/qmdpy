@@ -72,14 +72,24 @@ class ImageIndexMixin:
                     except Exception: 
                         pass
 
-    def _process_document_images(self, cursor, doc_hash: str, markdown_body: str, new_rowids: list, new_vectors: list):
+    def _process_document_images(self, cursor, doc_hash: str, final_chunk_texts: list, new_rowids: list, new_vectors: list):
         """Extracts qmd-img tags, computes embeddings, and writes to database."""
         if not getattr(self.config, "embed_images", False):
             return
 
-        image_hashes = list(set(re.findall(r'qmd-img://([a-f0-9]{64})', markdown_body)))
+        image_hashes = set()
+        img_to_seq = {}
+        for i, chunk_text in enumerate(final_chunk_texts):
+            hashes = set(re.findall(r'qmd-img://([a-f0-9]{64})', chunk_text))
+            for h in hashes:
+                if h not in img_to_seq:
+                    img_to_seq[h] = i
+            image_hashes.update(hashes)
+            
         if not image_hashes:
             return
+        
+        image_hashes = list(image_hashes)
 
         storage_dir = Path(self.config.image_storage_dir) if getattr(self.config, "image_storage_dir", None) else None
         if not storage_dir:
@@ -138,7 +148,8 @@ class ImageIndexMixin:
                     tqdm.write(f"Warning: Failed to embed image {img_hash}: {e}")
                     continue
                     
+            seq_id = img_to_seq.get(img_hash, 0)
             cursor.execute(
-                "INSERT INTO image_metadata(rowid, image_hash, doc_hash) VALUES (?, ?, ?)",
-                (vec_rowid, img_hash, doc_hash)
+                "INSERT INTO image_metadata(rowid, image_hash, doc_hash, seq_id) VALUES (?, ?, ?, ?)",
+                (vec_rowid, img_hash, doc_hash, seq_id)
             )
