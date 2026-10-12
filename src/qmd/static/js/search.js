@@ -248,6 +248,56 @@ async function handleFormSubmit(e, source) {
     }
 }
 
+// Fullscreen Image Modal Handlers
+window.openImageModal = function(src, title) {
+    const modal = document.getElementById('image-modal');
+    const img = document.getElementById('image-modal-img');
+    const titleEl = document.getElementById('image-modal-title');
+    if (!modal || !img) return;
+
+    img.src = src;
+    if (titleEl) titleEl.textContent = title || '';
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    
+    // Trigger reflow
+    void modal.offsetWidth;
+    
+    modal.classList.remove('opacity-0');
+    img.classList.remove('scale-95');
+    img.classList.add('scale-100');
+
+    // Add keyboard listener
+    document.addEventListener('keydown', handleImageModalKeydown);
+};
+
+window.closeImageModal = function() {
+    const modal = document.getElementById('image-modal');
+    const img = document.getElementById('image-modal-img');
+    if (!modal) return;
+
+    modal.classList.add('opacity-0');
+    if (img) {
+        img.classList.remove('scale-100');
+        img.classList.add('scale-95');
+    }
+
+    document.removeEventListener('keydown', handleImageModalKeydown);
+
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        if (img) img.src = '';
+    }, 200);
+};
+
+function handleImageModalKeydown(e) {
+    if (e.key === 'Escape') {
+        closeImageModal();
+    }
+}
+
 // Collapsible Skipped Chunks Handler
 function toggleSkipped(btn) {
     const isExpanded = btn.getAttribute('data-expanded') === 'true';
@@ -297,10 +347,10 @@ function renderResults(results, type, query) {
             const imgSrc = apiUrl(`api/image/${item.image_hash}`);
             
             article.innerHTML = `
-                <div class="gallery-image-wrapper">
+                <div class="gallery-image-wrapper" style="cursor: zoom-in;" title="View full image">
                     <img src="${imgSrc}" class="gallery-image" loading="lazy" alt="Extracted Image" />
                 </div>
-                <div class="gallery-card-content">
+                <div class="gallery-card-content" title="Open document context">
                     <h3 class="gallery-card-title">${escapeHtml(item.title || item.path)}</h3>
                     <div class="text-[10px] text-gray-500 mb-1 truncate" title="${escapeXmlAttr(uri)}">
                         ${escapeHtml(uri)}
@@ -311,7 +361,19 @@ function renderResults(results, type, query) {
                 </div>
             `;
             
-            article.onclick = () => openDocument(item.collection, item.path, item.text, item);
+            const imgWrapper = article.querySelector('.gallery-image-wrapper');
+            const contentWrapper = article.querySelector('.gallery-card-content');
+
+            imgWrapper.onclick = (e) => {
+                e.stopPropagation();
+                openImageModal(imgSrc, item.title || item.path);
+            };
+            
+            contentWrapper.onclick = (e) => {
+                e.stopPropagation();
+                openDocument(item.collection, item.path, item.text, item);
+            };
+            
             container.appendChild(article);
         });
         return;

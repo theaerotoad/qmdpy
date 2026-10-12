@@ -314,6 +314,15 @@
     <!-- Modals (Session, Scope Picker, Settings, Batch) -->
     {% include 'partials/modals.html' %}
 
+    <!-- Fullscreen Image Modal -->
+    <div id="image-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/90 backdrop-blur-sm transition-all duration-200 opacity-0" onclick="closeImageModal()">
+        <button type="button" class="absolute top-4 right-4 sm:top-6 sm:right-6 text-white/70 hover:text-white p-2 transition-colors z-10" aria-label="Close">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+        <img id="image-modal-img" src="" alt="Fullscreen Image" class="max-w-[95vw] max-h-[90vh] object-contain transition-transform duration-200 transform scale-95 shadow-2xl" onclick="event.stopPropagation()">
+        <div id="image-modal-title" class="absolute bottom-6 left-0 right-0 text-center text-white/80 text-sm font-medium px-4 pointer-events-none drop-shadow-md"></div>
+    </div>
+
     <!-- Slide-over Drawers (Collection Tree, Document Viewer) -->
     {% include 'partials/drawers.html' %}
 
