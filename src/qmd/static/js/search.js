@@ -302,7 +302,7 @@ function renderResults(results, type, query) {
                 </div>
                 <div class="gallery-card-content">
                     <h3 class="gallery-card-title">${escapeHtml(item.title || item.path)}</h3>
-                    <div class="text-[10px] text-gray-500 mb-2 truncate" title="${escapeXmlAttr(uri)}">
+                    <div class="text-[10px] text-gray-500 mb-1 truncate" title="${escapeXmlAttr(uri)}">
                         ${escapeHtml(uri)}
                     </div>
                     <div class="gallery-card-meta">
