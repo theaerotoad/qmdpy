@@ -72,7 +72,7 @@ function triggerSearchWithTab(tab, source) {
 
 // Update tab visual highlight without triggering a re-search
 function highlightTab(tabName) {
-    ['all', 'passages', 'documents', 'gallery'].forEach(tab => {
+    ['all', 'passages', 'documents', 'gallery', 'gallery-hybrid'].forEach(tab => {
         const btn = document.getElementById(`tab-${tab}`);
         if (!btn) return;
         if (tab === tabName) {
@@ -126,12 +126,16 @@ async function handleFormSubmit(e, source) {
     const limitVal = parsed.limit || (limitSelectEl ? parseInt(limitSelectEl.value) : 10) || 10;
 
     try {
-        const isGalleryMode = activeTab === 'gallery' || activeMode === 'gallery';
-        const isDiscoverMode = !isGalleryMode && (activeTab === 'documents' || (activeTab === 'all' && activeMode === 'discover'));
-        const isPassagesMode = !isGalleryMode && activeTab === 'passages';
+        const isGalleryHybridMode = activeTab === 'gallery-hybrid' || activeMode === 'gallery-hybrid';
+        const isGalleryMode = !isGalleryHybridMode && (activeTab === 'gallery' || activeMode === 'gallery');
+        const isDiscoverMode = !isGalleryMode && !isGalleryHybridMode && (activeTab === 'documents' || (activeTab === 'all' && activeMode === 'discover'));
+        const isPassagesMode = !isGalleryMode && !isGalleryHybridMode && activeTab === 'passages';
 
         // Ensure the tab highlight matches the mode actually producing results
-        if (isGalleryMode) {
+        if (isGalleryHybridMode) {
+            highlightTab('gallery-hybrid');
+            activeTab = 'gallery-hybrid';
+        } else if (isGalleryMode) {
             highlightTab('gallery');
             activeTab = 'gallery';
         } else if (isDiscoverMode) {
@@ -145,13 +149,14 @@ async function handleFormSubmit(e, source) {
             activeTab = 'all';
         }
 
-        if (isGalleryMode) {
+        if (isGalleryMode || isGalleryHybridMode) {
             // Scale limit up for gallery mode (e.g. 10 -> 60, min 50)
             const galleryLimit = parsed.limit || Math.max(50, limitVal * 6);
             const payload = {
                 query: parsed.cleanQuery || rawVal,
                 exclude_seen: featureStates.exclude_seen,
                 limit: galleryLimit,
+                visual_only: isGalleryMode, // 'gallery' is visual only, 'gallery-hybrid' enables RRF
                 collection: collFilter,
                 path: scopedPaths.length === 1 ? scopedPaths[0] : (scopedPaths.length > 1 ? scopedPaths : null),
                 paths: scopedPaths.length > 0 ? scopedPaths : undefined,
@@ -163,7 +168,7 @@ async function handleFormSubmit(e, source) {
             
             lastRawJson = data.results;
             lastRawXml = '';
-            lastSearchType = 'gallery';
+            lastSearchType = isGalleryHybridMode ? 'gallery-hybrid' : 'gallery';
             if (data.session_id) setSessionId(data.session_id, false);
             currentExcludedCount = data.excluded_count || 0;
             updateSessionBadges();

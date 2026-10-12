@@ -7,7 +7,7 @@ function apiUrl(path) {
 
 // Application State & Configuration
 let activeMode = 'discover';
-let activeTab = 'all'; // 'all' | 'passages' | 'documents' | 'gallery'
+let activeTab = 'all'; // 'all' | 'passages' | 'documents' | 'gallery' | 'gallery-hybrid'
 let toolsOpen = false;
 let lastRawJson = null;
 let lastRawXml = '';
@@ -330,6 +330,8 @@ function setSearchTab(tabName) {
         activeMode = 'discover';
     } else if (tabName === 'gallery') {
         activeMode = 'gallery';
+    } else if (tabName === 'gallery-hybrid') {
+        activeMode = 'gallery-hybrid';
     } else if (tabName === 'all' || tabName === 'passages') {
         activeMode = 'search';
     }
