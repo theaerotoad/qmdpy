@@ -241,7 +241,21 @@ def index():
     except Exception:
         random_questions = []
         colls = []
-    return render_template('index.html', sample_questions=random_questions, collections=colls)
+
+    has_images = False
+    try:
+        store = get_store()
+        for target_store in [store] + getattr(store, "child_stores", []):
+            if target_store.conn:
+                c = target_store.conn.cursor()
+                c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='image_metadata'")
+                if c.fetchone() is not None:
+                    has_images = True
+                    break
+    except Exception:
+        pass
+
+    return render_template('index.html', sample_questions=random_questions, collections=colls, has_images=has_images)
 
 @app.route('/api/questions/random', methods=['GET'])
 def get_random_questions():
