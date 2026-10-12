@@ -36,12 +36,22 @@ class ImageIndexMixin:
         cursor.execute("SELECT hash, storage_path FROM images WHERE hash NOT IN (SELECT DISTINCT image_hash FROM image_metadata)")
         orphaned_images = cursor.fetchall()
         if orphaned_images and getattr(self.config, "image_storage_dir", None):
-            storage_dir = Path(self.config.image_storage_dir)
+            storage_dir = Path(self.config.image_storage_dir).resolve()
             for img_hash, rel_path in orphaned_images:
-                full_path = storage_dir / rel_path
+                full_path = (storage_dir / rel_path).resolve()
                 try:
                     if full_path.exists():
                         os.remove(full_path)
+                        
+                    # Walk up and remove empty directories until we hit the storage root
+                    parent = full_path.parent
+                    while parent != storage_dir:
+                        try:
+                            parent.rmdir()
+                            parent = parent.parent
+                        except OSError:
+                            # rmdir throws OSError if the directory is not empty
+                            break
                 except Exception:
                     pass
         cursor.execute("DELETE FROM images WHERE hash NOT IN (SELECT DISTINCT image_hash FROM image_metadata)")
