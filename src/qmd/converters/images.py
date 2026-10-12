@@ -207,6 +207,12 @@ def _is_verbose(config=None) -> bool:
 def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config, errors_out: Optional[List[dict]] = None) -> str:
     if not config or not image_bytes:
         return ""
+        
+    # Intercept direct calls from converters (like PDF) to enforce embedding bypass
+    if getattr(config, "embed_images", False):
+        embed_fn = _get_converter_fn("_process_image_for_embedding", _process_image_for_embedding)
+        return embed_fn(image_bytes, filename, config, errors_out=errors_out)
+
     try:
         from qmd.llm import LLMClient
         client = LLMClient(
@@ -300,7 +306,8 @@ def _process_image_for_embedding(image_bytes: bytes, filename: str, config, erro
             full_path.parent.mkdir(parents=True, exist_ok=True)
             full_path.write_bytes(webp_bytes)
             
-        return f"![qmd-image](qmd-img://{h})"
+        # Return as an HTML tag so it survives aggressive markdown link strippers during chunking
+        return f'<img src="qmd-img://{h}" alt="qmd-image" />'
         
     except Exception as e:
         if errors_out is not None:
@@ -377,7 +384,15 @@ def _process_images_concurrently(
 
 
 def _process_image_vision_api(image_bytes: bytes, filename: str, config, errors_out: Optional[List[dict]] = None) -> str:
-    if not config or not getattr(config, "vision_url", None):
+    if not config:
+        return ""
+        
+    # Intercept direct calls from converters (like PDF) to enforce embedding bypass
+    if getattr(config, "embed_images", False):
+        embed_fn = _get_converter_fn("_process_image_for_embedding", _process_image_for_embedding)
+        return embed_fn(image_bytes, filename, config, errors_out=errors_out)
+
+    if not getattr(config, "vision_url", None):
         return ""
     
     try:
