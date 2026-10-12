@@ -48,7 +48,7 @@ class RetrievalMixin:
             for r in with_rowids:
                 if r.rowid in text_map:
                     r.text = text_map[r.rowid]
-                if r.rowid in img_map and not getattr(r, "image_hash", None):
+                if self._has_image_metadata_table and r.rowid in img_map and not getattr(r, "image_hash", None):
                     r.image_hash = img_map[r.rowid]
 
         if without_rowids:
@@ -76,19 +76,6 @@ class RetrievalMixin:
                     img_row = cursor.fetchone()
                     if img_row:
                         r.image_hash = img_row[0]
-
-                # While we're hydrating, fetch image_hash if the chunk is known to have one but wasn't set by visual search
-                if getattr(r, "image_hash", None) is None:
-                     cursor.execute("""
-                         SELECT im.image_hash 
-                         FROM image_metadata im
-                         JOIN documents d ON im.doc_hash = d.hash
-                         WHERE d.collection = ? AND d.path = ? AND im.seq_id = ?
-                         LIMIT 1
-                     """, (r.collection, r.path, r.seq_id))
-                     img_row = cursor.fetchone()
-                     if img_row:
-                         r.image_hash = img_row[0]
 
     def _hydrate_results_text(self, results: List[Result]):
         """Hydrates missing or deferred text in Result objects across local and federated stores."""
