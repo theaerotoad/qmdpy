@@ -107,6 +107,14 @@ function applyDefaultPreferences(customDefaults = null) {
     featureStates.exclude_seen = defaults.exclude_seen !== undefined ? !!defaults.exclude_seen : false;
     featureStates.redact_pii = defaults.redact_pii !== undefined ? !!defaults.redact_pii : false;
     featureStates.show_serp_images = defaults.show_serp_images !== undefined ? !!defaults.show_serp_images : false;
+    featureStates.invert_dark_images = defaults.invert_dark_images !== undefined ? !!defaults.invert_dark_images : false;
+    
+    if (featureStates.invert_dark_images) {
+        document.documentElement.classList.add('invert-dark-images');
+    } else {
+        document.documentElement.classList.remove('invert-dark-images');
+    }
+
     if (!featureStates.offer_llm && window.QuickAnswer && typeof window.QuickAnswer.hide === 'function') {
         window.QuickAnswer.hide();
     }
@@ -139,6 +147,7 @@ function loadSettingsModalValues() {
     const snEl = document.getElementById('setting-default-seen');
     const piEl = document.getElementById('setting-default-pii');
     const imgEl = document.getElementById('setting-default-serp-images');
+    const invEl = document.getElementById('setting-invert-dark-images');
     if (heroEl) heroEl.value = defaults.hero_view || 'questions';
     if (limEl) limEl.value = defaults.limit || '10';
     if (modEl) modEl.value = defaults.mode || 'discover';
@@ -147,6 +156,7 @@ function loadSettingsModalValues() {
     if (snEl) snEl.checked = !!defaults.exclude_seen;
     if (piEl) piEl.checked = !!defaults.redact_pii;
     if (imgEl) imgEl.checked = !!defaults.show_serp_images;
+    if (invEl) invEl.checked = !!defaults.invert_dark_images;
 }
 
 function saveDefaults() {
@@ -158,7 +168,8 @@ function saveDefaults() {
         rerank: document.getElementById('setting-default-rerank') ? document.getElementById('setting-default-rerank').checked : false,
         exclude_seen: document.getElementById('setting-default-seen') ? document.getElementById('setting-default-seen').checked : false,
         redact_pii: document.getElementById('setting-default-pii') ? document.getElementById('setting-default-pii').checked : false,
-        show_serp_images: document.getElementById('setting-default-serp-images') ? document.getElementById('setting-default-serp-images').checked : false
+        show_serp_images: document.getElementById('setting-default-serp-images') ? document.getElementById('setting-default-serp-images').checked : false,
+        invert_dark_images: document.getElementById('setting-invert-dark-images') ? document.getElementById('setting-invert-dark-images').checked : false
     };
     localStorage.setItem(DEFAULTS_KEY, JSON.stringify(defaults));
     applyDefaultPreferences(defaults);
@@ -167,6 +178,16 @@ function saveDefaults() {
 
 function toggleFeature(name, forceVal = null) {
     featureStates[name] = forceVal !== null ? forceVal : !featureStates[name];
+    
+    // Reactively toggle root class for image inversion when state changes
+    if (name === 'invert_dark_images') {
+        if (featureStates.invert_dark_images) {
+            document.documentElement.classList.add('invert-dark-images');
+        } else {
+            document.documentElement.classList.remove('invert-dark-images');
+        }
+    }
+    
     updateFeatureButtonsUI();
     if (name === 'offer_llm') {
         if (!featureStates.offer_llm) {
@@ -406,6 +427,18 @@ function toggleTheme() {
     applyTheme(isDark ? 'light' : 'dark');
     showToast(isDark ? "Switched to Light mode" : "Switched to Dark mode");
 }
+
+// Inject dynamic styles for inverted images in dark mode
+(function() {
+    const style = document.createElement('style');
+    // Using alt="Document Extracted Image" ensures we don't accidentally invert logos or icons
+    style.innerHTML = `
+        html.dark.invert-dark-images img[alt="Document Extracted Image"] {
+            filter: invert(1) hue-rotate(180deg) brightness(0.95);
+        }
+    `;
+    document.head.appendChild(style);
+})();
 
 // Close Dropdowns on Click Outside
 window.addEventListener('click', (e) => {
