@@ -323,6 +323,12 @@
         <button type="button" class="absolute top-4 right-4 sm:top-6 sm:right-6 text-white/70 hover:text-white p-2 transition-colors z-10" aria-label="Close">
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
+        <button type="button" id="modal-nav-left" class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white p-2 transition-colors z-10 hidden sm:block" aria-label="Previous" onclick="event.stopPropagation(); navigateImageModal(-1)">
+            <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+        </button>
+        <button type="button" id="modal-nav-right" class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white p-2 transition-colors z-10 hidden sm:block" aria-label="Next" onclick="event.stopPropagation(); navigateImageModal(1)">
+            <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+        </button>
         <img id="image-modal-img" src="" alt="Fullscreen Image" class="max-w-[95vw] max-h-[90vh] object-contain transition-transform duration-200 transform scale-95 shadow-2xl" onclick="event.stopPropagation()">
         <div id="image-modal-title" class="absolute bottom-6 left-0 right-0 text-center text-white/80 text-sm font-medium px-4 pointer-events-none drop-shadow-md"></div>
     </div>

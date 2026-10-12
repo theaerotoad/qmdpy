@@ -256,7 +256,10 @@ async function handleFormSubmit(e, source) {
 }
 
 // Fullscreen Image Modal Handlers
-window.openImageModal = function(src, title) {
+let currentModalImageIndex = -1;
+
+window.openImageModal = function(src, title, index = -1) {
+    currentModalImageIndex = index;
     const modal = document.getElementById('image-modal');
     const img = document.getElementById('image-modal-img');
     const titleEl = document.getElementById('image-modal-title');
@@ -268,6 +271,8 @@ window.openImageModal = function(src, title) {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     
+    updateModalNavButtons();
+    
     // Trigger reflow
     void modal.offsetWidth;
     
@@ -278,6 +283,38 @@ window.openImageModal = function(src, title) {
     // Add keyboard listener
     document.addEventListener('keydown', handleImageModalKeydown);
 };
+
+window.navigateImageModal = function(direction) {
+    if (currentModalImageIndex < 0 || !lastRawJson) return;
+    
+    let newIndex = currentModalImageIndex + direction;
+    if (newIndex < 0 || newIndex >= lastRawJson.length) return;
+    
+    let item = lastRawJson[newIndex];
+    
+    currentModalImageIndex = newIndex;
+    const imgSrc = apiUrl(`api/image/${item.image_hash}`);
+    const title = item.title || item.path;
+    
+    const img = document.getElementById('image-modal-img');
+    const titleEl = document.getElementById('image-modal-title');
+    
+    if (img) img.src = imgSrc;
+    if (titleEl) titleEl.textContent = title || '';
+    
+    updateModalNavButtons();
+};
+
+function updateModalNavButtons() {
+    const leftBtn = document.getElementById('modal-nav-left');
+    const rightBtn = document.getElementById('modal-nav-right');
+    if (leftBtn) {
+        leftBtn.classList.toggle('invisible', currentModalImageIndex <= 0);
+    }
+    if (rightBtn) {
+        rightBtn.classList.toggle('invisible', !lastRawJson || currentModalImageIndex >= lastRawJson.length - 1);
+    }
+}
 
 window.closeImageModal = function() {
     const modal = document.getElementById('image-modal');
@@ -302,6 +339,10 @@ window.closeImageModal = function() {
 function handleImageModalKeydown(e) {
     if (e.key === 'Escape') {
         closeImageModal();
+    } else if (e.key === 'ArrowRight') {
+        navigateImageModal(1);
+    } else if (e.key === 'ArrowLeft') {
+        navigateImageModal(-1);
     }
 }
 
@@ -373,7 +414,7 @@ function renderResults(results, type, query) {
 
             imgWrapper.onclick = (e) => {
                 e.stopPropagation();
-                openImageModal(imgSrc, item.title || item.path);
+                openImageModal(imgSrc, item.title || item.path, index);
             };
             
             contentWrapper.onclick = (e) => {
