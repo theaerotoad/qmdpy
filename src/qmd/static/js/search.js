@@ -72,7 +72,7 @@ function triggerSearchWithTab(tab, source) {
 
 // Update tab visual highlight without triggering a re-search
 function highlightTab(tabName) {
-    ['all', 'passages', 'documents'].forEach(tab => {
+    ['all', 'passages', 'documents', 'gallery'].forEach(tab => {
         const btn = document.getElementById(`tab-${tab}`);
         if (!btn) return;
         if (tab === tabName) {
@@ -126,11 +126,15 @@ async function handleFormSubmit(e, source) {
     const limitVal = parsed.limit || (limitSelectEl ? parseInt(limitSelectEl.value) : 10) || 10;
 
     try {
-        const isDiscoverMode = activeTab === 'documents' || (activeTab === 'all' && activeMode === 'discover');
-        const isPassagesMode = activeTab === 'passages';
+        const isGalleryMode = activeTab === 'gallery' || activeMode === 'gallery';
+        const isDiscoverMode = !isGalleryMode && (activeTab === 'documents' || (activeTab === 'all' && activeMode === 'discover'));
+        const isPassagesMode = !isGalleryMode && activeTab === 'passages';
 
         // Ensure the tab highlight matches the mode actually producing results
-        if (isDiscoverMode) {
+        if (isGalleryMode) {
+            highlightTab('gallery');
+            activeTab = 'gallery';
+        } else if (isDiscoverMode) {
             highlightTab('documents');
             activeTab = 'documents';
         } else if (isPassagesMode) {
@@ -141,7 +145,31 @@ async function handleFormSubmit(e, source) {
             activeTab = 'all';
         }
 
-        if (isDiscoverMode) {
+        if (isGalleryMode) {
+            const payload = {
+                query: parsed.cleanQuery || rawVal,
+                exclude_seen: featureStates.exclude_seen,
+                limit: limitVal,
+                collection: collFilter,
+                path: scopedPaths.length === 1 ? scopedPaths[0] : (scopedPaths.length > 1 ? scopedPaths : null),
+                paths: scopedPaths.length > 0 ? scopedPaths : undefined,
+                session_id: currentSessionId
+            };
+            const res = await fetch(apiUrl('api/gallery'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Gallery search failed");
+            
+            lastRawJson = data.results;
+            lastRawXml = '';
+            lastSearchType = 'gallery';
+            if (data.session_id) setSessionId(data.session_id, false);
+            currentExcludedCount = data.excluded_count || 0;
+            updateSessionBadges();
+
+            statsEl.textContent = `About ${data.results.length} images across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -\${currentExcludedCount} seen` : ''}`;
+            renderResults(data.results, 'gallery', parsed.cleanQuery || rawVal);
+
+        } else if (isDiscoverMode) {
             const payload = {
                 query: parsed.cleanQuery || rawVal,
                 rerank: featureStates.rerank,
@@ -255,6 +283,43 @@ function deepSearchSnippet(docTitle, docPath, docCollection) {
 function renderResults(results, type, query) {
     const container = document.getElementById('results');
     container.innerHTML = '';
+    
+    // Remove grid class if it exists from a previous render
+    container.classList.remove('gallery-grid');
+    
+    if (type === 'gallery' && results && results.length > 0) {
+        container.classList.add('gallery-grid');
+        results.forEach((item, index) => {
+            const article = document.createElement('article');
+            article.className = "gallery-card";
+            
+            const uri = item.collection ? `qmd://${item.collection}/${item.path}` : item.path;
+            const imgSrc = apiUrl(`api/image/${item.image_hash}`);
+            
+            article.innerHTML = `
+                <div class="gallery-image-wrapper">
+                    <img src="${imgSrc}" class="gallery-image" loading="lazy" alt="Extracted Image" />
+                </div>
+                <div class="gallery-card-content">
+                    <h3 class="gallery-card-title">${escapeHtml(item.title || item.path)}</h3>
+                    <div class="text-[10px] text-gray-500 mb-2 truncate" title="${escapeXmlAttr(uri)}">
+                        ${escapeHtml(uri)}
+                    </div>
+                    <div class="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-3 mb-2 flex-grow">
+                        ${highlightKeywords(escapeHtml((item.text || '').substring(0, 150)), query)}...
+                    </div>
+                    <div class="gallery-card-meta">
+                        <span>Rank: ${index + 1}</span>
+                        <span>Score: ${Number(item.score || 0).toFixed(3)}</span>
+                    </div>
+                </div>
+            `;
+            
+            article.onclick = () => openDocument(item.collection, item.path, item.text, item);
+            container.appendChild(article);
+        });
+        return;
+    }
 
     if (!results || results.length === 0) {
         container.innerHTML = `

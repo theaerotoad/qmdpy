@@ -538,6 +538,96 @@ def search():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/gallery', methods=['POST'])
+def gallery():
+    try:
+        t0 = time.time()
+        data = request.json or {}
+        raw_query = data.get('query', '')
+        clean_query, directives = parse_query_directives(raw_query)
+        query = clean_query if clean_query else raw_query
+
+        limit = directives.get('limit') if directives.get('limit') is not None else int(data.get('limit', 20))
+        session_id = data.get('session_id') or secrets.token_hex(4)
+
+        exclude_seen = directives.get('exclude_seen') if directives.get('exclude_seen') is not None else data.get('exclude_seen', False)
+
+        collection = directives.get('collection') or data.get('collection') or None
+        title = directives.get('title') or data.get('title') or None
+
+        paths_input = data.get('paths') if data.get('paths') is not None else data.get('path')
+        if directives.get('path'):
+            if paths_input:
+                if isinstance(paths_input, list):
+                    if directives['path'] not in paths_input:
+                        paths_input = paths_input + [directives['path']]
+                else:
+                    paths_input = [paths_input, directives['path']]
+            else:
+                paths_input = directives['path']
+
+        visual_only = (
+            data.get('visual_only', False) or 
+            data.get('semantic_only', False) or 
+            directives.get('visual_only', False) or 
+            directives.get('semantic_only', False)
+        )
+
+        store = get_store()
+        exclude_seen_set = get_seen_chunks_for_session(store.history_conn, session_id) if exclude_seen else set()
+
+        results = store.image_search(
+            query=query,
+            limit=limit,
+            collection=collection,
+            path=paths_input if paths_input else None,
+            exclude_seen_set=exclude_seen_set,
+            visual_only=visual_only
+        )
+
+        event_type = "gallery_view"
+        db_last_updated = get_db_meta(store.conn, "last_updated") if store.conn else (
+            get_db_meta(store.child_stores[0].conn, "last_updated") if getattr(store, "child_stores", None) else None
+        )
+        event_id = record_session_event(
+            store.history_conn,
+            session_id,
+            event_type,
+            query,
+            None,
+            str(store.config.db_path) if store.config.db_path else "",
+            db_last_updated
+        )
+
+        excluded_count = store.last_exclusion_stats.get("excluded_chunks", 0)
+
+        record_session_results(store.history_conn, session_id, event_id, results)
+        
+        out = []
+        for i, r in enumerate(results):
+            out.append({
+                "path": r.path,
+                "title": r.title,
+                "text": r.text,
+                "score": r.score,
+                "source": r.source,
+                "collection": r.collection,
+                "seq_id": r.seq_id,
+                "image_hash": r.image_hash,
+                "rank": getattr(r, "rank", None) or (i + 1),
+            })
+            
+        time_taken = round(time.time() - t0, 3)
+        return jsonify({
+            "results": out,
+            "type": "gallery",
+            "session_id": session_id,
+            "excluded_count": excluded_count,
+            "time_taken": time_taken
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/outline', methods=['GET'])
 def get_outline():
     collection = request.args.get('collection')

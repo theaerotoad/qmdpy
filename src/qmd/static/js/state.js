@@ -7,7 +7,7 @@ function apiUrl(path) {
 
 // Application State & Configuration
 let activeMode = 'discover';
-let activeTab = 'all'; // 'all' | 'passages' | 'documents'
+let activeTab = 'all'; // 'all' | 'passages' | 'documents' | 'gallery'
 let toolsOpen = false;
 let lastRawJson = null;
 let lastRawXml = '';
@@ -97,6 +97,9 @@ function applyDefaultPreferences(customDefaults = null) {
         } else if (defaults.mode === 'passages') {
             activeTab = 'passages';
             activeMode = 'search';
+        } else if (defaults.mode === 'gallery') {
+            activeTab = 'gallery';
+            activeMode = 'gallery';
         } else {
             activeTab = 'all';
             activeMode = 'search';
@@ -325,6 +328,8 @@ function setSearchTab(tabName) {
 
     if (tabName === 'documents') {
         activeMode = 'discover';
+    } else if (tabName === 'gallery') {
+        activeMode = 'gallery';
     } else if (tabName === 'all' || tabName === 'passages') {
         activeMode = 'search';
     }
