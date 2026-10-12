@@ -674,7 +674,12 @@ async function openDocument(collection, path, targetText, searchMeta = null) {
             metaContainer.innerHTML = badges.join('');
         }
         if (data.collection) currentDocCollection = data.collection;
-        content.innerHTML = marked.parse(data.content || '');
+        
+        let parsedDocContent = marked.parse(data.content || '');
+        // Intercept QMD image placeholders and convert to viewable APIs inside the inspector
+        parsedDocContent = parsedDocContent.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-4 mb-4 max-h-[600px] object-contain shadow border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+        
+        content.innerHTML = parsedDocContent;
         updateOpenFileButtonVisibility(data.allow_open);
 
         if (targetText && targetText.trim()) {
