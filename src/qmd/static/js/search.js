@@ -305,11 +305,7 @@ function renderResults(results, type, query) {
                     <div class="text-[10px] text-gray-500 mb-2 truncate" title="${escapeXmlAttr(uri)}">
                         ${escapeHtml(uri)}
                     </div>
-                    <div class="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-3 mb-2 flex-grow">
-                        ${highlightKeywords(escapeHtml((item.text || '').substring(0, 150)), query)}...
-                    </div>
                     <div class="gallery-card-meta">
-                        <span>Rank: ${index + 1}</span>
                         <span>Score: ${Number(item.score || 0).toFixed(3)}</span>
                     </div>
                 </div>
