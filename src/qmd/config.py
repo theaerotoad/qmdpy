@@ -52,6 +52,10 @@ class Config:
     image_storage_dir: Optional[str] = None
 
     # Model Configurations
+    pdf_engine: str = "pymupdf"
+    docling_url: Optional[str] = None
+    docling_api_key: Optional[str] = None
+    docling_model: str = "Docling"
     embed_model: str = "EmbeddingGemma 300m"
     rerank_model: str = "Qwen Rerank 0.6B"
     generate_model: Optional[str] = None
@@ -161,6 +165,11 @@ class Config:
         multimodal_model = os.environ.get("QMD_MULTIMODAL_MODEL") or os.environ.get("MULTIMODAL_MODEL") or data.get("multimodal_model")
         multimodal_prompt = os.environ.get("QMD_MULTIMODAL_PROMPT") or data.get("multimodal_prompt")
         
+        pdf_engine = os.environ.get("QMD_PDF_ENGINE") or data.get("pdf_engine", "pymupdf")
+        docling_url = os.environ.get("QMD_DOCLING_URL") or data.get("docling_url") or llm_url
+        docling_api_key = os.environ.get("QMD_DOCLING_API_KEY") or data.get("docling_api_key") or api_key
+        docling_model = os.environ.get("QMD_DOCLING_MODEL") or data.get("docling_model", "Docling")
+
         max_img_concurrency_raw = (
             os.environ.get("QMD_MAX_IMAGE_CONCURRENCY")
             or os.environ.get("QMD_MAX_SIMULTANEOUS_IMAGES")
@@ -305,6 +314,10 @@ class Config:
             child_cfg.multimodal_api_key = multimodal_api_key
             child_cfg.multimodal_model = multimodal_model
             child_cfg.multimodal_prompt = multimodal_prompt
+            child_cfg.pdf_engine = pdf_engine
+            child_cfg.docling_url = docling_url
+            child_cfg.docling_api_key = docling_api_key
+            child_cfg.docling_model = docling_model
             child_cfg.max_image_concurrency = max_image_concurrency
             child_cfg.embed_images = embed_images
             child_cfg.max_image_megapixels = max_image_megapixels
@@ -344,6 +357,10 @@ class Config:
             multimodal_api_key=multimodal_api_key,
             multimodal_model=multimodal_model,
             multimodal_prompt=multimodal_prompt,
+            pdf_engine=pdf_engine,
+            docling_url=docling_url,
+            docling_api_key=docling_api_key,
+            docling_model=docling_model,
             max_image_concurrency=max_image_concurrency,
             embed_images=embed_images,
             max_image_megapixels=max_image_megapixels,

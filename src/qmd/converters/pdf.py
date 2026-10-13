@@ -11,6 +11,17 @@ from collections import Counter
 from pathlib import Path
 from typing import List, Optional, Union
 
+from io import BytesIO
+import base64
+import httpx
+from PIL import Image
+
+try:
+    from docling_core.types.doc.document import DocTagsDocument, DoclingDocument
+    HAS_DOCLING = True
+except ImportError:
+    HAS_DOCLING = False
+
 from .images import _is_image_processing_enabled, _process_images_concurrently
 
 try:
@@ -25,6 +36,106 @@ except ImportError:
     HAS_PYMUPDF = False
     pymupdf = None
     pymupdf4llm = None
+
+
+def pil_to_base64(img: Image.Image) -> str:
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+def extract_images_from_pdf(doc, dpi: int = 150) -> List[Image.Image]:
+    images = []
+    for page in doc:
+        pix = page.get_pixmap(dpi=dpi)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        images.append(img)
+    return images
+
+def adjust_markdown_headers_docling(markdown_text: str, doc) -> str:
+    header_heights = {}
+    
+    for item, _ in doc.iterate_items():
+        if getattr(item, "label", "") == "section_header" and hasattr(item, "text"):
+            prov = item.prov[0] if item.prov else None
+            if prov and hasattr(prov, "bbox"):
+                height = abs(prov.bbox.b - prov.bbox.t)
+                header_heights[item.text.strip()] = height
+                
+    if not header_heights:
+        return markdown_text
+        
+    tolerance = 8.0
+    sorted_heights = sorted(list(header_heights.values()), reverse=True)
+    clusters = []
+    current_cluster = [sorted_heights[0]]
+    for h in sorted_heights[1:]:
+        if current_cluster[0] - h < tolerance:
+            current_cluster.append(h)
+        else:
+            clusters.append(sum(current_cluster) / len(current_cluster))
+            current_cluster = [h]
+    if current_cluster:
+        clusters.append(sum(current_cluster) / len(current_cluster))
+        
+    def get_level(h):
+        closest_i = 0
+        min_diff = float('inf')
+        for i, cluster_h in enumerate(clusters):
+            diff = abs(cluster_h - h)
+            if diff < min_diff:
+                min_diff = diff
+                closest_i = i
+                
+        if min_diff <= tolerance:
+            return min(closest_i + 1, 6)
+        return 2 
+        
+    lines = markdown_text.split('\n')
+    for i, line in enumerate(lines):
+        match = re.match(r'^(#+)\s+(.*)', line)
+        if match:
+            text = match.group(2).strip()
+            if text in header_heights:
+                lvl = get_level(header_heights[text])
+                lines[i] = ('#' * lvl) + ' ' + text
+    return '\n'.join(lines)
+
+def _call_docling_model(img: Image.Image, api_url: str, api_key: str, model_name: str, timeout: float = 120.0) -> str:
+    base64_img = pil_to_base64(img)
+    
+    img_content = {
+        "type": "image_url",
+        "image_url": {"url": f"data:image/png;base64,{base64_img}"}
+    }
+    text_content = {"type": "text", "text": "Convert this page to docling."}
+    
+    content_array = [text_content, img_content]
+    
+    payload = {
+        "model": model_name,
+        "messages": [
+            {
+                "role": "user",
+                "content": content_array
+            }
+        ],
+        "max_tokens": 4096,
+        "temperature": 0.0
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    if api_key and api_key != "sk-no-key-required":
+        headers["Authorization"] = f"Bearer {api_key}"
+        
+    with httpx.Client(timeout=httpx.Timeout(timeout, connect=10.0)) as client:
+        if not api_url.endswith("/v1/chat/completions"):
+            post_url = api_url.rstrip("/") + "/v1/chat/completions"
+        else:
+            post_url = api_url
+            
+        response = client.post(post_url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"].strip()
 
 
 def _get_converter_fn(name: str, fallback):
@@ -179,6 +290,8 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     if not HAS_PYMUPDF:
         raise ImportError("pymupdf and pymupdf4llm are required for converting .pdf files. Install with `pip install pymupdf pymupdf4llm`.")
 
+    pdf_engine = getattr(config, "pdf_engine", "pymupdf") if config else "pymupdf"
+
     if verbose:
         print(f"[Verbose PDF] Attempting to open {path} with pymupdf...", flush=True)
 
@@ -195,6 +308,103 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
         if verbose:
             print(f"[Verbose PDF] Pre-sanitization failed ({e}), proceeding with original.", flush=True)
         doc = pymupdf.open(str(path))
+
+    if pdf_engine.lower() == "docling":
+        if not HAS_DOCLING:
+            raise ImportError("docling-core is required for the docling pdf_engine. Install with `pip install docling-core`.")
+        
+        docling_url = getattr(config, "docling_url", None)
+        if not docling_url:
+            raise ValueError("docling_url must be provided in config when using pdf_engine: docling")
+            
+        docling_api_key = getattr(config, "docling_api_key", "sk-no-key-required")
+        docling_model = getattr(config, "docling_model", "Docling")
+        timeout = getattr(config, "request_timeout", 120.0)
+
+        if verbose:
+            print(f"[Verbose PDF] Extracting images from {path} for Docling...", flush=True)
+            
+        images = extract_images_from_pdf(doc)
+        all_doctags = []
+        
+        for idx, img in enumerate(images):
+            if verbose:
+                print(f"[Verbose PDF] Requesting DocTags for page {idx + 1} from {docling_model} at {docling_url}...", flush=True)
+            try:
+                doctags = _call_docling_model(img, docling_url, docling_api_key, docling_model, timeout=timeout)
+                all_doctags.append(doctags)
+            except Exception as e:
+                if verbose:
+                    print(f"[Verbose PDF] Docling extraction failed for page {idx + 1}: {e}", flush=True)
+                all_doctags.append("")
+            
+        if verbose:
+            print(f"[Verbose PDF] Assembling Markdown with docling-core...", flush=True)
+            
+        try:
+            doctags_doc = DocTagsDocument.from_doctags_and_image_pairs(all_doctags, images)
+            doc_obj = DoclingDocument.load_from_doctags(doctag_document=doctags_doc, document_name=path.stem)
+            
+            raw_md = doc_obj.export_to_markdown()
+            raw_md = adjust_markdown_headers_docling(raw_md, doc_obj)
+            
+            # Remove any unhandled docling image placeholders
+            raw_md = re.sub(r'<!-*\s*(image|chart)\s*-*>', '', raw_md)
+        except Exception as e:
+            if verbose:
+                print(f"[Verbose PDF] Docling document assembly failed ({e}). Falling back to layout-aware extraction.", flush=True)
+            raw_md = ""
+            if errors_out is not None:
+                errors_out.append({"error_type": "pdf_docling_failed", "message": f"{path.name}: {e}"})
+                
+        if raw_md.strip():
+            img_enabled_fn = _get_converter_fn("_is_image_processing_enabled", _is_image_processing_enabled)
+            proc_imgs_fn = _get_converter_fn("_process_images_concurrently", _process_images_concurrently)
+
+            if config and img_enabled_fn(config):
+                try:
+                    pdf_images = []
+                    seen_xrefs = set()
+                    for i in range(len(doc)):
+                        page = doc[i]
+                        for img in page.get_images():
+                            xref = img[0]
+                            if xref in seen_xrefs:
+                                continue
+                            seen_xrefs.add(xref)
+                            try:
+                                base_image = doc.extract_image(xref)
+                            except Exception:
+                                continue
+                            if not base_image:
+                                continue
+                            image_bytes = base_image.get("image")
+                            if not image_bytes:
+                                continue
+                            width = base_image.get("width", 0)
+                            height = base_image.get("height", 0)
+                            if width > 0 and height > 0 and (width <= 2 or height <= 2):
+                                continue
+                            ext = base_image.get("ext", "png")
+                            filename = f"page_{i+1}_img_{xref}.{ext}"
+                            pdf_images.append((i, image_bytes, filename))
+
+                    if pdf_images:
+                        image_inputs = [(img_bytes, fn) for _, img_bytes, fn in pdf_images]
+                        results = proc_imgs_fn(image_inputs, config, errors_out=errors_out)
+                        vision_markdowns = [res for res in results if res]
+                        if vision_markdowns:
+                            raw_md += "\n\n" + "\n\n".join(vision_markdowns)
+                except Exception:
+                    pass
+            
+            doc.close()
+            stem = re.sub(r'^[a-z0-9.]+[_-]', '', path.stem, flags=re.IGNORECASE)
+            book_title = stem.replace("-", " ").replace("_", " ").title()
+            return normalize_markdown_headings(raw_md, book_title=book_title)
+        
+        if verbose:
+            print(f"[Verbose PDF] Docling returned empty. Falling back to pymupdf...", flush=True)
 
     if verbose:
         print(f"[Verbose PDF] Successfully opened {path}. Parsing headers...", flush=True)
