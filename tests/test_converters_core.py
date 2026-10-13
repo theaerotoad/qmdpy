@@ -144,6 +144,43 @@ def test_pdf_fallback_extraction(tmp_path, monkeypatch):
     assert "Simulated Colorspace Error" in errors[0]["message"]
 
 
+def test_pdf_docling_fallback(tmp_path, monkeypatch):
+    import pymupdf
+    from qmd.converters import convert_to_markdown
+    from qmd.converters import pdf as pdf_mod
+
+    # Force HAS_DOCLING to True for the test
+    monkeypatch.setattr(pdf_mod, "HAS_DOCLING", True)
+
+    class MockConfig:
+        pdf_engine = "docling"
+        docling_url = "http://fake-docling-url"
+        docling_api_key = "fake-key"
+        docling_model = "FakeDocling"
+
+    pdf_path = tmp_path / "docling_test.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((50, 50), "Fake docling fallback")
+    doc.save(str(pdf_path))
+    doc.close()
+
+    def mock_call_docling_model(img, api_url, api_key, model_name, timeout=120.0):
+        # We simulate that Docling extraction fails.
+        raise RuntimeError("Simulated Docling Failure")
+
+    monkeypatch.setattr(pdf_mod, "_call_docling_model", mock_call_docling_model)
+
+    errors = []
+    md = convert_to_markdown(pdf_path, config=MockConfig(), errors_out=errors)
+
+    # Since docling failed, it should fall back to pymupdf and extract the text
+    assert "Fake docling fallback" in md
+    assert len(errors) == 1
+    assert errors[0]["error_type"] == "pdf_docling_failed"
+    assert "Simulated Docling Failure" in errors[0]["message"]
+
+
 def test_binary_file_rejection(tmp_path):
     bin_file = tmp_path / "test.bin"
     bin_file.write_bytes(b"\x00\x01\x02\x03\x04\x05PDF-binary-junk")
