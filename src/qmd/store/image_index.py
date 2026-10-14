@@ -72,19 +72,29 @@ class ImageIndexMixin:
                     except Exception: 
                         pass
 
-    def _process_document_images(self, cursor, doc_hash: str, final_chunk_texts: list, new_rowids: list, new_vectors: list):
+    def _process_document_images(self, cursor, doc_hash: str, final_chunk_texts: list, new_rowids: list, new_vectors: list, chunk_page_images: list = None):
         """Extracts qmd-img tags, computes embeddings, and writes to database."""
-        if not getattr(self.config, "embed_images", False):
+        embed_images = getattr(self.config, "embed_images", False)
+        embed_pages = getattr(self.config, "embed_pages", False)
+        
+        if not embed_images and not embed_pages:
             return
 
         image_hashes = set()
         img_to_seq = {}
         for i, chunk_text in enumerate(final_chunk_texts):
-            hashes = set(re.findall(r'qmd-img://([a-f0-9]{64})', chunk_text))
-            for h in hashes:
-                if h not in img_to_seq:
-                    img_to_seq[h] = i
-            image_hashes.update(hashes)
+            if embed_images:
+                hashes = set(re.findall(r'qmd-img://([a-f0-9]{64})', chunk_text))
+                for h in hashes:
+                    if h not in img_to_seq:
+                        img_to_seq[h] = i
+                image_hashes.update(hashes)
+            
+            if embed_pages and chunk_page_images and i < len(chunk_page_images):
+                for h in chunk_page_images[i]:
+                    if h not in img_to_seq:
+                        img_to_seq[h] = i
+                    image_hashes.add(h)
             
         if not image_hashes:
             return

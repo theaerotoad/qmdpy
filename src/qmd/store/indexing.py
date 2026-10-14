@@ -605,6 +605,7 @@ class IndexingMixin:
         final_chunk_texts = []
         chunk_headers = []
 
+        chunk_page_images = []
         for chunk in chunks:
             clean_parents = [re.sub(r'^\s*#+\s*', '', h).strip() for h in chunk.parent_headers.values() if h and h.strip()]
             context_str = " > ".join(clean_parents)
@@ -619,6 +620,7 @@ class IndexingMixin:
             embedding_texts.append(formatted)
             final_chunk_texts.append(chunk.content)
             chunk_headers.append(context_str)
+            chunk_page_images.append(chunk.page_images)
 
         batch_size = getattr(self.config, "embed_batch_size", 16)
         disp_name = rel_path if rel_path else title
@@ -650,6 +652,7 @@ class IndexingMixin:
                     else:
                         fallback_chunks.append(chunk)
                 
+                chunk_page_images = []
                 embedding_texts = []
                 final_chunk_texts = []
                 chunk_headers = []
@@ -667,6 +670,7 @@ class IndexingMixin:
                     embedding_texts.append(formatted)
                     final_chunk_texts.append(chunk.content)
                     chunk_headers.append(context_str)
+                    chunk_page_images.append(chunk.page_images)
                 
                 embeddings = self.llm.embed_batch(
                     embedding_texts,
@@ -720,7 +724,8 @@ class IndexingMixin:
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (vector_rowid, collection_name, rel_path, title, chunk_text, context_str))
 
-        self._process_document_images(cursor, doc_hash, final_chunk_texts, new_rowids, new_vectors)
+        # We pass chunk_page_images down to _process_document_images so they get indexed too
+        self._process_document_images(cursor, doc_hash, final_chunk_texts, new_rowids, new_vectors, chunk_page_images)
 
         if getattr(self, 'usearch_index', None) is not None and not self.read_only:
             import numpy as np
