@@ -187,7 +187,7 @@ def _wrap_vision_xml(text: str) -> str:
 def _is_image_processing_enabled(config) -> bool:
     if not config:
         return False
-    if getattr(config, "embed_images", False) or getattr(config, "embed_pages", False):
+    if getattr(config, "embed_images", False):
         return True
     return bool(
         getattr(config, "vision_url", None)
@@ -208,8 +208,10 @@ def _process_image_multimodal_llm(image_bytes: bytes, filename: str, config, err
     if not config or not image_bytes:
         return ""
         
+    is_page = "full_page" in filename or "_full." in filename
+        
     # Intercept direct calls from converters (like PDF) to enforce embedding bypass
-    if getattr(config, "embed_images", False) or getattr(config, "embed_pages", False):
+    if getattr(config, "embed_images", False) or (getattr(config, "embed_pages", False) and is_page):
         embed_fn = _get_converter_fn("_process_image_for_embedding", _process_image_for_embedding)
         return embed_fn(image_bytes, filename, config, errors_out=errors_out)
 
@@ -321,7 +323,9 @@ def _process_image(image_bytes: bytes, filename: str, config, errors_out: Option
     if not config or not image_bytes:
         return ""
         
-    if getattr(config, "embed_images", False) or getattr(config, "embed_pages", False):
+    is_page = "full_page" in filename or "_full." in filename
+        
+    if getattr(config, "embed_images", False) or (getattr(config, "embed_pages", False) and is_page):
         embed_fn = _get_converter_fn("_process_image_for_embedding", _process_image_for_embedding)
         try:
             return embed_fn(image_bytes, filename, config, errors_out=errors_out)
@@ -388,8 +392,10 @@ def _process_image_vision_api(image_bytes: bytes, filename: str, config, errors_
     if not config:
         return ""
         
+    is_page = "full_page" in filename or "_full." in filename
+        
     # Intercept direct calls from converters (like PDF) to enforce embedding bypass
-    if getattr(config, "embed_images", False) or getattr(config, "embed_pages", False):
+    if getattr(config, "embed_images", False) or (getattr(config, "embed_pages", False) and is_page):
         embed_fn = _get_converter_fn("_process_image_for_embedding", _process_image_for_embedding)
         return embed_fn(image_bytes, filename, config, errors_out=errors_out)
 

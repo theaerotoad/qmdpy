@@ -448,7 +448,8 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                         # Actually, a better approach is to append the page marker at the end of the markdown 
                         # for the whole doc if we can't reliably find page boundaries in Docling markdown.
                         # But wait, we CAN do this perfectly for pymupdf fallback!
-                        pass
+                        if any(page_markers):
+                            raw_md += "".join(page_markers)
                 except Exception as e:
                     if verbose:
                         print(f"[Verbose PDF] Docling page embedding failed: {e}", flush=True)
