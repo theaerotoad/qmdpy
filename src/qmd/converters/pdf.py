@@ -51,6 +51,17 @@ def extract_images_from_pdf(doc, dpi: int = 150) -> List[Image.Image]:
         images.append(img)
     return images
 
+def crop_element(img: Image.Image, bbox) -> Image.Image:
+    """Safely crop an element using its Docling BoundingBox, accounting for coordinate origin."""
+    origin_str = str(getattr(bbox, "coord_origin", "TOPLEFT")).upper()
+    
+    if "BOTTOMLEFT" in origin_str:
+        t = img.height - bbox.t
+        b = img.height - bbox.b
+        return img.crop((int(bbox.l), int(min(t, b)), int(bbox.r), int(max(t, b))))
+    else:
+        return img.crop((int(bbox.l), int(bbox.t), int(bbox.r), int(bbox.b)))
+
 def adjust_markdown_headers_docling(markdown_text: str, doc) -> str:
     header_heights = {}
     
@@ -347,9 +358,57 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
             
             raw_md = doc_obj.export_to_markdown()
             raw_md = adjust_markdown_headers_docling(raw_md, doc_obj)
-            
-            # Remove any unhandled docling image placeholders
+
+            img_enabled_fn = _get_converter_fn("_is_image_processing_enabled", _is_image_processing_enabled)
+            proc_imgs_fn = _get_converter_fn("_process_images_concurrently", _process_images_concurrently)
+
+            if config and img_enabled_fn(config):
+                try:
+                    pdf_images = []
+                    items_with_images = []
+                    visual_count = 0
+                    for item, _ in doc_obj.iterate_items():
+                        if item.label in ["picture", "chart"]:
+                            prov = item.prov[0] if item.prov else None
+                            if not prov:
+                                continue
+                            
+                            visual_count += 1
+                            page_no = prov.page_no
+                            if page_no < 1 or page_no > len(images):
+                                continue
+                                
+                            source_img = images[page_no - 1]
+                            cropped_img = crop_element(source_img, prov.bbox)
+                            
+                            buffered = BytesIO()
+                            cropped_img.save(buffered, format="PNG")
+                            image_bytes = buffered.getvalue()
+                            
+                            filename = f"page_{page_no}_{item.label}_{visual_count}.png"
+                            pdf_images.append((image_bytes, filename))
+                            items_with_images.append(item.label)
+
+                    if pdf_images:
+                        results = proc_imgs_fn(pdf_images, config, errors_out=errors_out)
+                        for item_label, vision_md in zip(items_with_images, results):
+                            if vision_md:
+                                replacement = f"\n\n{vision_md}\n\n"
+                            else:
+                                replacement = ""
+                            
+                            # Replace the first occurrence of the image/chart placeholder
+                            raw_md, count = re.subn(r'<!-*\s*(image|chart)\s*-*>', replacement, raw_md, count=1)
+                            if count == 0 and vision_md:
+                                # Fallback if placeholder not found
+                                raw_md += replacement
+                except Exception as e:
+                    if verbose:
+                        print(f"[Verbose PDF] Docling image extraction/processing failed: {e}", flush=True)
+
+            # Remove any remaining unhandled docling image placeholders
             raw_md = re.sub(r'<!-*\s*(image|chart)\s*-*>', '', raw_md)
+
         except Exception as e:
             if verbose:
                 print(f"[Verbose PDF] Docling document assembly failed ({e}). Falling back to layout-aware extraction.", flush=True)
@@ -358,46 +417,6 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                 errors_out.append({"error_type": "pdf_docling_failed", "message": f"{path.name}: {e}"})
                 
         if raw_md.strip():
-            img_enabled_fn = _get_converter_fn("_is_image_processing_enabled", _is_image_processing_enabled)
-            proc_imgs_fn = _get_converter_fn("_process_images_concurrently", _process_images_concurrently)
-
-            if config and img_enabled_fn(config):
-                try:
-                    pdf_images = []
-                    seen_xrefs = set()
-                    for i in range(len(doc)):
-                        page = doc[i]
-                        for img in page.get_images():
-                            xref = img[0]
-                            if xref in seen_xrefs:
-                                continue
-                            seen_xrefs.add(xref)
-                            try:
-                                base_image = doc.extract_image(xref)
-                            except Exception:
-                                continue
-                            if not base_image:
-                                continue
-                            image_bytes = base_image.get("image")
-                            if not image_bytes:
-                                continue
-                            width = base_image.get("width", 0)
-                            height = base_image.get("height", 0)
-                            if width > 0 and height > 0 and (width <= 2 or height <= 2):
-                                continue
-                            ext = base_image.get("ext", "png")
-                            filename = f"page_{i+1}_img_{xref}.{ext}"
-                            pdf_images.append((i, image_bytes, filename))
-
-                    if pdf_images:
-                        image_inputs = [(img_bytes, fn) for _, img_bytes, fn in pdf_images]
-                        results = proc_imgs_fn(image_inputs, config, errors_out=errors_out)
-                        vision_markdowns = [res for res in results if res]
-                        if vision_markdowns:
-                            raw_md += "\n\n" + "\n\n".join(vision_markdowns)
-                except Exception:
-                    pass
-            
             doc.close()
             stem = re.sub(r'^[a-z0-9.]+[_-]', '', path.stem, flags=re.IGNORECASE)
             book_title = stem.replace("-", " ").replace("_", " ").title()
