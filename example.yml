@@ -11,6 +11,12 @@ llm_url: "http://127.0.0.1:9888" # Default: http://127.0.0.1:8888
 # rerank_url: "http://127.0.0.1:8890"    # Separate URL for reranking
 # rerank_api_key: "sk-..."               # API key for reranker endpoint
 
+# --- PDF Processing Engine ---
+# pdf_engine: "pymupdf"                  # "pymupdf" (default) or "docling" (vision/layout fallback)
+# docling_url: "http://127.0.0.1:9888"   # Uses llm_url if not specified
+# docling_api_key: "sk-..."              # Uses primary api_key if not specified
+# docling_model: "Docling"               # Default: "Docling"
+
 # --- Vision & Multimodal Image Processing ---
 # Option A: Native Image Storage & Vector Indexing (Recommended for Multimodal RAG)
 # Extracts, downscales, compresses (WebP), deduplicates (SHA-256), and saves images to disk, 
