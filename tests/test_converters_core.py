@@ -230,6 +230,16 @@ def test_pdf_embed_pages_injection(tmp_path, monkeypatch):
     # We mock _is_image_processing_enabled so the converter proceeds to process the page
     monkeypatch.setattr(pdf_mod, "_is_image_processing_enabled", lambda c: c.embed_pages)
 
+    # _get_converter_fn dynamically fetches the function from qmd.converters, bypassing the local mock.
+    # We mock it directly to ensure our mocked functions are used during the test.
+    def mock_get_converter_fn(name, fallback):
+        if name == "_process_images_concurrently":
+            return mock_process_images
+        if name == "_is_image_processing_enabled":
+            return lambda c: getattr(c, "embed_pages", False)
+        return fallback
+    monkeypatch.setattr(pdf_mod, "_get_converter_fn", mock_get_converter_fn)
+
     md = convert_to_markdown(pdf_path, config=MockConfig())
 
     assert "Testing page embedding markers" in md
