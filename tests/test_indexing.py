@@ -338,6 +338,51 @@ def test_indexing_error_tracking_and_retry(db_conn, temp_db_path, tmp_path, mock
     # Verify updated content was embedded
     mock_llm_client.embed_batch.assert_called()
 
+def test_indexing_page_image_markers(db_conn, temp_db_path, tmp_path, mock_llm_client):
+    """Verify that ephemeral page image markers are stripped and correctly associated in chunk metadata."""
+    notes_dir = tmp_path / "marker_notes"
+    notes_dir.mkdir()
+
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path),
+        embed_pages=True
+    )
+    store = Store(config, connection=db_conn)
+
+    file1 = notes_dir / "marker_doc.md"
+    file1.write_text("Chunk one.\n\n<!-- qmd-page-img:1111111111111111111111111111111111111111111111111111111111111111 -->\n\nChunk two.")
+
+    # Override the _process_document_images method to just record what it received
+    received_page_images = []
+    original_process = store._process_document_images
+    
+    def mock_process(cursor, doc_hash, final_chunk_texts, new_rowids, new_vectors, chunk_page_images=None):
+        nonlocal received_page_images
+        received_page_images = chunk_page_images
+        # Call the original method to ensure no crashes
+        original_process(cursor, doc_hash, final_chunk_texts, new_rowids, new_vectors, chunk_page_images)
+        
+    with patch.object(store, '_process_document_images', side_effect=mock_process):
+        store.index_collection("test", config.collections["test"])
+
+    # 1. Verify the marker was parsed into the chunk metadata arrays
+    assert received_page_images is not None
+    # We should have two chunks. The marker was inside the first block before the paragraph split (or exactly between).
+    # Based on our parser logic, it will attach to the block that precedes it.
+    assert "1111111111111111111111111111111111111111111111111111111111111111" in str(received_page_images)
+
+    # 2. Verify the marker is NOT in the database text
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT chunk_text FROM chunk_metadata")
+    rows = cursor.fetchall()
+    
+    for row in rows:
+        decompressed = decompress_text(row[0])
+        assert "<!-- qmd-page-img" not in decompressed
+        assert "1111111111111111111111111111111111111111111111111111111111111111" not in decompressed
+
+
 def test_hard_indexing_failure_and_retry(db_conn, temp_db_path, tmp_path, mock_llm_client):
     """Test that a hard exception during file processing records error and retries on next run."""
     notes_dir = tmp_path / "hard_err_notes"

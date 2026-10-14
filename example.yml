@@ -22,6 +22,7 @@ llm_url: "http://127.0.0.1:9888" # Default: http://127.0.0.1:8888
 # Extracts, downscales, compresses (WebP), deduplicates (SHA-256), and saves images to disk, 
 # then computes embeddings so image-text matching boosts document search relevance.
 # embed_images: false                  # Set to true to enable native image embedding
+# embed_pages: false                   # Set to true to capture full page images from PDFs
 # max_image_megapixels: 1.0            # Downscale images larger than this (Default: 1.0)
 # image_compression_quality: 80        # WebP compression quality (Default: 80)
 # image_storage_dir: "./.qmd_images"   # Local directory for WebP files (Default: next to DB)

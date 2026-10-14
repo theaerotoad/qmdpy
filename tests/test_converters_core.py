@@ -200,6 +200,40 @@ def test_pdf_docling_fallback(tmp_path, monkeypatch):
     assert "Simulated Docling Assembly Failure" in errors[0]["message"]
 
 
+def test_pdf_embed_pages_injection(tmp_path, monkeypatch):
+    import pymupdf
+    from qmd.converters import convert_to_markdown
+    from qmd.converters import pdf as pdf_mod
+
+    class MockConfig:
+        embed_pages = True
+        embed_images = False
+        pdf_engine = "pymupdf"
+        max_image_megapixels = 1.0
+        image_compression_quality = 80
+        image_storage_dir = str(tmp_path)
+        
+    pdf_path = tmp_path / "page_embed_test.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((50, 50), "Testing page embedding markers")
+    doc.save(str(pdf_path))
+    doc.close()
+
+    def mock_process_images(image_inputs, config, errors_out=None):
+        return [f'<img src="qmd-img://mockhash12345" alt="qmd-image" />']
+
+    monkeypatch.setattr(pdf_mod, "_process_images_concurrently", mock_process_images)
+    
+    # We mock _is_image_processing_enabled so the converter proceeds to process the page
+    monkeypatch.setattr(pdf_mod, "_is_image_processing_enabled", lambda c: c.embed_pages)
+
+    md = convert_to_markdown(pdf_path, config=MockConfig())
+
+    assert "Testing page embedding markers" in md
+    assert "<!-- qmd-page-img:mockhash12345 -->" in md
+
+
 def test_binary_file_rejection(tmp_path):
     bin_file = tmp_path / "test.bin"
     bin_file.write_bytes(b"\x00\x01\x02\x03\x04\x05PDF-binary-junk")
