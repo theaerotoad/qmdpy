@@ -15,7 +15,7 @@ let lastSearchType = 'discover';
 let currentSessionId = null;
 let currentExcludedCount = 0;
 let selectedScopes = [];
-let featureStates = { offer_llm: false, rerank: false, exclude_seen: false, redact_pii: false, show_serp_images: false };
+let featureStates = { offer_llm: false, rerank: false, exclude_seen: false, redact_pii: false, show_serp_images: false, embed_pages: false };
 let treeFilterTimer = null, scopeFilterTimer = null;
 
 const DEFAULTS_KEY = 'qmd_search_defaults';
@@ -111,6 +111,7 @@ function applyDefaultPreferences(customDefaults = null) {
     featureStates.redact_pii = defaults.redact_pii !== undefined ? !!defaults.redact_pii : false;
     featureStates.show_serp_images = defaults.show_serp_images !== undefined ? !!defaults.show_serp_images : false;
     featureStates.invert_dark_images = defaults.invert_dark_images !== undefined ? !!defaults.invert_dark_images : false;
+    featureStates.embed_pages = defaults.embed_pages !== undefined ? !!defaults.embed_pages : false;
     
     if (featureStates.invert_dark_images) {
         document.documentElement.classList.add('invert-dark-images');
@@ -151,6 +152,7 @@ function loadSettingsModalValues() {
     const piEl = document.getElementById('setting-default-pii');
     const imgEl = document.getElementById('setting-default-serp-images');
     const invEl = document.getElementById('setting-invert-dark-images');
+    const embedEl = document.getElementById('setting-embed-pages');
     if (heroEl) heroEl.value = defaults.hero_view || 'questions';
     if (limEl) limEl.value = defaults.limit || '10';
     if (modEl) modEl.value = defaults.mode || 'discover';
@@ -160,6 +162,7 @@ function loadSettingsModalValues() {
     if (piEl) piEl.checked = !!defaults.redact_pii;
     if (imgEl) imgEl.checked = !!defaults.show_serp_images;
     if (invEl) invEl.checked = !!defaults.invert_dark_images;
+    if (embedEl) embedEl.checked = !!defaults.embed_pages;
 }
 
 function saveDefaults() {
@@ -172,7 +175,8 @@ function saveDefaults() {
         exclude_seen: document.getElementById('setting-default-seen') ? document.getElementById('setting-default-seen').checked : false,
         redact_pii: document.getElementById('setting-default-pii') ? document.getElementById('setting-default-pii').checked : false,
         show_serp_images: document.getElementById('setting-default-serp-images') ? document.getElementById('setting-default-serp-images').checked : false,
-        invert_dark_images: document.getElementById('setting-invert-dark-images') ? document.getElementById('setting-invert-dark-images').checked : false
+        invert_dark_images: document.getElementById('setting-invert-dark-images') ? document.getElementById('setting-invert-dark-images').checked : false,
+        embed_pages: document.getElementById('setting-embed-pages') ? document.getElementById('setting-embed-pages').checked : false
     };
     localStorage.setItem(DEFAULTS_KEY, JSON.stringify(defaults));
     applyDefaultPreferences(defaults);
