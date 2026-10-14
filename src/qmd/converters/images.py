@@ -435,9 +435,8 @@ def _process_image_vision_api(image_bytes: bytes, filename: str, config, errors_
         for d in detections:
             lbl = d.get("label", "").lower()
             if lbl == "picture":
-                text = d.get("text", "").strip()
-                alt = f"Image with text: {text}" if text else "Image"
-                md_lines.append(f"![{alt}]({filename})")
+                # Disabled inserting OCR text / image references for picture detections
+                pass
             elif lbl == "table":
                 if d.get("markdown"):
                     md_lines.append(d["markdown"])

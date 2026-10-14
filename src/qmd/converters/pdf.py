@@ -514,13 +514,8 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     for i, chunk in enumerate(page_chunks):
         page_text = chunk.get("text", "")
         
-        def _format_pic_text(match):
-            text = match.group(1).strip()
-            text = re.sub(r'\s+', ' ', text)
-            alt = f"Image with text: {text}" if text else "Image"
-            return f"\n![{alt}](pdf_image.png)\n"
-            
-        page_text = re.sub(r'<!--\s*Start of picture text\s*-->(.*?)<!--\s*End of picture text\s*-->\n*', _format_pic_text, page_text, flags=re.DOTALL | re.IGNORECASE)
+        # Strip pymupdf4llm picture text blocks rather than inserting OCR text or fake image links
+        page_text = re.sub(r'<!--\s*Start of picture text\s*-->(.*?)<!--\s*End of picture text\s*-->\n*', '', page_text, flags=re.DOTALL | re.IGNORECASE)
         page_text = re.sub(r'<!--.*?-->\n*', '', page_text, flags=re.DOTALL)
         md_pages.append(page_text)
 
