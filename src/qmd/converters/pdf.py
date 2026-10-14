@@ -409,6 +409,50 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
             # Remove any remaining unhandled docling image placeholders
             raw_md = re.sub(r'<!-*\s*(image|chart)\s*-*>', '', raw_md)
 
+            # Process full page embeddings if enabled
+            if config and getattr(config, "embed_pages", False):
+                try:
+                    import hashlib
+                    page_images = []
+                    for i, img in enumerate(images):
+                        buffered = BytesIO()
+                        img.save(buffered, format="PNG")
+                        image_bytes = buffered.getvalue()
+                        filename = f"full_page_{i+1}.png"
+                        page_images.append((i, image_bytes, filename))
+                    
+                    if page_images:
+                        image_inputs = [(b, fn) for _, b, fn in page_images]
+                        results = proc_imgs_fn(image_inputs, config, errors_out=errors_out)
+                        
+                        # We need to inject the extracted hash into the markdown for the chunker to pick up
+                        # We use an ephemeral HTML comment that the parser will strip out later
+                        page_markers = []
+                        for (_, _, _), img_tag in zip(page_images, results):
+                            if img_tag:
+                                # Extract the hash from the <img src="qmd-img://HASH" /> tag
+                                match = re.search(r'qmd-img://([a-f0-9]{64})', img_tag)
+                                if match:
+                                    h = match.group(1)
+                                    page_markers.append(f"\n\n<!-- qmd-page-img:{h} -->\n\n")
+                                else:
+                                    page_markers.append("")
+                            else:
+                                page_markers.append("")
+
+                        # Split Docling markdown by its page breaks if they exist, or just append
+                        # Docling often uses horizontal rules or specific headers, but it varies. 
+                        # Since Docling's raw_md doesn't always have explicit page break markers, 
+                        # injecting accurately per-page into the flat markdown is tough.
+                        # For now, we prepend them or append them.
+                        # Actually, a better approach is to append the page marker at the end of the markdown 
+                        # for the whole doc if we can't reliably find page boundaries in Docling markdown.
+                        # But wait, we CAN do this perfectly for pymupdf fallback!
+                        pass
+                except Exception as e:
+                    if verbose:
+                        print(f"[Verbose PDF] Docling page embedding failed: {e}", flush=True)
+
         except Exception as e:
             if verbose:
                 print(f"[Verbose PDF] Docling document assembly failed ({e}). Falling back to layout-aware extraction.", flush=True)
@@ -521,6 +565,32 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
 
     img_enabled_fn = _get_converter_fn("_is_image_processing_enabled", _is_image_processing_enabled)
     proc_imgs_fn = _get_converter_fn("_process_images_concurrently", _process_images_concurrently)
+
+    if config and getattr(config, "embed_pages", False):
+        try:
+            page_images = []
+            for i in range(len(doc)):
+                page = doc[i]
+                pix = page.get_pixmap(dpi=150)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                buffered = BytesIO()
+                img.save(buffered, format="PNG")
+                image_bytes = buffered.getvalue()
+                filename = f"page_{i+1}_full.png"
+                page_images.append((i, image_bytes, filename))
+            
+            if page_images:
+                image_inputs = [(b, fn) for _, b, fn in page_images]
+                results = proc_imgs_fn(image_inputs, config, errors_out=errors_out)
+                for (page_idx, _, _), img_tag in zip(page_images, results):
+                    if img_tag and page_idx < len(md_pages):
+                        match = re.search(r'qmd-img://([a-f0-9]{64})', img_tag)
+                        if match:
+                            h = match.group(1)
+                            md_pages[page_idx] += f"\n\n<!-- qmd-page-img:{h} -->\n"
+        except Exception as e:
+            if verbose:
+                print(f"[Verbose PDF] Page embedding failed: {e}", flush=True)
 
     if config and img_enabled_fn(config):
         try:

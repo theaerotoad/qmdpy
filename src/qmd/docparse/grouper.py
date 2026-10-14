@@ -126,7 +126,8 @@ def _split_oversized_block(block: SemanticBlock, max_size: int) -> List[Semantic
                 header_text=header_text_to_use,
                 content=final_content,
                 start_line=block.start_line,
-                joiner_to_next=joiner
+                joiner_to_next=joiner,
+                page_images=block.page_images.copy() if block.page_images else []
             ))
         
         is_first_sub_block = False
@@ -189,6 +190,12 @@ def _create_final_chunks(partitions: List[List[SemanticBlock]], original_blocks:
         for level in headers_to_remove:
             del parent_headers[level]
 
+        # Accumulate all page images across the partitioned blocks
+        chunk_page_images = []
+        for b in partition:
+            if b.page_images:
+                chunk_page_images.extend(b.page_images)
+                
         chunk = Chunk(
             chunk_id=chunk_id_counter,
             content=full_content,
@@ -196,6 +203,7 @@ def _create_final_chunks(partitions: List[List[SemanticBlock]], original_blocks:
             character_count=len(full_content),
             parent_headers=parent_headers,
             joiner_to_next=last_block.joiner_to_next,
+            page_images=list(set(chunk_page_images))
         )
         potential_chunks.append(chunk)
         chunk_id_counter += 1

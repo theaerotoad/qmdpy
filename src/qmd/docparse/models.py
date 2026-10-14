@@ -14,6 +14,7 @@ class SemanticBlock:
     content: str
     start_line: int
     joiner_to_next: str = "\n\n"
+    page_images: List[str] = field(default_factory=list)
 
     @property
     def char_count(self) -> int:
@@ -31,6 +32,7 @@ class Chunk:
     preceding_table_header: Optional[str] = None
     preceding_codeblock_header: Optional[str] = None
     embedding: Optional[str] = None
+    page_images: List[str] = field(default_factory=list)
 
 @dataclass
 class InferredAttributes:
