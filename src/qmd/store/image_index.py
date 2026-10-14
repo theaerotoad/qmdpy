@@ -83,7 +83,7 @@ class ImageIndexMixin:
         image_hashes = set()
         img_to_seq = {}
         for i, chunk_text in enumerate(final_chunk_texts):
-            if embed_images:
+            if embed_images or embed_pages:
                 hashes = set(re.findall(r'qmd-img://([a-f0-9]{64})', chunk_text))
                 for h in hashes:
                     if h not in img_to_seq:
