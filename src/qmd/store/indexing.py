@@ -75,7 +75,7 @@ class IndexingMixin:
 
         return unique_files
 
-    def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False, verbose: bool = False, quick: bool = False):
+    def index_collection(self, name: str, collection_cfg: CollectionConfig, force: bool = False, verbose: bool = False, quick: bool = False, progressive: bool = False):
         """Scans files, detects changes, chunks, embeds, and updates DB."""
         if self.read_only or (getattr(self.config, "is_federated", False) and not getattr(self.config, "includes_update", False)):
             raise RuntimeError("Cannot index collection in read-only or federated include mode.")
@@ -83,7 +83,7 @@ class IndexingMixin:
         if getattr(self.config, "is_federated", False):
             target_store = getattr(self, "collection_store_map", {}).get(name)
             if target_store is not None and target_store is not self:
-                return target_store.index_collection(name, collection_cfg, force=force, verbose=verbose, quick=quick)
+                return target_store.index_collection(name, collection_cfg, force=force, verbose=verbose, quick=quick, progressive=progressive)
             if self.conn is None:
                 raise RuntimeError(f"Cannot index collection '{name}': No database defined for master store.")
 
@@ -107,6 +107,10 @@ class IndexingMixin:
                 try:
                     if self._process_file(name, base_path, file_path, found_rel_paths, force=force, verbose=verbose, quick=quick):
                         count_processed += 1
+                        if progressive:
+                            update_db_last_updated(self.conn)
+                            if getattr(self, 'usearch_index', None) is not None and not self.read_only:
+                                self.usearch_index.save(self.usearch_path)
                     else:
                         count_skipped += 1
                 except Exception as e:

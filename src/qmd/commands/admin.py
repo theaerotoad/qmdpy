@@ -55,7 +55,14 @@ def handle_update(args, store: Store):
             else:
                 print(f"Skipping git pull: {name} is not a git repository.")
         
-        store.index_collection(name, coll_cfg, force=args.force, verbose=getattr(args, "verbose", False), quick=getattr(args, "quick", False))
+        store.index_collection(
+            name, 
+            coll_cfg, 
+            force=args.force, 
+            verbose=getattr(args, "verbose", False), 
+            quick=getattr(args, "quick", False),
+            progressive=getattr(args, "progressive", False)
+        )
 
     # 2. Prune removed collections
     active_collections = list(config.collections.keys())
