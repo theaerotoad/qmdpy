@@ -220,8 +220,10 @@ def test_pdf_embed_pages_injection(tmp_path, monkeypatch):
     doc.save(str(pdf_path))
     doc.close()
 
+    mock_hash = "a" * 64
+
     def mock_process_images(image_inputs, config, errors_out=None):
-        return [f'<img src="qmd-img://mockhash12345" alt="qmd-image" />']
+        return [f'<img src="qmd-img://{mock_hash}" alt="qmd-image" />']
 
     monkeypatch.setattr(pdf_mod, "_process_images_concurrently", mock_process_images)
     
@@ -231,7 +233,7 @@ def test_pdf_embed_pages_injection(tmp_path, monkeypatch):
     md = convert_to_markdown(pdf_path, config=MockConfig())
 
     assert "Testing page embedding markers" in md
-    assert "<!-- qmd-page-img:mockhash12345 -->" in md
+    assert f"<!-- qmd-page-img:{mock_hash} -->" in md
 
 
 def test_binary_file_rejection(tmp_path):
