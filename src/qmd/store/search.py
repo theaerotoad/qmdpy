@@ -140,13 +140,13 @@ class SearchMixin:
                 # 1. Fetch text chunk vectors
                 vec_results.extend(self.search_vec(vq, limit=vec_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=q_vec, defer_text=True, dirlist=dirlist))
                 
-                # 2. Fetch image vectors (if embed_images is active and table exists)
+                # 2. Fetch image vectors (if embed_images or embed_pages is active and table exists)
                 if getattr(self, '_has_image_metadata_table', None) is None:
                     c = self.conn.cursor()
                     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='image_metadata'")
                     self._has_image_metadata_table = c.fetchone() is not None
 
-                if getattr(self.config, "embed_images", False) and self._has_image_metadata_table:
+                if (getattr(self.config, "embed_images", False) or getattr(self.config, "embed_pages", False)) and self._has_image_metadata_table:
                     try:
                         # Direct usearch query against the index for raw rowids to cross-check image_metadata
                         if getattr(self, "usearch_index", None):
@@ -842,7 +842,9 @@ class SearchMixin:
             c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='image_metadata'")
             self._has_image_metadata_table = c.fetchone() is not None
 
-        if not getattr(self.config, "embed_images", False) or not self._has_image_metadata_table:
+        embed_images = getattr(self.config, "embed_images", False)
+        embed_pages = getattr(self.config, "embed_pages", False)
+        if not (embed_images or embed_pages) or not self._has_image_metadata_table:
             return []
 
         pure_visual = visual_only or semantic_only
