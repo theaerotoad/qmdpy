@@ -98,7 +98,7 @@ class ImageIndexMixin:
         stored_quant = get_db_meta(self.conn, "vector_quantization")
         quant_type = stored_quant or getattr(self.config, "vector_quantization", "none") or "none"
 
-        for img_hash in image_hashes:
+        for img_hash in tqdm(image_hashes, desc="  Embedding Images", leave=False, unit="img"):
             rel_path_img = f"{img_hash[:2]}/{img_hash[2:4]}/{img_hash[4:6]}/{img_hash}.webp"
             full_path = storage_dir / rel_path_img
             

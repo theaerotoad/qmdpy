@@ -365,11 +365,12 @@ def _process_images_concurrently(
         return [proc_image_fn(b, fn, config, errors_out=errors_out) for b, fn in items]
 
     import concurrent.futures
+    from tqdm import tqdm
     workers = min(len(items), max_workers)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(proc_image_fn, b, fn, config, errors_out) for b, fn in items]
         results = []
-        for (b, fn), f in zip(items, futures):
+        for (b, fn), f in tqdm(zip(items, futures), total=len(items), desc="  Processing Images", leave=False, unit="img"):
             try:
                 results.append(f.result())
             except Exception as e:
