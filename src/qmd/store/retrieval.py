@@ -17,8 +17,8 @@ class RetrievalMixin:
     """Handles basic FTS lexical search, vector KNN, text hydration, and query embeddings."""
 
     def _hydrate_results_text_local(self, results: List[Result]):
-        needed = [r for r in results if not r.text]
-        if not needed:
+        import re
+        if not results:
             return
 
         cursor = self.conn.cursor()
@@ -27,8 +27,9 @@ class RetrievalMixin:
             c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='image_metadata'")
             self._has_image_metadata_table = c.fetchone() is not None
 
-        with_rowids = [r for r in needed if r.rowid is not None]
-        without_rowids = [r for r in needed if r.rowid is None]
+        text_needed = [r for r in results if not r.text]
+        with_rowids = [r for r in text_needed if r.rowid is not None]
+        without_rowids = [r for r in text_needed if r.rowid is None]
 
         if with_rowids:
             unique_rowids = list({r.rowid for r in with_rowids})
@@ -38,18 +39,9 @@ class RetrievalMixin:
                 tuple(unique_rowids)
             )
             text_map = {row[0]: decompress_text(row[1]) for row in cursor.fetchall()}
-            
-            # Also fetch image hashes if supported
-            img_map = {}
-            if self._has_image_metadata_table:
-                cursor.execute(f"SELECT rowid, image_hash FROM image_metadata WHERE rowid IN ({placeholders})", tuple(unique_rowids))
-                img_map = {row[0]: row[1] for row in cursor.fetchall()}
-            
             for r in with_rowids:
                 if r.rowid in text_map:
                     r.text = text_map[r.rowid]
-                if self._has_image_metadata_table and r.rowid in img_map and not getattr(r, "image_hash", None):
-                    r.image_hash = img_map[r.rowid]
 
         if without_rowids:
             for r in without_rowids:
@@ -65,21 +57,88 @@ class RetrievalMixin:
                     if r.rowid is None and row[1] is not None:
                         r.rowid = row[1]
 
-                if self._has_image_metadata_table and getattr(r, "image_hash", None) is None:
+        # Hydrate associated chunk/page images
+        img_needed = [r for r in results if getattr(r, "image_hashes", None) is None]
+        if not img_needed:
+            return
+
+        direct_rowid_map: Dict[int, str] = {}
+        doc_seq_img_map: Dict[tuple, Dict[int, List[str]]] = {}
+
+        if self._has_image_metadata_table:
+            all_rowids = list({r.rowid for r in img_needed if r.rowid is not None})
+            if all_rowids:
+                placeholders = ','.join(['?'] * len(all_rowids))
+                cursor.execute(
+                    f"SELECT rowid, image_hash FROM image_metadata WHERE rowid IN ({placeholders})",
+                    tuple(all_rowids)
+                )
+                direct_rowid_map = {row[0]: row[1] for row in cursor.fetchall()}
+
+            doc_keys = list({(r.collection or "", r.path) for r in img_needed if r.path})
+            for coll, doc_path in doc_keys:
+                if coll:
                     cursor.execute("""
-                        SELECT im.image_hash 
+                        SELECT im.seq_id, im.image_hash
                         FROM image_metadata im
                         JOIN documents d ON im.doc_hash = d.hash
-                        WHERE d.collection = ? AND d.path = ? AND im.seq_id = ?
-                        LIMIT 1
-                    """, (r.collection, r.path, r.seq_id))
-                    img_row = cursor.fetchone()
-                    if img_row:
-                        r.image_hash = img_row[0]
+                        WHERE d.collection = ? AND d.path = ?
+                        ORDER BY im.seq_id ASC, im.rowid ASC
+                    """, (coll, doc_path))
+                else:
+                    cursor.execute("""
+                        SELECT im.seq_id, im.image_hash
+                        FROM image_metadata im
+                        JOIN documents d ON im.doc_hash = d.hash
+                        WHERE d.path = ?
+                        ORDER BY im.seq_id ASC, im.rowid ASC
+                    """, (doc_path,))
+                seq_map: Dict[int, List[str]] = {}
+                for seq_val, img_hash in cursor.fetchall():
+                    s_key = int(seq_val) if seq_val is not None else 0
+                    lst = seq_map.setdefault(s_key, [])
+                    if img_hash and img_hash not in lst:
+                        lst.append(img_hash)
+                if seq_map:
+                    doc_seq_img_map[(coll, doc_path)] = seq_map
+
+        for r in img_needed:
+            hashes: List[str] = []
+            if getattr(r, "image_hash", None):
+                hashes.append(r.image_hash)
+
+            if r.rowid is not None and r.rowid in direct_rowid_map:
+                h = direct_rowid_map[r.rowid]
+                if h not in hashes:
+                    hashes.append(h)
+
+            seq_map = doc_seq_img_map.get((r.collection or "", r.path))
+            if seq_map:
+                if r.seq_id in seq_map:
+                    for h in seq_map[r.seq_id]:
+                        if h not in hashes:
+                            hashes.append(h)
+                elif r.path.lower().endswith(('.pdf', '.pptx')) and r.seq_id is not None and r.seq_id >= 0:
+                    # Fallback for multi-chunk pages where the page image was indexed at the page's starting seq_id
+                    prev_seqs = [s for s in seq_map.keys() if s <= r.seq_id]
+                    if prev_seqs:
+                        nearest_seq = max(prev_seqs)
+                        for h in seq_map[nearest_seq]:
+                            if h not in hashes:
+                                hashes.append(h)
+
+            if r.text:
+                for h in re.findall(r'qmd-img://([a-f0-9]{64})', r.text):
+                    if h not in hashes:
+                        hashes.append(h)
+
+            r.image_hashes = hashes
+            if hashes and not getattr(r, "image_hash", None):
+                r.image_hash = hashes[0]
 
     def _hydrate_results_text(self, results: List[Result]):
-        """Hydrates missing or deferred text in Result objects across local and federated stores."""
-        needed = [r for r in results if not r.text]
+        """Hydrates missing or deferred text and image metadata in Result objects across local and federated stores."""
+        needed = [r for r in results if not r.text or getattr(r, "image_hashes", None) is None]
         if not needed:
             return
 

@@ -184,6 +184,9 @@ def group_results_by_doc(results: List[Result]) -> List[Dict]:
             docs[key]["score"] = r.score
             
         if not any(x[1] == r.text for x in docs[key]["raw_snippets"]):
+            r_img_hashes = list(getattr(r, "image_hashes", None) or [])
+            if getattr(r, "image_hash", None) and r.image_hash not in r_img_hashes:
+                r_img_hashes.insert(0, r.image_hash)
             docs[key]["raw_snippets"].append((r.seq_id, r.text, getattr(r, 'headers', '')))
             docs[key]["chunks"].append({
                 "seq_id": r.seq_id,
@@ -201,6 +204,8 @@ def group_results_by_doc(results: List[Result]) -> List[Dict]:
                 "alt_title": getattr(r, "alt_title", None),
                 "doc_type": getattr(r, "doc_type", None),
                 "authors": getattr(r, "authors", None),
+                "image_hash": getattr(r, "image_hash", None) or (r_img_hashes[0] if r_img_hashes else None),
+                "image_hashes": r_img_hashes,
                 "text": r.text
             })
             

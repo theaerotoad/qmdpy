@@ -190,6 +190,89 @@
   color: #9ca3af;
 }
 
+/* Document Top Page Ribbon (Search View) & Right Page Thumbnails (Passages / Discover View) */
+.doc-pages-ribbon-container {
+  margin-top: 0.625rem;
+  margin-bottom: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.75rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+.dark .doc-pages-ribbon-container {
+  background-color: #1e2023;
+  border-color: #30343a;
+}
+
+.doc-pages-ribbon {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scroll-behavior: smooth;
+}
+
+.doc-page-card,
+.passage-page-card {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  cursor: zoom-in;
+}
+
+.doc-page-card {
+  width: 112px;
+}
+@media (min-width: 640px) {
+  .doc-page-card {
+    width: 124px;
+  }
+}
+
+.passage-page-card {
+  width: 132px;
+}
+@media (min-width: 640px) {
+  .passage-page-card {
+    width: 148px;
+  }
+}
+
+.page-thumb-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.dark .page-thumb-frame {
+  background-color: #141517;
+  border-color: #3c4043;
+}
+.doc-page-card:hover .page-thumb-frame,
+.passage-page-card:hover .page-thumb-frame {
+  transform: translateY(-2px);
+  border-color: #3b82f6;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.18);
+}
+.dark .doc-page-card:hover .page-thumb-frame,
+.dark .passage-page-card:hover .page-thumb-frame {
+  border-color: #60a5fa;
+  box-shadow: 0 4px 12px rgba(96, 165, 250, 0.22);
+}
+
+.page-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
 /* Google-style Elevation Shadows */
 .g-search-shadow {
   box-shadow: 0 1px 6px rgba(32, 33, 36, 0.28);

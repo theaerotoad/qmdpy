@@ -315,6 +315,7 @@ def discover():
             w2n=w2n,
             dirlist=is_dirlist
         )
+        store._hydrate_results_text(results)
 
         if should_redact:
             for r in results:
@@ -361,6 +362,9 @@ def discover():
                 seen_chunks=seen_chunks_count,
                 print_output=False
             )
+            r_img_hashes = list(getattr(r, "image_hashes", None) or [])
+            if getattr(r, "image_hash", None) and r.image_hash not in r_img_hashes:
+                r_img_hashes.insert(0, r.image_hash)
             out.append({
                 "path": r.path,
                 "title": r.title,
@@ -376,6 +380,8 @@ def discover():
                 "authors": getattr(r, "authors", None),
                 "match_count": getattr(r, "match_count", 1),
                 "rank": getattr(r, "rank", None) or (i + 1),
+                "image_hash": getattr(r, "image_hash", None) or (r_img_hashes[0] if r_img_hashes else None),
+                "image_hashes": r_img_hashes,
                 "xml": r_xml
             })
 
@@ -440,6 +446,7 @@ def search():
             exclude_seen_set=exclude_seen_set,
             dirlist=is_dirlist
         )
+        store._hydrate_results_text(results)
 
         if should_redact:
             for r in results:
@@ -524,6 +531,9 @@ def search():
                     session_id=session_id,
                     print_output=False
                 )
+                r_img_hashes = list(getattr(r, "image_hashes", None) or [])
+                if getattr(r, "image_hash", None) and r.image_hash not in r_img_hashes:
+                    r_img_hashes.insert(0, r.image_hash)
                 out.append({
                     "path": r.path,
                     "title": r.title,
@@ -538,6 +548,8 @@ def search():
                     "doc_type": getattr(r, "doc_type", None),
                     "authors": getattr(r, "authors", None),
                     "rank": getattr(r, "rank", None) or (i + 1),
+                    "image_hash": getattr(r, "image_hash", None) or (r_img_hashes[0] if r_img_hashes else None),
+                    "image_hashes": r_img_hashes,
                     "xml": r_xml
                 })
             time_taken = round(time.time() - t0, 3)
