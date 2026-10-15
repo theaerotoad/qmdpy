@@ -202,7 +202,7 @@ async function handleFormSubmit(e, source) {
             currentExcludedCount = data.excluded_count || 0;
             updateSessionBadges();
 
-            statsEl.textContent = `About ${data.results.length} documents across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -${currentExcludedCount} seen` : ''}`;
+            statsEl.textContent = `About ${data.results.length} documents across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -\${currentExcludedCount} seen` : ''}`;
             renderResults(data.results, 'discover', parsed.cleanQuery || rawVal);
 
             if (featureStates.offer_llm && data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
@@ -236,7 +236,7 @@ async function handleFormSubmit(e, source) {
             currentExcludedCount = data.excluded_count || 0;
             updateSessionBadges();
 
-            statsEl.textContent = `About ${data.results.length} ${data.type === 'doc' ? 'documents' : 'passages'} across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -${currentExcludedCount} seen` : ''}`;
+            statsEl.textContent = `About ${data.results.length} ${data.type === 'doc' ? 'documents' : 'passages'} across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -\${currentExcludedCount} seen` : ''}`;
             renderResults(data.results, data.type, parsed.cleanQuery || rawVal);
 
             if (featureStates.offer_llm && data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
@@ -257,6 +257,35 @@ async function handleFormSubmit(e, source) {
 
 // Fullscreen Image Modal Handlers
 let currentModalImageIndex = -1;
+let currentModalImageList = [];
+
+function registerModalImage(src, title) {
+    const idx = currentModalImageList.length;
+    currentModalImageList.push({ src, title });
+    return idx;
+}
+
+function getChunkImageHashes(chunk) {
+    if (!chunk) return [];
+    const hashes = [];
+    if (Array.isArray(chunk.image_hashes)) {
+        chunk.image_hashes.forEach(h => {
+            if (h && !hashes.includes(h)) hashes.push(h);
+        });
+    }
+    if (chunk.image_hash && !hashes.includes(chunk.image_hash)) {
+        hashes.push(chunk.image_hash);
+    }
+    if (typeof chunk.text === 'string') {
+        const re = /qmd-img:\/\/([a-f0-9]{64})/gi;
+        let m;
+        while ((m = re.exec(chunk.text)) !== null) {
+            const h = m[1].toLowerCase();
+            if (!hashes.includes(h)) hashes.push(h);
+        }
+    }
+    return hashes;
+}
 
 window.openImageModal = function(src, title, index = -1) {
     currentModalImageIndex = index;
@@ -285,16 +314,25 @@ window.openImageModal = function(src, title, index = -1) {
 };
 
 window.navigateImageModal = function(direction) {
-    if (currentModalImageIndex < 0 || !lastRawJson) return;
+    const listLen = currentModalImageList.length > 0
+        ? currentModalImageList.length
+        : (lastRawJson ? lastRawJson.length : 0);
+    if (currentModalImageIndex < 0 || listLen === 0) return;
     
     let newIndex = currentModalImageIndex + direction;
-    if (newIndex < 0 || newIndex >= lastRawJson.length) return;
-    
-    let item = lastRawJson[newIndex];
+    if (newIndex < 0 || newIndex >= listLen) return;
     
     currentModalImageIndex = newIndex;
-    const imgSrc = apiUrl(`api/image/${item.image_hash}`);
-    const title = item.title || item.path;
+    let imgSrc = '';
+    let title = '';
+    if (currentModalImageList.length > 0) {
+        imgSrc = currentModalImageList[newIndex].src;
+        title = currentModalImageList[newIndex].title;
+    } else if (lastRawJson && lastRawJson[newIndex]) {
+        const item = lastRawJson[newIndex];
+        imgSrc = apiUrl(`api/image/${item.image_hash}`);
+        title = item.title || item.path;
+    }
     
     const img = document.getElementById('image-modal-img');
     const titleEl = document.getElementById('image-modal-title');
@@ -308,11 +346,14 @@ window.navigateImageModal = function(direction) {
 function updateModalNavButtons() {
     const leftBtn = document.getElementById('modal-nav-left');
     const rightBtn = document.getElementById('modal-nav-right');
+    const listLen = currentModalImageList.length > 0
+        ? currentModalImageList.length
+        : (lastRawJson ? lastRawJson.length : 0);
     if (leftBtn) {
         leftBtn.classList.toggle('invisible', currentModalImageIndex <= 0);
     }
     if (rightBtn) {
-        rightBtn.classList.toggle('invisible', !lastRawJson || currentModalImageIndex >= lastRawJson.length - 1);
+        rightBtn.classList.toggle('invisible', listLen === 0 || currentModalImageIndex >= listLen - 1);
     }
 }
 
@@ -381,18 +422,20 @@ function deepSearchSnippet(docTitle, docPath, docCollection) {
 function renderResults(results, type, query) {
     const container = document.getElementById('results');
     container.innerHTML = '';
+    currentModalImageList = [];
     
     // Remove grid class if it exists from a previous render
     container.classList.remove('gallery-grid');
     
     if (type === 'gallery' && results && results.length > 0) {
         container.classList.add('gallery-grid');
-        results.forEach((item, index) => {
+        results.forEach((item) => {
             const article = document.createElement('article');
             article.className = "gallery-card";
             
             const uri = item.collection ? `qmd://${item.collection}/${item.path}` : item.path;
             const imgSrc = apiUrl(`api/image/${item.image_hash}`);
+            const modalIdx = registerModalImage(imgSrc, item.title || item.path);
             
             article.innerHTML = `
                 <div class="gallery-image-wrapper" style="cursor: zoom-in;" title="View full image">
@@ -414,7 +457,7 @@ function renderResults(results, type, query) {
 
             imgWrapper.onclick = (e) => {
                 e.stopPropagation();
-                openImageModal(imgSrc, item.title || item.path, index);
+                openImageModal(imgSrc, item.title || item.path, modalIdx);
             };
             
             contentWrapper.onclick = (e) => {
@@ -453,94 +496,6 @@ function renderResults(results, type, query) {
             ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-[#303134] text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 flex-shrink-0">${matchCount} matches in doc</span>` 
             : '';
 
-        let contentHtml = '';
-        if (type === 'doc' && (item.chunks || item.snippets)) {
-            const chunkList = item.chunks && item.chunks.length > 0 
-                ? item.chunks 
-                : (item.snippets || []).map((s, idx) => ({ text: s, seq_id: idx, headers: '' }));
-            
-            let prevSeq = null;
-            contentHtml = `
-                <div class="border-l-2 border-gray-200 dark:border-gray-700 pl-4 space-y-3 mt-2">
-                    ${chunkList.map((chunk, cIdx) => {
-                        const seq = typeof chunk.seq_id === 'number' ? chunk.seq_id : cIdx;
-                        let skipNotice = '';
-                        if (cIdx === 0 && seq > 0) {
-                            skipNotice = `
-                                <div class="py-0.5 skipped-wrapper">
-                                  <button type="button" onclick="toggleSkipped(this)" data-original-text="... ${seq} preceding chunks skipped ..." class="text-xs text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 font-mono flex items-center gap-1.5">
-                                    <svg class="w-3 h-3 transform rotate-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                    <span class="skipped-text">&gt; ... ${seq} preceding chunks skipped ...</span>
-                                  </button>
-                                </div>`;
-                        } else if (prevSeq !== null && seq > prevSeq + 1) {
-                            const gap = seq - prevSeq - 1;
-                            skipNotice = `
-                                <div class="py-0.5 skipped-wrapper">
-                                  <button type="button" onclick="toggleSkipped(this)" data-original-text="... ${gap} chunks skipped ..." class="text-xs text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 font-mono flex items-center gap-1.5">
-                                    <svg class="w-3 h-3 transform rotate-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                    <span class="skipped-text">&gt; ... ${gap} chunks skipped ...</span>
-                                  </button>
-                                </div>`;
-                        }
-                        prevSeq = seq;
-
-                        const headerHtml = chunk.headers 
-                            ? `<h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">${escapeHtml(chunk.headers)}</h3>` 
-                            : '';
-
-                        let parsedChunkText = marked.parse(chunk.text || '');
-                        // Intercept QMD image placeholders and convert to viewable APIs or compact badges
-                        if (typeof featureStates !== 'undefined' && featureStates.show_serp_images) {
-                            parsedChunkText = parsedChunkText.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
-                        } else {
-                            parsedChunkText = parsedChunkText.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<span class="inline-flex items-center gap-1 text-[10px] bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 mx-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-700 transition" title="Image available in document viewer">🖼️ Image</span>');
-                        }
-                        
-                        if (item.path.endsWith('.dirsummary')) {
-                            const basePath = item.path.replace(/\.dirsummary$/, '');
-                            parsedChunkText = parsedChunkText.replace(/<li>(.*?)<\/li>/g, (match, inner) => {
-                                const cleanName = inner.replace(/<[^>]+>/g, '').trim();
-                                const fullPath = basePath + cleanName.replace(/\/$/, '');
-                                return `<li><a href="#" class="text-blue-600 hover:underline dark:text-blue-400" onclick="event.preventDefault(); event.stopPropagation(); openDocumentSystem('${item.collection}', '${fullPath}')">${inner}</a></li>`;
-                            });
-                        }
-
-                        return `
-                            ${skipNotice}
-                            <div>
-                                ${headerHtml}
-                                <div class="g-snippet">${parsedChunkText}</div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            `;
-        } else {
-            const rawBody = item.text || (item.snippets ? item.snippets[0] : '');
-            let parsedRawBody = marked.parse(rawBody || '');
-            // Intercept QMD image placeholders and convert to viewable APIs or compact badges
-            if (typeof featureStates !== 'undefined' && featureStates.show_serp_images) {
-                parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
-            } else {
-                parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<span class="inline-flex items-center gap-1 text-[10px] bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 mx-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-700 transition" title="Image available in document viewer">🖼️ Image</span>');
-            }
-            
-            if (item.path.endsWith('.dirsummary')) {
-                const basePath = item.path.replace(/\.dirsummary$/, '');
-                parsedRawBody = parsedRawBody.replace(/<li>(.*?)<\/li>/g, (match, inner) => {
-                    const cleanName = inner.replace(/<[^>]+>/g, '').trim();
-                    const fullPath = basePath + cleanName.replace(/\/$/, '');
-                    return `<li><a href="#" class="text-blue-600 hover:underline dark:text-blue-400" onclick="event.preventDefault(); event.stopPropagation(); openDocumentSystem('${item.collection}', '${fullPath}')">${inner}</a></li>`;
-                });
-            }
-            contentHtml = `
-                <div class="g-snippet space-y-2 mt-1">
-                    ${parsedRawBody}
-                </div>
-            `;
-        }
-
         const targetChunkText = (type === 'doc' && item.chunks && item.chunks.length > 0)
             ? (item.chunks[0].text || '')
             : (item.text || (item.snippets ? item.snippets[0] : ''));
@@ -556,33 +511,267 @@ function renderResults(results, type, query) {
             formattedDate = `<span class="text-gray-500 dark:text-gray-400 font-mono flex-shrink-0 ml-2" title="Document Date">${escapeHtml(metaSource.doc_date)}</span>`;
         }
 
-        article.innerHTML = `
-            <div class="flex items-center gap-2 text-xs">
-                <div class="flex items-center flex-1 min-w-0">
-                    <a href="javascript:void(0)" class="uri-link g-url font-mono truncate max-w-3xl block cursor-pointer" title="${escapeXmlAttr(uri)}">
-                        ${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}
-                    </a>
-                    ${formattedDate}
+        let contentHtml = '';
+        if (type === 'doc' && (item.chunks || item.snippets)) {
+            const rawChunks = item.chunks && item.chunks.length > 0 
+                ? item.chunks 
+                : (item.snippets || []).map((s, idx) => ({ text: s, seq_id: idx, headers: '' }));
+            const chunkList = [...rawChunks].sort((a, b) => {
+                const sa = typeof a.seq_id === 'number' && a.seq_id >= 0 ? a.seq_id : 999999;
+                const sb = typeof b.seq_id === 'number' && b.seq_id >= 0 ? b.seq_id : 999999;
+                return sa - sb;
+            });
+
+            // Collect page images in the exact chronological chunk order shown below
+            const docPageItems = [];
+            const seenDocHashes = new Set();
+            const hashToModalIdx = {};
+            chunkList.forEach((chunk, cIdx) => {
+                const seq = typeof chunk.seq_id === 'number' ? chunk.seq_id : cIdx;
+                const cHashes = getChunkImageHashes(chunk);
+                const sectionLabel = chunk.headers
+                    ? chunk.headers.split('>').map(s => s.trim()).filter(Boolean).pop()
+                    : '';
+                cHashes.forEach((h) => {
+                    if (!seenDocHashes.has(h)) {
+                        seenDocHashes.add(h);
+                        const imgSrc = apiUrl(`api/image/${h}`);
+                        const modalTitle = `${displayTitle} — Chunk #${seq}${sectionLabel ? ` (\${sectionLabel})` : ''}`;
+                        const modalIdx = registerModalImage(imgSrc, modalTitle);
+                        hashToModalIdx[h] = { modalIdx, imgSrc, modalTitle, seq };
+                        docPageItems.push({
+                            hash: h,
+                            imgSrc,
+                            modalIdx,
+                            modalTitle,
+                            seq_id: seq,
+                            score: chunk.score || item.score || 0,
+                            label: sectionLabel || displayTitle
+                        });
+                    }
+                });
+            });
+
+            let ribbonHtml = '';
+            if (docPageItems.length > 0) {
+                ribbonHtml = `
+                    <div class="doc-pages-ribbon-container">
+                        <div class="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mb-2 px-0.5">
+                            <span class="font-medium text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"></span>
+                                Document Page Snippets (${docPageItems.length} matching ${docPageItems.length === 1 ? 'page' : 'pages'})
+                            </span>
+                            <span class="hidden sm:inline text-[10px]">Click page to inspect</span>
+                        </div>
+                        <div class="doc-pages-ribbon">
+                            ${docPageItems.map((p) => `
+                                <div class="doc-page-card" data-img-src="${escapeXmlAttr(p.imgSrc)}" data-img-title="${escapeXmlAttr(p.modalTitle)}" data-modal-idx="${p.modalIdx}" title="${escapeXmlAttr(p.modalTitle)}">
+                                    <div class="page-thumb-frame">
+                                        <img src="\${p.imgSrc}" class="page-thumb-img" loading="lazy" alt="Document Extracted Image" />
+                                    </div>
+                                    <div class="mt-1 px-0.5">
+                                        <div class="text-[11px] font-mono font-medium text-gray-700 dark:text-gray-200 leading-tight">Chunk #\${p.seq_id}</div>
+                                        <div class="text-[10px] text-gray-500 dark:text-gray-400 truncate leading-tight" title="${escapeXmlAttr(p.label)}">${escapeHtml(p.label)}</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            let prevSeq = null;
+            contentHtml = `
+                ${ribbonHtml}
+                <div class="border-l-2 border-gray-200 dark:border-gray-700 pl-4 space-y-3 mt-2">
+                    ${chunkList.map((chunk, cIdx) => {
+                        const seq = typeof chunk.seq_id === 'number' ? chunk.seq_id : cIdx;
+                        let skipNotice = '';
+                        if (cIdx === 0 && seq > 0) {
+                            skipNotice = `
+                                <div class="py-0.5 skipped-wrapper">
+                                  <button type="button" onclick="toggleSkipped(this)" data-original-text="... \${seq} preceding chunks skipped ..." class="text-xs text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 font-mono flex items-center gap-1.5">
+                                    <svg class="w-3 h-3 transform rotate-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    <span class="skipped-text">&gt; ... \${seq} preceding chunks skipped ...</span>
+                                  </button>
+                                </div>`;
+                        } else if (prevSeq !== null && seq > prevSeq + 1) {
+                            const gap = seq - prevSeq - 1;
+                            skipNotice = `
+                                <div class="py-0.5 skipped-wrapper">
+                                  <button type="button" onclick="toggleSkipped(this)" data-original-text="... \${gap} chunks skipped ..." class="text-xs text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 font-mono flex items-center gap-1.5">
+                                    <svg class="w-3 h-3 transform rotate-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    <span class="skipped-text">&gt; ... \${gap} chunks skipped ...</span>
+                                  </button>
+                                </div>`;
+                        }
+                        prevSeq = seq;
+
+                        const cHashes = getChunkImageHashes(chunk);
+                        const firstHashInfo = cHashes.length > 0 ? hashToModalIdx[cHashes[0]] : null;
+                        const viewPageBtn = firstHashInfo
+                            ? `<button type="button" class="chunk-view-page-btn text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition shrink-0" data-img-src="\${escapeXmlAttr(firstHashInfo.imgSrc)}" data-img-title="${escapeXmlAttr(firstHashInfo.modalTitle)}" data-modal-idx="${firstHashInfo.modalIdx}">View Page</button>`
+                            : '';
+
+                        const headerHtml = (chunk.headers || viewPageBtn)
+                            ? `<div class="flex items-center justify-between gap-2 mb-1">
+                                <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">\${escapeHtml(chunk.headers || `Chunk #${seq}`)}</h3>
+                                \${viewPageBtn}
+                               </div>`
+                            : '';
+
+                        let parsedChunkText = marked.parse(chunk.text || '');
+                        // Intercept QMD image placeholders and convert to viewable APIs or compact badges
+                        if (typeof featureStates !== 'undefined' && featureStates.show_serp_images) {
+                            parsedChunkText = parsedChunkText.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+                        } else {
+                            parsedChunkText = parsedChunkText.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<span class="inline-flex items-center gap-1 text-[10px] bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 mx-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-700 transition" title="Image available in document viewer">🖼️ Image</span>');
+                        }
+                        
+                        if (item.path.endsWith('.dirsummary')) {
+                            const basePath = item.path.replace(/\.dirsummary$/, '');
+                            parsedChunkText = parsedChunkText.replace(/<li>(.*?)<\/li>/g, (match, inner) => {
+                                const cleanName = inner.replace(/<[^>]+>/g, '').trim();
+                                const fullPath = basePath + cleanName.replace(/\/$/, '');
+                                return `<li><a href="#" class="text-blue-600 hover:underline dark:text-blue-400" onclick="event.preventDefault(); event.stopPropagation(); openDocumentSystem('\${item.collection}', '${fullPath}')">${inner}</a></li>`;
+                            });
+                        }
+
+                        return `
+                            \${skipNotice}
+                            <div>
+                                \${headerHtml}
+                                <div class="g-snippet">\${parsedChunkText}</div>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
-                ${matchesBadge}
-            </div>
+            `;
+        } else {
+            const rawBody = item.text || (item.snippets ? item.snippets[0] : '');
+            let parsedRawBody = marked.parse(rawBody || '');
+            // Intercept QMD image placeholders and convert to viewable APIs or compact badges
+            if (typeof featureStates !== 'undefined' && featureStates.show_serp_images) {
+                parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/\$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+            } else {
+                parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<span class="inline-flex items-center gap-1 text-[10px] bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 mx-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-700 transition" title="Image available in document viewer">🖼️ Image</span>');
+            }
+            
+            if (item.path.endsWith('.dirsummary')) {
+                const basePath = item.path.replace(/\.dirsummary\$/, '');
+                parsedRawBody = parsedRawBody.replace(/<li>(.*?)<\/li>/g, (match, inner) => {
+                    const cleanName = inner.replace(/<[^>]+>/g, '').trim();
+                    const fullPath = basePath + cleanName.replace(/\/\$/, '');
+                    return `<li><a href="#" class="text-blue-600 hover:underline dark:text-blue-400" onclick="event.preventDefault(); event.stopPropagation(); openDocumentSystem('${item.collection}', '${fullPath}')">${inner}</a></li>`;
+                });
+            }
+            contentHtml = `
+                <div class="g-snippet space-y-2 mt-1">
+                    ${parsedRawBody}
+                </div>
+            `;
+        }
 
-            <h2 class="text-xl leading-snug">
-                <a href="javascript:void(0)" class="doc-link g-link font-medium">
-                    ${escapeHtml(displayTitle)}
-                </a>
-            </h2>
+        const topChunkLabel = item.seq_id !== undefined && item.seq_id !== null ? item.seq_id : (item.rank || (index + 1));
 
-            ${contentHtml}
+        if (type !== 'doc') {
+            const chunkHashes = getChunkImageHashes(item);
+            const rightThumbsHtml = chunkHashes.length > 0
+                ? `<div class="shrink-0 flex items-start gap-2.5 overflow-x-auto max-w-full sm:max-w-[320px] pt-1">
+                    ${chunkHashes.map((h, hIdx) => {
+                        const imgSrc = apiUrl(`api/image/\${h}`);
+                        const sectionLabel = item.headers
+                            ? item.headers.split('>').map(s => s.trim()).filter(Boolean).pop()
+                            : '';
+                        const modalTitle = `\${displayTitle} — Chunk #${topChunkLabel}${sectionLabel ? ` (${sectionLabel})` : ''}`;
+                        const modalIdx = registerModalImage(imgSrc, modalTitle);
+                        const badgeText = chunkHashes.length > 1 ? `Page ${hIdx + 1}/${chunkHashes.length}` : `Chunk #\${topChunkLabel}`;
+                        return `
+                            <div class="passage-page-card" data-img-src="${escapeXmlAttr(imgSrc)}" data-img-title="${escapeXmlAttr(modalTitle)}" data-modal-idx="${modalIdx}" title="${escapeXmlAttr(modalTitle)}">
+                                <div class="page-thumb-frame">
+                                    <img src="\${imgSrc}" class="page-thumb-img" loading="lazy" alt="Document Extracted Image" />
+                                    <span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono backdrop-blur-sm">\${escapeHtml(badgeText)}</span>
+                                </div>
+                                <div class="mt-1 text-center">
+                                    <span class="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-medium">Open Page Shot &rarr;</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                   </div>`
+                : '';
 
-            <div class="pt-2 flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-                <span class="font-mono text-[11px]">Score: ${Number(item.score || 0).toFixed(4)}</span>
-                <span>•</span>
-                <span class="font-mono text-[11px]">Top Chunk: #${item.seq_id || item.rank || (index + 1)}</span>
-                <span>•</span>
-                <button type="button" class="btn-deep-search text-blue-600 dark:text-blue-400 hover:underline">Deep Search Inside</button>
-            </div>
-        `;
+            article.innerHTML = `
+                <div class="flex flex-col sm:flex-row items-start justify-between gap-4 sm:gap-6">
+                    <div class="flex-1 min-w-0 w-full space-y-1.5">
+                        <div class="flex items-center gap-2 text-xs">
+                            <div class="flex items-center flex-1 min-w-0">
+                                <a href="javascript:void(0)" class="uri-link g-url font-mono truncate max-w-3xl block cursor-pointer" title="${escapeXmlAttr(uri)}">
+                                    ${escapeHtml(uri)}${item.headers ? ` › \${escapeHtml(item.headers)}` : ''}
+                                </a>
+                                ${formattedDate}
+                            </div>
+                            ${matchesBadge}
+                        </div>
+
+                        <h2 class="text-xl leading-snug">
+                            <a href="javascript:void(0)" class="doc-link g-link font-medium">
+                                ${escapeHtml(displayTitle)}
+                            </a>
+                        </h2>
+
+                        ${contentHtml}
+
+                        <div class="pt-2 flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+                            <span class="font-mono text-[11px]">Score: ${Number(item.score || 0).toFixed(4)}</span>
+                            <span>•</span>
+                            <span class="font-mono text-[11px]">Top Chunk: #${topChunkLabel}</span>
+                            <span>•</span>
+                            <button type="button" class="btn-deep-search text-blue-600 dark:text-blue-400 hover:underline">Deep Search Inside</button>
+                        </div>
+                    </div>
+                    ${rightThumbsHtml}
+                </div>
+            `;
+        } else {
+            article.innerHTML = `
+                <div class="flex items-center gap-2 text-xs">
+                    <div class="flex items-center flex-1 min-w-0">
+                        <a href="javascript:void(0)" class="uri-link g-url font-mono truncate max-w-3xl block cursor-pointer" title="${escapeXmlAttr(uri)}">
+                            ${escapeHtml(uri)}${item.headers ? ` › \${escapeHtml(item.headers)}` : ''}
+                        </a>
+                        ${formattedDate}
+                    </div>
+                    ${matchesBadge}
+                </div>
+
+                <h2 class="text-xl leading-snug">
+                    <a href="javascript:void(0)" class="doc-link g-link font-medium">
+                        ${escapeHtml(displayTitle)}
+                    </a>
+                </h2>
+
+                ${contentHtml}
+
+                <div class="pt-2 flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+                    <span class="font-mono text-[11px]">Score: ${Number(item.score || 0).toFixed(4)}</span>
+                    <span>•</span>
+                    <span class="font-mono text-[11px]">Top Chunk: #${topChunkLabel}</span>
+                    <span>•</span>
+                    <button type="button" class="btn-deep-search text-blue-600 dark:text-blue-400 hover:underline">Deep Search Inside</button>
+                </div>
+            `;
+        }
+
+        article.querySelectorAll('.doc-page-card, .passage-page-card, .chunk-view-page-btn').forEach(el => {
+            el.onclick = (e) => {
+                e.stopPropagation();
+                const src = el.getAttribute('data-img-src');
+                const title = el.getAttribute('data-img-title');
+                const idx = parseInt(el.getAttribute('data-modal-idx'), 10);
+                openImageModal(src, title, isNaN(idx) ? -1 : idx);
+            };
+        });
 
         const uriLink = article.querySelector('.uri-link');
         if (uriLink) uriLink.onclick = () => openDocument(item.collection, item.path, targetChunkText, metaSource);
