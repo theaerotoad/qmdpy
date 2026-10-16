@@ -52,8 +52,6 @@ def parse_markdown_to_blocks(
         return [], False
 
     current_block_content = []
-    current_block_pages = []
-    global_active_page = None
     current_header_level = 0
     current_header_text = "Preface"
     current_start_line = 1
@@ -66,20 +64,9 @@ def parse_markdown_to_blocks(
         if line.strip().startswith('```'):
             in_code_block = not in_code_block
         
-        processed_line = line
-        
-        if not in_code_block:
-            page_img_matches = PAGE_IMG_PATTERN.findall(processed_line)
-            if page_img_matches:
-                global_active_page = page_img_matches[-1]
-                processed_line = PAGE_IMG_PATTERN.sub('', processed_line)
-                if not processed_line.strip():
-                    continue
-                    
-        if global_active_page and global_active_page not in current_block_pages:
-            current_block_pages.append(global_active_page)
-
         # Apply link stripping if requested, but NOT inside code blocks
+        processed_line = line
+
         if strip_links and not in_code_block:
             # 1. Replace images with their alt text (or empty string if no alt)
             processed_line = IMG_PATTERN.sub(r'\1', processed_line)
@@ -94,14 +81,13 @@ def parse_markdown_to_blocks(
                     header_text=current_header_text,
                     content="".join(current_block_content).strip(),
                     start_line=current_start_line,
-                    page_images=list(current_block_pages)
+                    page_images=[]
                 ))
             
             current_header_level = len(header_match.group(1))
             current_header_text = header_match.group(2).strip()
             current_block_content = [processed_line]
             current_start_line = line_num
-            current_block_pages = [global_active_page] if global_active_page else []
         else:
             current_block_content.append(processed_line)
             if table_pattern.match(processed_line):
@@ -113,7 +99,7 @@ def parse_markdown_to_blocks(
             header_text=current_header_text,
             content="".join(current_block_content).strip(),
             start_line=current_start_line,
-            page_images=list(current_block_pages)
+            page_images=[]
         ))
 
     return blocks, has_tables

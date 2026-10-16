@@ -14,6 +14,9 @@ from .models import SemanticBlock, Chunk
 table_pattern = re.compile(r'^\s*\|.*\|')
 codeblock_pattern = re.compile(r'^\s*```(\w*)')
 
+# Regex to extract our ephemeral page image comments
+PAGE_IMG_PATTERN = re.compile(r'<!--\s*qmd-page-img:([a-f0-9]{64})\s*-->')
+
 def _extract_table_header(content: str) -> Optional[str]:
     """
     Extracts the first two lines of the first Markdown table (header and separator)
@@ -169,6 +172,7 @@ def _create_final_chunks(partitions: List[List[SemanticBlock]], original_blocks:
     """Assembles the final list of Chunk objects from the partitions."""
     potential_chunks: List[Chunk] = []
     chunk_id_counter = 0
+    active_page_images = []
 
     # First pass: create all chunks without cross-chunk context
     for partition in partitions:
@@ -190,13 +194,26 @@ def _create_final_chunks(partitions: List[List[SemanticBlock]], original_blocks:
         for level in headers_to_remove:
             del parent_headers[level]
 
-        # Accumulate all page images across the partitioned blocks
-        chunk_page_images = []
-        for b in partition:
-            if b.page_images:
-                for img in b.page_images:
-                    if img not in chunk_page_images:
-                        chunk_page_images.append(img)
+        # Extract any embedded page markers 
+        extracted_markers = PAGE_IMG_PATTERN.findall(full_content)
+        
+        if extracted_markers:
+            # Chunk spans or starts new pages. Combine active (if any) with new, preserving order
+            # and eliminating duplicates.
+            combined = active_page_images + extracted_markers
+            chunk_page_images = list(dict.fromkeys(combined))
+            # The active page for the NEXT chunk is just the last page started in this chunk
+            active_page_images = [extracted_markers[-1]]
+            
+            # Remove markers from content
+            full_content = PAGE_IMG_PATTERN.sub('', full_content)
+            # Clean up potential extra whitespace left by marker removal
+            full_content = re.sub(r'\n{3,}', '\n\n', full_content).strip()
+        else:
+            # Chunk is entirely within the current active page(s)
+            chunk_page_images = list(active_page_images)
+            # full_content might still have leading/trailing whitespace to clean
+            full_content = full_content.strip()
                 
         chunk = Chunk(
             chunk_id=chunk_id_counter,
