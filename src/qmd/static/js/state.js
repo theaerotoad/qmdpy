@@ -1,6 +1,6 @@
 // Base API URL Helper for Reverse Proxy / Subpath Support
 function apiUrl(path) {
-    const base = (window.QMD_BASE_URL || '').replace(/\/+$/, '');
+    const base = (window.QMD_BASE_URL || '').replace(/\/+\$/, '');
     const cleanPath = path.startsWith('/') ? path : '/' + path;
     return `${base}${cleanPath}`;
 }
@@ -15,7 +15,7 @@ let lastSearchType = 'discover';
 let currentSessionId = null;
 let currentExcludedCount = 0;
 let selectedScopes = [];
-let featureStates = { offer_llm: false, rerank: false, exclude_seen: false, redact_pii: false, show_serp_images: false };
+let featureStates = { offer_llm: false, rerank: false, exclude_seen: false, redact_pii: false, show_serp_images: false, highlight_keywords: false };
 let treeFilterTimer = null, scopeFilterTimer = null;
 
 const DEFAULTS_KEY = 'qmd_search_defaults';
@@ -37,12 +37,22 @@ function escapeXmlAttr(s) {
     return escapeHtml(s);
 }
 
-function highlightKeywords(text, query) {
-    if (!query || !text) return text;
-    const terms = query.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(t => t.length > 1);
-    if (!terms.length) return text;
+function highlightKeywords(htmlText, query) {
+    if (!query || !htmlText) return htmlText;
+    const skipWords = ['and', 'the', 'for', 'with', 'this', 'that', 'from'];
+    const terms = query.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(t => t.length > 2 && !skipWords.includes(t.toLowerCase()));
+    if (!terms.length) return htmlText;
+    
     const reg = new RegExp(`(${terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
-    return text.replace(reg, '<mark class="g-highlight">$1</mark>');
+    
+    // Split the html into tags and text segments to avoid modifying inside tags
+    const parts = htmlText.split(/(<[^>]+>)/g);
+    for (let i = 0; i < parts.length; i++) {
+        if (!parts[i].startsWith('<')) {
+            parts[i] = parts[i].replace(reg, '<mark class="qmd-highlight">\$1</mark>');
+        }
+    }
+    return parts.join('');
 }
 
 // Past Query History & Autocomplete Management
@@ -111,7 +121,8 @@ function applyDefaultPreferences(customDefaults = null) {
     featureStates.redact_pii = defaults.redact_pii !== undefined ? !!defaults.redact_pii : false;
     featureStates.show_serp_images = defaults.show_serp_images !== undefined ? !!defaults.show_serp_images : false;
     featureStates.invert_dark_images = defaults.invert_dark_images !== undefined ? !!defaults.invert_dark_images : false;
-    
+    featureStates.highlight_keywords = defaults.highlight_keywords !== undefined ? !!defaults.highlight_keywords : false;
+
     if (featureStates.invert_dark_images) {
         document.documentElement.classList.add('invert-dark-images');
     } else {
@@ -151,6 +162,7 @@ function loadSettingsModalValues() {
     const piEl = document.getElementById('setting-default-pii');
     const imgEl = document.getElementById('setting-default-serp-images');
     const invEl = document.getElementById('setting-invert-dark-images');
+    const hlEl = document.getElementById('setting-highlight-keywords');
     if (heroEl) heroEl.value = defaults.hero_view || 'questions';
     if (limEl) limEl.value = defaults.limit || '10';
     if (modEl) modEl.value = defaults.mode || 'discover';
@@ -160,6 +172,7 @@ function loadSettingsModalValues() {
     if (piEl) piEl.checked = !!defaults.redact_pii;
     if (imgEl) imgEl.checked = !!defaults.show_serp_images;
     if (invEl) invEl.checked = !!defaults.invert_dark_images;
+    if (hlEl) hlEl.checked = !!defaults.highlight_keywords;
 }
 
 function saveDefaults() {
@@ -172,7 +185,8 @@ function saveDefaults() {
         exclude_seen: document.getElementById('setting-default-seen') ? document.getElementById('setting-default-seen').checked : false,
         redact_pii: document.getElementById('setting-default-pii') ? document.getElementById('setting-default-pii').checked : false,
         show_serp_images: document.getElementById('setting-default-serp-images') ? document.getElementById('setting-default-serp-images').checked : false,
-        invert_dark_images: document.getElementById('setting-invert-dark-images') ? document.getElementById('setting-invert-dark-images').checked : false
+        invert_dark_images: document.getElementById('setting-invert-dark-images') ? document.getElementById('setting-invert-dark-images').checked : false,
+        highlight_keywords: document.getElementById('setting-highlight-keywords') ? document.getElementById('setting-highlight-keywords').checked : false
     };
     localStorage.setItem(DEFAULTS_KEY, JSON.stringify(defaults));
     applyDefaultPreferences(defaults);
@@ -258,7 +272,7 @@ function parseQueryDirectives(rawText) {
     const llmMatch = text.match(/\b(?:llm|qa|answer):(?:"(on|off|true|false)"|'(on|off|true|false)'|(on|off|true|false)\b)/i);
     if (llmMatch) { toggleFeature('offer_llm', ['on', 'true'].includes((llmMatch[1]||llmMatch[2]||llmMatch[3]||'').toLowerCase())); text = text.replace(llmMatch[0], ' '); }
 
-    const dirMatch = text.match(/\b(?:dirlist):(?:"(only|on|off|true|false)"|'(only|on|off|true|false)'|(only|on|off|true|false)\b)|(--dirlist|--no-dirlist)\b|(?:^|\s)(\+dirlist|-dirlist)(?:\s|$)/i);
+    const dirMatch = text.match(/\b(?:dirlist):(?:"(only|on|off|true|false)"|'(only|on|off|true|false)'|(only|on|off|true|false)\b)|(--dirlist|--no-dirlist)\b|(?:^|\s)(\+dirlist|-dirlist)(?:\s|\$)/i);
     if (dirMatch) {
         const rawVal = Array.from(dirMatch).slice(1).find(g => g !== undefined).toLowerCase();
         if (rawVal === 'only') {
@@ -374,6 +388,7 @@ function resetToolsFilters() {
     toggleFeature('exclude_seen', false);
     toggleFeature('redact_pii', false);
     toggleFeature('show_serp_images', false);
+    toggleFeature('highlight_keywords', false);
     showToast("Filters reset to default");
     const query = document.getElementById('serp-query').value.trim();
     if (query) handleFormSubmit(new Event('submit'), 'serp');
