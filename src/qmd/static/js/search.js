@@ -627,6 +627,10 @@ function renderResults(results, type, query) {
                             parsedChunkText = parsedChunkText.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<span class="inline-flex items-center gap-1 text-[10px] bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 mx-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-700 transition" title="Image available in document viewer">🖼️ Image</span>');
                         }
                         
+                        if (typeof featureStates !== 'undefined' && featureStates.highlight_keywords && typeof highlightKeywords === 'function') {
+                            parsedChunkText = highlightKeywords(parsedChunkText, query);
+                        }
+
                         if (item.path.endsWith('.dirsummary')) {
                             const basePath = item.path.replace(/\.dirsummary$/, '');
                             parsedChunkText = parsedChunkText.replace(/<li>(.*?)<\/li>/g, (match, inner) => {
@@ -654,6 +658,10 @@ function renderResults(results, type, query) {
                 parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
             } else {
                 parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<span class="inline-flex items-center gap-1 text-[10px] bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 mx-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-700 transition" title="Image available in document viewer">🖼️ Image</span>');
+            }
+
+            if (typeof featureStates !== 'undefined' && featureStates.highlight_keywords && typeof highlightKeywords === 'function') {
+                parsedRawBody = highlightKeywords(parsedRawBody, query);
             }
             
             if (item.path.endsWith('.dirsummary')) {

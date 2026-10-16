@@ -72,15 +72,15 @@
 }
 
 .g-highlight, mark.qmd-highlight {
-  font-weight: 700;
+  font-weight: inherit;
   color: inherit;
-  background-color: rgba(254, 240, 138, 0.45);
-  padding: 0 2px;
+  background-color: rgba(253, 224, 71, 0.25);
+  padding: 0 1px;
   border-radius: 2px;
 }
 .dark .g-highlight, .dark mark.qmd-highlight {
-  background-color: rgba(234, 179, 8, 0.25);
-  color: #fef08a;
+  background-color: rgba(234, 179, 8, 0.15);
+  color: inherit;
 }
 
 /* Gallery Grid Layout */

@@ -295,7 +295,7 @@
                     </button>
                 </div>
                 
-                <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2.5">
                     <div class="flex items-center justify-between py-1">
                         <div class="pr-4">
                             <label for="setting-invert-dark-images" class="font-medium text-gray-800 dark:text-gray-200 cursor-pointer block">Invert Images in Dark Mode</label>
@@ -303,6 +303,16 @@
                         </div>
                         <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
                             <input type="checkbox" id="setting-invert-dark-images" onchange="saveDefaults()" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between py-1 border-t border-gray-200 dark:border-gray-700 pt-2.5">
+                        <div class="pr-4">
+                            <label for="setting-highlight-keywords" class="font-medium text-gray-800 dark:text-gray-200 cursor-pointer block">Highlight Search Keywords</label>
+                            <div class="text-[11px] text-gray-500">Subtly highlight matching query terms within result passages</div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                            <input type="checkbox" id="setting-highlight-keywords" onchange="saveDefaults()" class="sr-only peer">
                             <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                         </label>
                     </div>
