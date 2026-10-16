@@ -517,9 +517,34 @@ def init_schema(conn: sqlite3.Connection):
     );
     """)
 
+    try:
+        cursor.execute("ALTER TABLE image_metadata ADD COLUMN seq_id INTEGER")
+    except sqlite3.OperationalError:
+        pass
+
+    cursor.execute("SELECT sql FROM sqlite_master WHERE name='image_metadata';")
+    im_sql = cursor.fetchone()
+    if im_sql and "PRIMARY KEY" in im_sql[0].upper():
+        cursor.execute("ALTER TABLE image_metadata RENAME TO image_metadata_old;")
+        cursor.execute("""
+        CREATE TABLE image_metadata (
+            rowid INTEGER,
+            image_hash TEXT NOT NULL,
+            doc_hash TEXT NOT NULL,
+            seq_id INTEGER,
+            FOREIGN KEY (rowid) REFERENCES vectors(rowid) ON DELETE CASCADE,
+            FOREIGN KEY (image_hash) REFERENCES images(hash) ON DELETE CASCADE
+        );
+        """)
+        cursor.execute("""
+        INSERT INTO image_metadata (rowid, image_hash, doc_hash, seq_id)
+        SELECT rowid, image_hash, doc_hash, seq_id FROM image_metadata_old;
+        """)
+        cursor.execute("DROP TABLE image_metadata_old;")
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS image_metadata (
-        rowid INTEGER PRIMARY KEY, -- FK to vectors.rowid
+        rowid INTEGER, -- FK to vectors.rowid
         image_hash TEXT NOT NULL,
         doc_hash TEXT NOT NULL,
         seq_id INTEGER,
@@ -528,13 +553,9 @@ def init_schema(conn: sqlite3.Connection):
     );
     """)
 
-    try:
-        cursor.execute("ALTER TABLE image_metadata ADD COLUMN seq_id INTEGER")
-    except sqlite3.OperationalError:
-        pass
-
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_metadata_doc_hash ON image_metadata(doc_hash);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_metadata_image_hash ON image_metadata(image_hash);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_metadata_rowid ON image_metadata(rowid);")
 
     # 3. View for FTS5 External Content
     cursor.execute("DROP VIEW IF EXISTS document_search_view;")
