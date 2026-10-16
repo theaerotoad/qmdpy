@@ -16,6 +16,9 @@ IMG_PATTERN = re.compile(r'!\[([^\]]*)\]\([^\)]+\)')
 # Negative lookbehind (?<!\!) ensures we don't match images that somehow slipped through
 LINK_PATTERN = re.compile(r'(?<!\!)\[([^\]]+)\]\([^\)]+\)')
 
+# Regex to extract our ephemeral page image comments
+PAGE_IMG_PATTERN = re.compile(r'<!--\s*qmd-page-img:([a-f0-9]{64})\s*-->')
+
 def parse_markdown_to_blocks(
     file_path: Optional[str] = None,
     content: Optional[str] = None,
