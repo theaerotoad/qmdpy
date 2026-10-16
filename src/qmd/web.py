@@ -435,9 +435,12 @@ def search():
         store = get_store()
         exclude_seen_set = get_seen_chunks_for_session(store.history_conn, session_id) if exclude_seen else set()
 
+        # If doc_view is enabled, we need to fetch more chunks to ensure we get `limit` full documents
+        fetch_limit = limit * 6 if doc_view else limit
+        
         results = store.hybrid_search(
             query=query,
-            limit=limit,
+            limit=fetch_limit,
             rerank=rerank,
             collection=collection,
             lexical_query=lexical_query,
