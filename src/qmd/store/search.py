@@ -981,12 +981,19 @@ class SearchMixin:
 
         text_rank = 0
         for res in text_results:
-            if not res.text:
-                continue
-            # Find all images in this chunk
-            hashes = set(re.findall(r'qmd-img://([a-f0-9]{64})', res.text))
-            for h in hashes:
-                _add_to_rrf(h, res.collection, res.path, res.seq_id, res.title, text_rank, res.score, "text")
+            hashes = set()
+            if res.text:
+                hashes.update(re.findall(r'qmd-img://([a-f0-9]{64})', res.text))
+            
+            # Incorporate out-of-band image hashes (e.g. extracted page markers)
+            if getattr(res, 'image_hashes', None):
+                hashes.update([h for h in res.image_hashes if h])
+            if getattr(res, 'image_hash', None) and res.image_hash:
+                hashes.add(res.image_hash)
+                
+            if hashes:
+                for h in hashes:
+                    _add_to_rrf(h, res.collection, res.path, res.seq_id, res.title, text_rank, res.score, "text")
                 text_rank += 1
 
         if not rrf_scores:
