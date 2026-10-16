@@ -74,12 +74,12 @@
 .g-highlight, mark.qmd-highlight {
   font-weight: 600;
   color: #111827;
-  background-color: rgba(253, 224, 71, 0.85);
+  background-color: rgba(253, 224, 71, 0.30);
   padding: 0 2px;
   border-radius: 2px;
 }
 .dark .g-highlight, .dark mark.qmd-highlight {
-  background-color: rgba(234, 179, 8, 0.5);
+  background-color: rgba(234, 179, 8, 0.20);
   color: #fef08a;
 }
 
