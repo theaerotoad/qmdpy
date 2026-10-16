@@ -14,9 +14,6 @@ from .models import SemanticBlock, Chunk
 table_pattern = re.compile(r'^\s*\|.*\|')
 codeblock_pattern = re.compile(r'^\s*```(\w*)')
 
-# Regex to extract our ephemeral page image comments
-PAGE_IMG_PATTERN = re.compile(r'<!--\s*qmd-page-img:([a-f0-9]{64})\s*-->')
-
 def _extract_table_header(content: str) -> Optional[str]:
     """
     Extracts the first two lines of the first Markdown table (header and separator)
@@ -130,7 +127,7 @@ def _split_oversized_block(block: SemanticBlock, max_size: int) -> List[Semantic
                 content=final_content,
                 start_line=block.start_line,
                 joiner_to_next=joiner,
-                page_images=[]  # Defer page image extraction to final chunk assembly
+                page_images=block.page_images.copy() if block.page_images else []
             ))
         
         is_first_sub_block = False
@@ -193,13 +190,13 @@ def _create_final_chunks(partitions: List[List[SemanticBlock]], original_blocks:
         for level in headers_to_remove:
             del parent_headers[level]
 
-        # Extract any embedded page markers that survived the split
-        chunk_page_images = PAGE_IMG_PATTERN.findall(full_content)
-        if chunk_page_images:
-            full_content = PAGE_IMG_PATTERN.sub('', full_content)
-
-        # Clean up any trailing/leading whitespace that might be left from marker removal
-        full_content = full_content.strip()
+        # Accumulate all page images across the partitioned blocks
+        chunk_page_images = []
+        for b in partition:
+            if b.page_images:
+                for img in b.page_images:
+                    if img not in chunk_page_images:
+                        chunk_page_images.append(img)
                 
         chunk = Chunk(
             chunk_id=chunk_id_counter,
@@ -208,7 +205,7 @@ def _create_final_chunks(partitions: List[List[SemanticBlock]], original_blocks:
             character_count=len(full_content),
             parent_headers=parent_headers,
             joiner_to_next=last_block.joiner_to_next,
-            page_images=list(set(chunk_page_images))
+            page_images=chunk_page_images
         )
         potential_chunks.append(chunk)
         chunk_id_counter += 1
