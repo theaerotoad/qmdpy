@@ -552,7 +552,7 @@ function renderResults(results, type, query, ftsTerms = null) {
                                 <div class="doc-page-card" data-img-src="${escapeXmlAttr(p.imgSrc)}" data-img-title="${escapeXmlAttr(p.modalTitle)}" data-modal-idx="${p.modalIdx}" title="${escapeXmlAttr(p.modalTitle)}">
                                     <div class="page-thumb-frame">
                                         <img src="${p.imgSrc}" class="page-thumb-img" loading="lazy" alt="Document Extracted Image" />
-                                        <span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono backdrop-blur-sm">Page ${p.seq_id}</span>
+                                        <span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono backdrop-blur-sm">${p.seq_id}</span>
                                     </div>
                                 </div>
                             `).join('')}
