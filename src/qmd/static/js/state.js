@@ -37,11 +37,20 @@ function escapeXmlAttr(s) {
     return escapeHtml(s);
 }
 
-function highlightKeywords(htmlText, query) {
-    if (!query || !htmlText) return htmlText;
-    const skipWords = ['and', 'the', 'for', 'with', 'this', 'that', 'from'];
-    const terms = query.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(t => t.length > 2 && !skipWords.includes(t.toLowerCase()));
+function highlightKeywords(htmlText, query, ftsTermsArray = null) {
+    if (!htmlText) return htmlText;
+    
+    let terms = [];
+    if (ftsTermsArray && Array.isArray(ftsTermsArray) && ftsTermsArray.length > 0) {
+        terms = ftsTermsArray;
+    } else if (query) {
+        const skipWords = ['and', 'the', 'for', 'with', 'this', 'that', 'from'];
+        terms = query.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(t => t.length > 2 && !skipWords.includes(t.toLowerCase()));
+    }
+    
     if (!terms.length) return htmlText;
+    // Sort terms by length descending to match longest phrases first
+    terms.sort((a, b) => b.length - a.length);
     
     const reg = new RegExp(`(${terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
     

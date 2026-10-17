@@ -317,6 +317,9 @@ def discover():
         )
         store._hydrate_results_text(results)
 
+        from qmd.formatters.core import extract_lexical_terms
+        fts_terms = extract_lexical_terms(lexical_query or query)
+
         if should_redact:
             for r in results:
                 r.text = redact_pii(r.text)
@@ -392,7 +395,8 @@ def discover():
             "session_id": session_id,
             "excluded_count": excluded_count,
             "time_taken": time_taken,
-            "xml": full_xml
+            "xml": full_xml,
+            "fts_terms": fts_terms
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -450,6 +454,9 @@ def search():
             dirlist=is_dirlist
         )
         store._hydrate_results_text(results)
+
+        from qmd.formatters.core import extract_lexical_terms
+        fts_terms = extract_lexical_terms(lexical_query or query)
 
         if should_redact:
             for r in results:
@@ -512,7 +519,8 @@ def search():
                 "session_id": session_id,
                 "excluded_count": excluded_count,
                 "time_taken": time_taken,
-                "xml": full_xml
+                "xml": full_xml,
+                "fts_terms": fts_terms
             })
         else:
             record_session_results(store.history_conn, session_id, event_id, results)
@@ -562,7 +570,8 @@ def search():
                 "session_id": session_id,
                 "excluded_count": excluded_count,
                 "time_taken": time_taken,
-                "xml": full_xml
+                "xml": full_xml,
+                "fts_terms": fts_terms
             })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
