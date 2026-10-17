@@ -266,25 +266,10 @@ function registerModalImage(src, title) {
 }
 
 function getChunkImageHashes(chunk) {
-    if (!chunk) return [];
-    const hashes = [];
-    if (Array.isArray(chunk.image_hashes)) {
-        chunk.image_hashes.forEach(h => {
-            if (h && !hashes.includes(h)) hashes.push(h);
-        });
-    }
-    if (chunk.image_hash && !hashes.includes(chunk.image_hash)) {
-        hashes.push(chunk.image_hash);
-    }
-    if (typeof chunk.text === 'string') {
-        const re = /qmd-img:\/\/([a-f0-9]{64})/gi;
-        let m;
-        while ((m = re.exec(chunk.text)) !== null) {
-            const h = m[1].toLowerCase();
-            if (!hashes.includes(h)) hashes.push(h);
-        }
-    }
-    return hashes;
+    if (!chunk || !chunk.image_hash) return [];
+    // Only return the primary page image representing the chunk.
+    // Inline figures and embedded images will render naturally inside the chunk text body.
+    return [chunk.image_hash];
 }
 
 window.openImageModal = function(src, title, index = -1) {

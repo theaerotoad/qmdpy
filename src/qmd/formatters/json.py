@@ -19,7 +19,9 @@ def format_results_json(results: List, verbose: bool = False, session_id: Option
             "alt_title": getattr(res, "alt_title", ""),
             "doc_type": getattr(res, "doc_type", ""),
             "doc_date": getattr(res, "doc_date", ""),
-            "authors": getattr(res, "authors", [])
+            "authors": getattr(res, "authors", []),
+            "image_hash": getattr(res, "image_hash", None),
+            "image_hashes": getattr(res, "image_hashes", [])
         }
         if session_id:
             item["session_id"] = session_id
@@ -62,7 +64,9 @@ def format_discover_json(results: List, verbose: bool = False, session_id: Optio
             "doc_type": getattr(res, "doc_type", ""),
             "doc_date": getattr(res, "doc_date", ""),
             "authors": getattr(res, "authors", []),
-            "match_count": getattr(res, "match_count", 1)
+            "match_count": getattr(res, "match_count", 1),
+            "image_hash": getattr(res, "image_hash", None),
+            "image_hashes": getattr(res, "image_hashes", [])
         }
         if session_id:
             item["session_id"] = session_id
