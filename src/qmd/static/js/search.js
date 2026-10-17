@@ -574,19 +574,19 @@ function renderResults(results, type, query) {
                         if (cIdx === 0 && seq > 0) {
                             skipNotice = `
                                 <div class="py-0.5 skipped-wrapper">
-                                  <button type="button" onclick="toggleSkipped(this)" data-original-text="... ${seq} preceding chunks skipped ..." class="text-xs text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 font-mono flex items-center gap-1.5">
-                                    <svg class="w-3 h-3 transform rotate-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                  <div class="text-xs text-gray-500 font-mono flex items-center gap-1.5">
+                                    <svg class="w-3 h-3 transform rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                                     <span class="skipped-text">&gt; ... ${seq} preceding chunks skipped ...</span>
-                                  </button>
+                                  </div>
                                 </div>`;
                         } else if (prevSeq !== null && seq > prevSeq + 1) {
                             const gap = seq - prevSeq - 1;
                             skipNotice = `
                                 <div class="py-0.5 skipped-wrapper">
-                                  <button type="button" onclick="toggleSkipped(this)" data-original-text="... ${gap} chunks skipped ..." class="text-xs text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 font-mono flex items-center gap-1.5">
-                                    <svg class="w-3 h-3 transform rotate-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                  <div class="text-xs text-gray-500 font-mono flex items-center gap-1.5">
+                                    <svg class="w-3 h-3 transform rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                                     <span class="skipped-text">&gt; ... ${gap} chunks skipped ...</span>
-                                  </button>
+                                  </div>
                                 </div>`;
                         }
                         prevSeq = seq;
