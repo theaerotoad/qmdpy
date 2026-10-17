@@ -173,7 +173,7 @@ async function handleFormSubmit(e, source) {
             currentExcludedCount = data.excluded_count || 0;
             updateSessionBadges();
 
-            statsEl.textContent = `About ${data.results.length} images across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -${currentExcludedCount} seen` : ''}`;
+            statsEl.textContent = `About ${data.results.length} images across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -\${currentExcludedCount} seen` : ''}`;
             renderResults(data.results, 'gallery', parsed.cleanQuery || rawVal);
 
         } else if (isDiscoverMode) {
@@ -202,8 +202,8 @@ async function handleFormSubmit(e, source) {
             currentExcludedCount = data.excluded_count || 0;
             updateSessionBadges();
 
-            statsEl.textContent = `About ${data.results.length} documents across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -${currentExcludedCount} seen` : ''}`;
-            renderResults(data.results, 'discover', parsed.cleanQuery || rawVal);
+            statsEl.textContent = `About ${data.results.length} documents across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -\${currentExcludedCount} seen` : ''}`;
+            renderResults(data.results, 'discover', parsed.cleanQuery || rawVal, data.fts_terms);
 
             if (featureStates.offer_llm && data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
                 window.QuickAnswer.trigger(parsed.cleanQuery || rawVal, lastRawXml, data.results);
@@ -236,8 +236,8 @@ async function handleFormSubmit(e, source) {
             currentExcludedCount = data.excluded_count || 0;
             updateSessionBadges();
 
-            statsEl.textContent = `About ${data.results.length} ${data.type === 'doc' ? 'documents' : 'passages'} across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -${currentExcludedCount} seen` : ''}`;
-            renderResults(data.results, data.type, parsed.cleanQuery || rawVal);
+            statsEl.textContent = `About ${data.results.length} ${data.type === 'doc' ? 'documents' : 'passages'} across indexed repositories (${data.time_taken || 0} seconds)${currentExcludedCount ? ` • -\${currentExcludedCount} seen` : ''}`;
+            renderResults(data.results, data.type, parsed.cleanQuery || rawVal, data.fts_terms);
 
             if (featureStates.offer_llm && data.results && data.results.length > 0 && window.QuickAnswer && typeof window.QuickAnswer.trigger === 'function') {
                 window.QuickAnswer.trigger(parsed.cleanQuery || rawVal, lastRawXml, data.results);
@@ -404,7 +404,7 @@ function deepSearchSnippet(docTitle, docPath, docCollection) {
 }
 
 // Render Results Viewport in Google Mid-2010s Layout
-function renderResults(results, type, query) {
+function renderResults(results, type, query, ftsTerms = null) {
     const container = document.getElementById('results');
     container.innerHTML = '';
     currentModalImageList = [];
@@ -521,7 +521,7 @@ function renderResults(results, type, query) {
                     if (!seenDocHashes.has(h)) {
                         seenDocHashes.add(h);
                         const imgSrc = apiUrl(`api/image/${h}`);
-                        const modalTitle = `${displayTitle} — Chunk #${seq}${sectionLabel ? ` (${sectionLabel})` : ''}`;
+                        const modalTitle = `${displayTitle} — Chunk #${seq}${sectionLabel ? ` (\${sectionLabel})` : ''}`;
                         const modalIdx = registerModalImage(imgSrc, modalTitle);
                         hashToModalIdx[h] = { modalIdx, imgSrc, modalTitle, seq };
                         docPageItems.push({
@@ -551,10 +551,10 @@ function renderResults(results, type, query) {
                             ${docPageItems.map((p) => `
                                 <div class="doc-page-card" data-img-src="${escapeXmlAttr(p.imgSrc)}" data-img-title="${escapeXmlAttr(p.modalTitle)}" data-modal-idx="${p.modalIdx}" title="${escapeXmlAttr(p.modalTitle)}">
                                     <div class="page-thumb-frame">
-                                        <img src="${p.imgSrc}" class="page-thumb-img" loading="lazy" alt="Document Extracted Image" />
+                                        <img src="\${p.imgSrc}" class="page-thumb-img" loading="lazy" alt="Document Extracted Image" />
                                     </div>
                                     <div class="mt-1 px-0.5">
-                                        <div class="text-[11px] font-mono font-medium text-gray-700 dark:text-gray-200 leading-tight">Chunk #${p.seq_id}</div>
+                                        <div class="text-[11px] font-mono font-medium text-gray-700 dark:text-gray-200 leading-tight">Chunk #\${p.seq_id}</div>
                                         <div class="text-[10px] text-gray-500 dark:text-gray-400 truncate leading-tight" title="${escapeXmlAttr(p.label)}">${escapeHtml(p.label)}</div>
                                     </div>
                                 </div>
@@ -565,6 +565,7 @@ function renderResults(results, type, query) {
             }
             
             let prevSeq = null;
+            let prevHeaders = null;
             contentHtml = `
                 ${ribbonHtml}
                 <div class="border-l-2 border-gray-200 dark:border-gray-700 pl-4 space-y-3 mt-2">
@@ -576,7 +577,7 @@ function renderResults(results, type, query) {
                                 <div class="py-0.5 skipped-wrapper">
                                   <div class="text-xs text-gray-500 font-mono flex items-center gap-1.5">
                                     <svg class="w-3 h-3 transform rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                    <span class="skipped-text">&gt; ... ${seq} preceding chunks skipped ...</span>
+                                    <span class="skipped-text">&gt; ... \${seq} preceding chunks skipped ...</span>
                                   </div>
                                 </div>`;
                         } else if (prevSeq !== null && seq > prevSeq + 1) {
@@ -585,22 +586,33 @@ function renderResults(results, type, query) {
                                 <div class="py-0.5 skipped-wrapper">
                                   <div class="text-xs text-gray-500 font-mono flex items-center gap-1.5">
                                     <svg class="w-3 h-3 transform rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                    <span class="skipped-text">&gt; ... ${gap} chunks skipped ...</span>
+                                    <span class="skipped-text">&gt; ... \${gap} chunks skipped ...</span>
                                   </div>
                                 </div>`;
                         }
+                        
+                        let currentHeaders = chunk.headers || `Chunk #\${seq}`;
+                        let displayHeaders = currentHeaders;
+                        
+                        if (prevSeq !== null && seq === prevSeq + 1 && prevHeaders === currentHeaders) {
+                             displayHeaders = ""; // Hide if contiguous and same headers
+                        }
+                        
                         prevSeq = seq;
+                        prevHeaders = currentHeaders;
 
                         const cHashes = getChunkImageHashes(chunk);
                         const firstHashInfo = cHashes.length > 0 ? hashToModalIdx[cHashes[0]] : null;
                         const viewPageBtn = firstHashInfo
-                            ? `<button type="button" class="chunk-view-page-btn text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition shrink-0" data-img-src="${escapeXmlAttr(firstHashInfo.imgSrc)}" data-img-title="${escapeXmlAttr(firstHashInfo.modalTitle)}" data-modal-idx="${firstHashInfo.modalIdx}">View Page</button>`
+                            ? `<button type="button" class="chunk-view-page-btn text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 transition shrink-0" data-img-src="\${escapeXmlAttr(firstHashInfo.imgSrc)}" data-img-title="${escapeXmlAttr(firstHashInfo.modalTitle)}" data-modal-idx="${firstHashInfo.modalIdx}" title="View Page Image">
+                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                               </button>`
                             : '';
 
-                        const headerHtml = (chunk.headers || viewPageBtn)
+                        const headerHtml = (displayHeaders || viewPageBtn)
                             ? `<div class="flex items-center justify-between gap-2 mb-1">
-                                <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">${escapeHtml(chunk.headers || `Chunk #${seq}`)}</h3>
-                                ${viewPageBtn}
+                                \${displayHeaders ? `<h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">${escapeHtml(displayHeaders)}</h3>` : '<div></div>'}
+                                \${viewPageBtn}
                                </div>`
                             : '';
 
@@ -613,7 +625,7 @@ function renderResults(results, type, query) {
                         }
                         
                         if (typeof featureStates !== 'undefined' && featureStates.highlight_keywords && typeof highlightKeywords === 'function') {
-                            parsedChunkText = highlightKeywords(parsedChunkText, query);
+                            parsedChunkText = highlightKeywords(parsedChunkText, query, ftsTerms);
                         }
 
                         if (item.path.endsWith('.dirsummary')) {
@@ -621,15 +633,15 @@ function renderResults(results, type, query) {
                             parsedChunkText = parsedChunkText.replace(/<li>(.*?)<\/li>/g, (match, inner) => {
                                 const cleanName = inner.replace(/<[^>]+>/g, '').trim();
                                 const fullPath = basePath + cleanName.replace(/\/$/, '');
-                                return `<li><a href="#" class="text-blue-600 hover:underline dark:text-blue-400" onclick="event.preventDefault(); event.stopPropagation(); openDocumentSystem('${item.collection}', '${fullPath}')">${inner}</a></li>`;
+                                return `<li><a href="#" class="text-blue-600 hover:underline dark:text-blue-400" onclick="event.preventDefault(); event.stopPropagation(); openDocumentSystem('\${item.collection}', '${fullPath}')">${inner}</a></li>`;
                             });
                         }
 
                         return `
-                            ${skipNotice}
+                            \${skipNotice}
                             <div>
-                                ${headerHtml}
-                                <div class="g-snippet">${parsedChunkText}</div>
+                                \${headerHtml}
+                                <div class="g-snippet">\${parsedChunkText}</div>
                             </div>
                         `;
                     }).join('')}
@@ -640,20 +652,20 @@ function renderResults(results, type, query) {
             let parsedRawBody = marked.parse(rawBody || '');
             // Intercept QMD image placeholders and convert to viewable APIs or compact badges
             if (typeof featureStates !== 'undefined' && featureStates.show_serp_images) {
-                parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
+                parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<img src="api/image/\$1" class="rounded max-w-full h-auto mt-2 mb-2 max-h-[300px] object-contain shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900" alt="Document Extracted Image" loading="lazy" />');
             } else {
                 parsedRawBody = parsedRawBody.replace(/<img\s+[^>]*src=["']?qmd-img:\/\/([a-f0-9]{64})["']?[^>]*>/gi, '<span class="inline-flex items-center gap-1 text-[10px] bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 mx-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-700 transition" title="Image available in document viewer">🖼️ Image</span>');
             }
 
             if (typeof featureStates !== 'undefined' && featureStates.highlight_keywords && typeof highlightKeywords === 'function') {
-                parsedRawBody = highlightKeywords(parsedRawBody, query);
+                parsedRawBody = highlightKeywords(parsedRawBody, query, ftsTerms);
             }
             
             if (item.path.endsWith('.dirsummary')) {
-                const basePath = item.path.replace(/\.dirsummary$/, '');
+                const basePath = item.path.replace(/\.dirsummary\$/, '');
                 parsedRawBody = parsedRawBody.replace(/<li>(.*?)<\/li>/g, (match, inner) => {
                     const cleanName = inner.replace(/<[^>]+>/g, '').trim();
-                    const fullPath = basePath + cleanName.replace(/\/$/, '');
+                    const fullPath = basePath + cleanName.replace(/\/\$/, '');
                     return `<li><a href="#" class="text-blue-600 hover:underline dark:text-blue-400" onclick="event.preventDefault(); event.stopPropagation(); openDocumentSystem('${item.collection}', '${fullPath}')">${inner}</a></li>`;
                 });
             }
@@ -671,18 +683,18 @@ function renderResults(results, type, query) {
             const rightThumbsHtml = chunkHashes.length > 0
                 ? `<div class="shrink-0 flex items-start gap-2.5 overflow-x-auto max-w-full sm:max-w-[320px] pt-1">
                     ${chunkHashes.map((h, hIdx) => {
-                        const imgSrc = apiUrl(`api/image/${h}`);
+                        const imgSrc = apiUrl(`api/image/\${h}`);
                         const sectionLabel = item.headers
                             ? item.headers.split('>').map(s => s.trim()).filter(Boolean).pop()
                             : '';
-                        const modalTitle = `${displayTitle} — Chunk #${topChunkLabel}${sectionLabel ? ` (${sectionLabel})` : ''}`;
+                        const modalTitle = `\${displayTitle} — Chunk #${topChunkLabel}${sectionLabel ? ` (${sectionLabel})` : ''}`;
                         const modalIdx = registerModalImage(imgSrc, modalTitle);
-                        const badgeText = chunkHashes.length > 1 ? `Page ${hIdx + 1}/${chunkHashes.length}` : `Chunk #${topChunkLabel}`;
+                        const badgeText = chunkHashes.length > 1 ? `Page ${hIdx + 1}/${chunkHashes.length}` : `Chunk #\${topChunkLabel}`;
                         return `
                             <div class="passage-page-card" data-img-src="${escapeXmlAttr(imgSrc)}" data-img-title="${escapeXmlAttr(modalTitle)}" data-modal-idx="${modalIdx}" title="${escapeXmlAttr(modalTitle)}">
                                 <div class="page-thumb-frame">
-                                    <img src="${imgSrc}" class="page-thumb-img" loading="lazy" alt="Document Extracted Image" />
-                                    <span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono backdrop-blur-sm">${escapeHtml(badgeText)}</span>
+                                    <img src="\${imgSrc}" class="page-thumb-img" loading="lazy" alt="Document Extracted Image" />
+                                    <span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono backdrop-blur-sm">\${escapeHtml(badgeText)}</span>
                                 </div>
                             </div>
                         `;
@@ -696,7 +708,7 @@ function renderResults(results, type, query) {
                         <div class="flex items-center gap-2 text-xs">
                             <div class="flex items-center flex-1 min-w-0">
                                 <a href="javascript:void(0)" class="uri-link g-url font-mono truncate max-w-3xl block cursor-pointer" title="${escapeXmlAttr(uri)}">
-                                    ${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}
+                                    ${escapeHtml(uri)}${item.headers ? ` › \${escapeHtml(item.headers)}` : ''}
                                 </a>
                                 ${formattedDate}
                             </div>
@@ -727,7 +739,7 @@ function renderResults(results, type, query) {
                 <div class="flex items-center gap-2 text-xs">
                     <div class="flex items-center flex-1 min-w-0">
                         <a href="javascript:void(0)" class="uri-link g-url font-mono truncate max-w-3xl block cursor-pointer" title="${escapeXmlAttr(uri)}">
-                            ${escapeHtml(uri)}${item.headers ? ` › ${escapeHtml(item.headers)}` : ''}
+                            ${escapeHtml(uri)}${item.headers ? ` › \${escapeHtml(item.headers)}` : ''}
                         </a>
                         ${formattedDate}
                     </div>
