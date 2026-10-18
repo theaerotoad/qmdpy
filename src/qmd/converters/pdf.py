@@ -441,18 +441,14 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                         
                         # We need to inject the extracted hash into the markdown for the chunker to pick up
                         # We use an ephemeral HTML comment that the parser will strip out later
-                        page_markers = []
-                        for img_tag in results:
+                        page_markers = [""] * len(images)
+                        for (page_idx, _, _), img_tag in zip(page_images, results):
                             if img_tag:
                                 # Extract the hash from the <img src="qmd-img://HASH" /> tag
-                                match = re.search(r'qmd-img://([a-f0-9]{64})', img_tag)
+                                match = re.search(r'qmd-img://([a-f0-9]{64}(?:_[0-9]+)?)', img_tag)
                                 if match:
                                     h = match.group(1)
-                                    page_markers.append(f"\n\n<!-- qmd-page-img:{h} -->\n\n")
-                                else:
-                                    page_markers.append("")
-                            else:
-                                page_markers.append("")
+                                    page_markers[page_idx] = f"\n\n<!-- qmd-page-img:{h} -->\n\n"
 
                         # Split Docling markdown by its page breaks if they exist, or just append
                         # Docling often uses horizontal rules or specific headers, but it varies. 
@@ -617,7 +613,7 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                 results = proc_imgs_fn(image_inputs, config, errors_out=errors_out)
                 for (page_idx, _, _), img_tag in zip(page_images, results):
                     if img_tag and page_idx < len(md_pages):
-                        match = re.search(r'qmd-img://([a-f0-9]{64})', img_tag)
+                        match = re.search(r'qmd-img://([a-f0-9]{64}(?:_[0-9]+)?)', img_tag)
                         if match:
                             h = match.group(1)
                             md_pages[page_idx] = f"<!-- qmd-page-img:{h} -->\n\n" + md_pages[page_idx]
