@@ -418,6 +418,7 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                     
                     # Determine which pages have visual elements (pictures, charts, tables)
                     pages_with_visuals = set()
+                    skipped_pages = 0
                     if efficient_pages:
                         for item, _ in doc_obj.iterate_items():
                             if item.label in ["picture", "chart", "table", "formula"]:
@@ -427,6 +428,7 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
 
                     for i, img in enumerate(images):
                         if efficient_pages and i not in pages_with_visuals:
+                            skipped_pages += 1
                             continue
 
                         buffered = BytesIO()
@@ -435,6 +437,9 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                         filename = f"full_page_{i+1}.png"
                         page_images.append((i, image_bytes, filename))
                     
+                    if efficient_pages and skipped_pages > 0:
+                        print(f"Skipped embedding {skipped_pages} text-only page{'s' if skipped_pages != 1 else ''} (efficient_pages=True)", flush=True)
+
                     if page_images:
                         image_inputs = [(b, fn) for _, b, fn in page_images]
                         results = proc_imgs_fn(image_inputs, config, errors_out=errors_out)
@@ -581,6 +586,7 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
         try:
             page_images = []
             efficient_pages = getattr(config, "efficient_pages", True)
+            skipped_pages = 0
             for i in range(len(doc)):
                 page = doc[i]
 
@@ -594,6 +600,7 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                         except Exception:
                             pass
                     if not (has_images or has_drawings or has_tables):
+                        skipped_pages += 1
                         continue
 
                 try:
@@ -607,6 +614,9 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                 except Exception as e:
                     if verbose:
                         print(f"[Verbose PDF] Failed to get pixmap for page {i+1}: {e}", flush=True)
+
+            if efficient_pages and skipped_pages > 0:
+                print(f"Skipped embedding {skipped_pages} text-only page{'s' if skipped_pages != 1 else ''} (efficient_pages=True)", flush=True)
 
             if page_images:
                 image_inputs = [(b, fn) for _, b, fn in page_images]
