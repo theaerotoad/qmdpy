@@ -221,7 +221,9 @@ def test_pdf_embed_pages_injection(tmp_path, monkeypatch):
     
     page2 = doc.new_page()
     page2.insert_text((50, 50), "Testing page embedding markers - image")
-    page2.insert_image(pymupdf.Rect(100, 100, 200, 200), stream=b'fakeimage')
+    # Use a valid 1x1 PNG to satisfy PyMuPDF's image format validation
+    tiny_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+    page2.insert_image(pymupdf.Rect(100, 100, 200, 200), stream=tiny_png)
 
     page3 = doc.new_page()
     page3.insert_text((50, 50), "Testing page embedding markers - table")
