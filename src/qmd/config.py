@@ -48,6 +48,7 @@ class Config:
     # Image Storage & Embedding Settings
     embed_images: bool = False
     embed_pages: bool = False
+    efficient_pages: bool = True
     max_image_megapixels: float = 1.0
     image_compression_quality: int = 80
     image_storage_dir: Optional[str] = None
@@ -192,6 +193,12 @@ class Config:
         else:
             embed_pages = bool(embed_pages_raw)
 
+        efficient_pages_raw = os.environ.get("QMD_EFFICIENT_PAGES") or data.get("efficient_pages", True)
+        if isinstance(efficient_pages_raw, str):
+            efficient_pages = efficient_pages_raw.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            efficient_pages = bool(efficient_pages_raw)
+
         max_image_megapixels = float(os.environ.get("QMD_MAX_IMAGE_MEGAPIXELS") or data.get("max_image_megapixels", 1.0))
         image_compression_quality = int(os.environ.get("QMD_IMAGE_COMPRESSION_QUALITY") or data.get("image_compression_quality", 80))
         
@@ -328,6 +335,7 @@ class Config:
             child_cfg.max_image_concurrency = max_image_concurrency
             child_cfg.embed_images = embed_images
             child_cfg.embed_pages = embed_pages
+            child_cfg.efficient_pages = efficient_pages
             child_cfg.max_image_megapixels = max_image_megapixels
             child_cfg.image_compression_quality = image_compression_quality
             child_cfg.image_storage_dir = image_storage_dir
@@ -372,6 +380,7 @@ class Config:
             max_image_concurrency=max_image_concurrency,
             embed_images=embed_images,
             embed_pages=embed_pages,
+            efficient_pages=efficient_pages,
             max_image_megapixels=max_image_megapixels,
             image_compression_quality=image_compression_quality,
             image_storage_dir=image_storage_dir,

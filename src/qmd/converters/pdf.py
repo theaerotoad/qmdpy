@@ -414,7 +414,21 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                 try:
                     import hashlib
                     page_images = []
+                    efficient_pages = getattr(config, "efficient_pages", True)
+                    
+                    # Determine which pages have visual elements (pictures, charts, tables)
+                    pages_with_visuals = set()
+                    if efficient_pages:
+                        for item, _ in doc_obj.iterate_items():
+                            if item.label in ["picture", "chart", "table", "formula"]:
+                                prov = item.prov[0] if item.prov else None
+                                if prov and prov.page_no >= 1:
+                                    pages_with_visuals.add(prov.page_no - 1)
+
                     for i, img in enumerate(images):
+                        if efficient_pages and i not in pages_with_visuals:
+                            continue
+
                         buffered = BytesIO()
                         img.save(buffered, format="PNG")
                         image_bytes = buffered.getvalue()
@@ -570,8 +584,22 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
     if config and getattr(config, "embed_pages", False):
         try:
             page_images = []
+            efficient_pages = getattr(config, "efficient_pages", True)
             for i in range(len(doc)):
                 page = doc[i]
+
+                if efficient_pages:
+                    has_images = len(page.get_images()) > 0
+                    has_drawings = len(page.get_drawings()) > 0
+                    has_tables = False
+                    if hasattr(page, "find_tables"):
+                        try:
+                            has_tables = len(page.find_tables().tables) > 0
+                        except Exception:
+                            pass
+                    if not (has_images or has_drawings or has_tables):
+                        continue
+
                 pix = page.get_pixmap(dpi=150)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 buffered = BytesIO()

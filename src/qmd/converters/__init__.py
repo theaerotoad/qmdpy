@@ -803,6 +803,7 @@ def main():
             multimodal_api_key = args.multimodal_api_key
             multimodal_model = args.multimodal_model
             max_image_concurrency = args.max_image_concurrency
+            efficient_pages = True
             request_timeout = 120.0
             verbose = args.verbose
         mock_config = MockConfig()
