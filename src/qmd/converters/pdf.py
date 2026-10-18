@@ -442,7 +442,7 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                         # We need to inject the extracted hash into the markdown for the chunker to pick up
                         # We use an ephemeral HTML comment that the parser will strip out later
                         page_markers = []
-                        for (_, _, _), img_tag in zip(page_images, results):
+                        for img_tag in results:
                             if img_tag:
                                 # Extract the hash from the <img src="qmd-img://HASH" /> tag
                                 match = re.search(r'qmd-img://([a-f0-9]{64})', img_tag)
@@ -600,14 +600,18 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                     if not (has_images or has_drawings or has_tables):
                         continue
 
-                pix = page.get_pixmap(dpi=150)
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                buffered = BytesIO()
-                img.save(buffered, format="PNG")
-                image_bytes = buffered.getvalue()
-                filename = f"page_{i+1}_full.png"
-                page_images.append((i, image_bytes, filename))
-            
+                try:
+                    pix = page.get_pixmap(dpi=150)
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    buffered = BytesIO()
+                    img.save(buffered, format="PNG")
+                    image_bytes = buffered.getvalue()
+                    filename = f"page_{i+1}_full.png"
+                    page_images.append((i, image_bytes, filename))
+                except Exception as e:
+                    if verbose:
+                        print(f"[Verbose PDF] Failed to get pixmap for page {i+1}: {e}", flush=True)
+
             if page_images:
                 image_inputs = [(b, fn) for _, b, fn in page_images]
                 results = proc_imgs_fn(image_inputs, config, errors_out=errors_out)
