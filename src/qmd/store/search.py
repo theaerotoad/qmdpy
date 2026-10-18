@@ -140,48 +140,53 @@ class SearchMixin:
                 # 1. Fetch text chunk vectors
                 vec_results.extend(self.search_vec(vq, limit=vec_lim, collection=collection, title=title, path=path, exclude_seen_set=exclude_seen_set, excluded_chunks_tracker=excluded_chunks_tracker, query_vec=q_vec, defer_text=True, dirlist=dirlist))
                 
-                # 2. Fetch image vectors (if embed_images or embed_pages is active and table exists)
-                if getattr(self, '_has_image_metadata_table', None) is None:
-                    c = self.conn.cursor()
-                    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='image_metadata'")
-                    self._has_image_metadata_table = c.fetchone() is not None
+                # 2. Fetch image vectors across federated stores for image bonus
+                target_stores = self._get_target_stores_for_collection(collection)
+                for ts in target_stores:
+                    if getattr(ts, '_has_image_metadata_table', None) is None:
+                        c = ts.conn.cursor() if ts.conn else None
+                        if c:
+                            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='image_metadata'")
+                            ts._has_image_metadata_table = c.fetchone() is not None
+                        else:
+                            ts._has_image_metadata_table = False
 
-                if (getattr(self.config, "embed_images", False) or getattr(self.config, "embed_pages", False)) and self._has_image_metadata_table:
-                    try:
-                        # Direct usearch query against the index for raw rowids to cross-check image_metadata
-                        if getattr(self, "usearch_index", None):
-                            import numpy as np
-                            q_arr = np.array(q_vec, dtype=np.float32)
-                            matches = self.usearch_index.search(q_arr, vec_lim)
-                            if matches and hasattr(matches, 'keys'):
-                                match_keys = matches.keys.tolist() if hasattr(matches.keys, 'tolist') else list(matches.keys)
-                                match_distances = matches.distances.tolist() if hasattr(matches.distances, 'tolist') else list(matches.distances)
-                                
-                                cursor = self.conn.cursor()
-                                for i, vec_rowid in enumerate(match_keys):
-                                    sim = float(1.0 - match_distances[i])
-                                    if sim < 0.6:  # Threshold to avoid irrelevant noise boosts
-                                        continue
-                                        
-                                    cursor.execute("""
-                                        SELECT im.doc_hash, d.collection, d.path, im.image_hash, im.seq_id, d.title
-                                        FROM image_metadata im
-                                        JOIN documents d ON im.doc_hash = d.hash
-                                        WHERE im.rowid = ?
-                                    """, (vec_rowid,))
-                                    img_rows = cursor.fetchall()
-                                    for img_row in img_rows:
-                                        img_results.append({
-                                            "collection": img_row[1],
-                                            "path": img_row[2],
-                                            "score": sim,
-                                            "doc_hash": img_row[0],
-                                            "image_hash": img_row[3],
-                                            "seq_id": img_row[4],
-                                            "title": img_row[5]
-                                        })
-                    except Exception:
-                        pass
+                    if (getattr(ts.config, "embed_images", False) or getattr(ts.config, "embed_pages", False)) and ts._has_image_metadata_table:
+                        try:
+                            # Direct usearch query against the index for raw rowids to cross-check image_metadata
+                            if getattr(ts, "usearch_index", None):
+                                import numpy as np
+                                q_arr = np.array(q_vec, dtype=np.float32)
+                                matches = ts.usearch_index.search(q_arr, vec_lim)
+                                if matches and hasattr(matches, 'keys'):
+                                    match_keys = matches.keys.tolist() if hasattr(matches.keys, 'tolist') else list(matches.keys)
+                                    match_distances = matches.distances.tolist() if hasattr(matches.distances, 'tolist') else list(matches.distances)
+                                    
+                                    cursor = ts.conn.cursor()
+                                    for i, vec_rowid in enumerate(match_keys):
+                                        sim = float(1.0 - match_distances[i])
+                                        if sim < 0.6:  # Threshold to avoid irrelevant noise boosts
+                                            continue
+                                            
+                                        cursor.execute("""
+                                            SELECT im.doc_hash, d.collection, d.path, im.image_hash, im.seq_id, d.title
+                                            FROM image_metadata im
+                                            JOIN documents d ON im.doc_hash = d.hash
+                                            WHERE im.rowid = ?
+                                        """, (vec_rowid,))
+                                        img_rows = cursor.fetchall()
+                                        for img_row in img_rows:
+                                            img_results.append({
+                                                "collection": img_row[1],
+                                                "path": img_row[2],
+                                                "score": sim,
+                                                "doc_hash": img_row[0],
+                                                "image_hash": img_row[3],
+                                                "seq_id": img_row[4],
+                                                "title": img_row[5]
+                                            })
+                        except Exception:
+                            pass
         t_vec_knn = (time.perf_counter() - t_vec_start) * 1000
 
         self.last_exclusion_stats = {
@@ -837,70 +842,73 @@ class SearchMixin:
         semantic_only: bool = False,
     ) -> List[Result]:
         """Blended image search: Visual KNN + Text Hybrid -> RRF (or purely Visual KNN if visual_only/semantic_only)."""
-        if getattr(self, '_has_image_metadata_table', None) is None:
-            c = self.conn.cursor()
-            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='image_metadata'")
-            self._has_image_metadata_table = c.fetchone() is not None
-
-        embed_images = getattr(self.config, "embed_images", False)
-        embed_pages = getattr(self.config, "embed_pages", False)
-        if not (embed_images or embed_pages) or not self._has_image_metadata_table:
-            return []
-
         pure_visual = visual_only or semantic_only
 
-        # 1. Visual KNN Search
+        # 1. Visual KNN Search across federated stores
         visual_candidates = []
         query_text = self.llm.format_query_for_embedding(query)
         q_vec = self.get_query_embedding(query_text)
         
-        if q_vec and getattr(self, "usearch_index", None):
-            import numpy as np
-            q_arr = np.array(q_vec, dtype=np.float32)
-            matches = self.usearch_index.search(q_arr, limit * 5)
-            if matches and hasattr(matches, 'keys'):
-                match_keys = matches.keys.tolist() if hasattr(matches.keys, 'tolist') else list(matches.keys)
-                match_distances = matches.distances.tolist() if hasattr(matches.distances, 'tolist') else list(matches.distances)
-                
-                cursor = self.conn.cursor()
-                for i, vec_rowid in enumerate(match_keys):
-                    sim = float(1.0 - match_distances[i])
-                    if sim < 0.5:
-                        continue
-                    
-                    sql = """
-                        SELECT im.doc_hash, d.collection, d.path, im.image_hash, im.seq_id, d.title
-                        FROM image_metadata im
-                        JOIN documents d ON im.doc_hash = d.hash
-                        WHERE im.rowid = ?
-                    """
-                    params = [vec_rowid]
-                    
-                    coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
-                    if coll_sql:
-                        sql += coll_sql
-                        params.extend(coll_params)
-                        
-                    if path:
-                        paths = [p.strip() for p in path.split(',')] if isinstance(path, str) else path
-                        path_clauses = " OR ".join(["d.path LIKE ?" for _ in paths])
-                        sql += f" AND ({path_clauses})"
-                        for p_val in paths:
-                            params.append(f"%{p_val}%")
+        target_stores = self._get_target_stores_for_collection(collection)
+        for ts in target_stores:
+            if getattr(ts, '_has_image_metadata_table', None) is None:
+                c = ts.conn.cursor() if ts.conn else None
+                if c:
+                    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='image_metadata'")
+                    ts._has_image_metadata_table = c.fetchone() is not None
+                else:
+                    ts._has_image_metadata_table = False
 
-                    cursor.execute(sql, tuple(params))
-                    img_rows = cursor.fetchall()
-                    for img_row in img_rows:
-                        visual_candidates.append({
-                            "collection": img_row[1] or "",
-                            "path": img_row[2],
-                            "score": sim,
-                            "doc_hash": img_row[0],
-                            "image_hash": img_row[3],
-                            "seq_id": img_row[4] or 0,
-                            "title": img_row[5],
-                            "source": "visual"
-                        })
+            if not ts._has_image_metadata_table:
+                continue
+
+            if q_vec and getattr(ts, "usearch_index", None):
+                import numpy as np
+                q_arr = np.array(q_vec, dtype=np.float32)
+                matches = ts.usearch_index.search(q_arr, limit * 5)
+                if matches and hasattr(matches, 'keys'):
+                    match_keys = matches.keys.tolist() if hasattr(matches.keys, 'tolist') else list(matches.keys)
+                    match_distances = matches.distances.tolist() if hasattr(matches.distances, 'tolist') else list(matches.distances)
+                    
+                    cursor = ts.conn.cursor()
+                    for i, vec_rowid in enumerate(match_keys):
+                        sim = float(1.0 - match_distances[i])
+                        if sim < 0.5:
+                            continue
+                        
+                        sql = """
+                            SELECT im.doc_hash, d.collection, d.path, im.image_hash, im.seq_id, d.title
+                            FROM image_metadata im
+                            JOIN documents d ON im.doc_hash = d.hash
+                            WHERE im.rowid = ?
+                        """
+                        params = [vec_rowid]
+                        
+                        coll_sql, coll_params = _build_collection_sql_filter("d.collection", collection)
+                        if coll_sql:
+                            sql += coll_sql
+                            params.extend(coll_params)
+                            
+                        if path:
+                            paths = [p.strip() for p in path.split(',')] if isinstance(path, str) else path
+                            path_clauses = " OR ".join(["d.path LIKE ?" for _ in paths])
+                            sql += f" AND ({path_clauses})"
+                            for p_val in paths:
+                                params.append(f"%{p_val}%")
+
+                        cursor.execute(sql, tuple(params))
+                        img_rows = cursor.fetchall()
+                        for img_row in img_rows:
+                            visual_candidates.append({
+                                "collection": img_row[1] or "",
+                                "path": img_row[2],
+                                "score": sim,
+                                "doc_hash": img_row[0],
+                                "image_hash": img_row[3],
+                                "seq_id": img_row[4] or 0,
+                                "title": img_row[5],
+                                "source": "visual"
+                            })
 
         if pure_visual:
             if not visual_candidates:

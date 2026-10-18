@@ -855,31 +855,35 @@ def get_document():
 @app.route('/api/image/<img_hash>', methods=['GET'])
 def get_image(img_hash):
     cfg = get_config()
-    storage_dir = getattr(cfg, "image_storage_dir", None)
-    if not storage_dir:
-        return jsonify({"error": "Image storage is not configured"}), 404
-        
     import re
     if not re.match(r'^[a-f0-9]{64}$', img_hash):
         return jsonify({"error": "Invalid image hash"}), 400
-        
-    rel_path = f"{img_hash[:2]}/{img_hash[2:4]}/{img_hash[4:6]}/{img_hash}.webp"
-    target_path = (Path(storage_dir) / rel_path).resolve()
-    
-    if not target_path.exists() or not target_path.is_file():
-        return jsonify({"error": "Image not found"}), 404
-        
-    # Ensure it's strictly within the storage directory to prevent traversal
-    try:
-        target_path.relative_to(Path(storage_dir).resolve())
-    except ValueError:
-        return jsonify({"error": "Access denied"}), 403
 
-    return send_file(
-        str(target_path),
-        mimetype="image/webp",
-        as_attachment=False
-    )
+    rel_path = f"{img_hash[:2]}/{img_hash[2:4]}/{img_hash[4:6]}/{img_hash}.webp"
+    
+    # Check master config and all included configs for the image
+    configs_to_check = [cfg] + getattr(cfg, "included_configs", [])
+    
+    for c in configs_to_check:
+        storage_dir = getattr(c, "image_storage_dir", None)
+        if not storage_dir:
+            continue
+            
+        target_path = (Path(storage_dir) / rel_path).resolve()
+        
+        if target_path.exists() and target_path.is_file():
+            # Ensure it's strictly within the storage directory to prevent traversal
+            try:
+                target_path.relative_to(Path(storage_dir).resolve())
+                return send_file(
+                    str(target_path),
+                    mimetype="image/webp",
+                    as_attachment=False
+                )
+            except ValueError:
+                pass # Try other configs if traversal check fails
+                
+    return jsonify({"error": "Image not found"}), 404
 
 @app.route('/api/document/download', methods=['GET'])
 def download_document():

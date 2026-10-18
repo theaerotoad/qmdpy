@@ -338,7 +338,8 @@ class Config:
             child_cfg.efficient_pages = efficient_pages
             child_cfg.max_image_megapixels = max_image_megapixels
             child_cfg.image_compression_quality = image_compression_quality
-            child_cfg.image_storage_dir = image_storage_dir
+            # Do NOT overwrite child_cfg.image_storage_dir, as the child database
+            # already has its images stored in its own location.
             child_cfg.request_timeout = request_timeout
             child_cfg.embed_batch_size = embed_batch_size
             child_cfg.rerank_model = rerank_model
