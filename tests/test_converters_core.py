@@ -208,6 +208,7 @@ def test_pdf_embed_pages_injection(tmp_path, monkeypatch):
     class MockConfig:
         embed_pages = True
         embed_images = False
+        efficient_pages = True
         pdf_engine = "pymupdf"
         max_image_megapixels = 1.0
         image_compression_quality = 80
@@ -215,15 +216,26 @@ def test_pdf_embed_pages_injection(tmp_path, monkeypatch):
         
     pdf_path = tmp_path / "page_embed_test.pdf"
     doc = pymupdf.open()
-    page = doc.new_page()
-    page.insert_text((50, 50), "Testing page embedding markers")
+    page1 = doc.new_page()
+    page1.insert_text((50, 50), "Testing page embedding markers - text only")
+    
+    page2 = doc.new_page()
+    page2.insert_text((50, 50), "Testing page embedding markers - image")
+    page2.insert_image(pymupdf.Rect(100, 100, 200, 200), stream=b'fakeimage')
+
+    page3 = doc.new_page()
+    page3.insert_text((50, 50), "Testing page embedding markers - table")
+    # Injecting a simulated table by directly setting the find_tables result is tricky in pure PyMuPDF.
+    # We'll just add a drawing to trigger the visual detection logic.
+    page3.draw_rect(pymupdf.Rect(100, 100, 200, 200))
+
     doc.save(str(pdf_path))
     doc.close()
 
     mock_hash = "a" * 64
 
     def mock_process_images(image_inputs, config, errors_out=None):
-        return [f'<img src="qmd-img://{mock_hash}" alt="qmd-image" />']
+        return [f'<img src="qmd-img://{mock_hash}_{i}" alt="qmd-image" />' for i in range(len(image_inputs))]
 
     monkeypatch.setattr(pdf_mod, "_process_images_concurrently", mock_process_images)
     
@@ -240,10 +252,116 @@ def test_pdf_embed_pages_injection(tmp_path, monkeypatch):
         return fallback
     monkeypatch.setattr(pdf_mod, "_get_converter_fn", mock_get_converter_fn)
 
+    # Test with efficient_pages=True
     md = convert_to_markdown(pdf_path, config=MockConfig())
+    
+    # The text from all pages should be there
+    assert "Testing page embedding markers - text only" in md
+    assert "Testing page embedding markers - image" in md
+    assert "Testing page embedding markers - table" in md
 
-    assert "Testing page embedding markers" in md
-    assert f"<!-- qmd-page-img:{mock_hash} -->" in md
+    # Page 1 (text only) should NOT have an embedding marker
+    page1_chunk = md.split("Testing page embedding markers - image")[0]
+    assert "qmd-page-img" not in page1_chunk
+
+    # Page 2 and Page 3 should have embedding markers
+    assert f"<!-- qmd-page-img:{mock_hash}_0 -->" in md
+    assert f"<!-- qmd-page-img:{mock_hash}_1 -->" in md
+    
+    # Now test with efficient_pages=False (Brute-force)
+    config_brute = MockConfig()
+    config_brute.efficient_pages = False
+    md_brute = convert_to_markdown(pdf_path, config=config_brute)
+    
+    # All three pages should now have markers
+    assert f"<!-- qmd-page-img:{mock_hash}_0 -->" in md_brute
+    assert f"<!-- qmd-page-img:{mock_hash}_1 -->" in md_brute
+    assert f"<!-- qmd-page-img:{mock_hash}_2 -->" in md_brute
+
+
+def test_pdf_docling_efficient_pages_filtering(tmp_path, monkeypatch):
+    import pymupdf
+    from qmd.converters import convert_to_markdown
+    from qmd.converters import pdf as pdf_mod
+
+    # Force HAS_DOCLING to True for the test
+    monkeypatch.setattr(pdf_mod, "HAS_DOCLING", True)
+
+    class MockConfig:
+        embed_pages = True
+        embed_images = False
+        efficient_pages = True
+        pdf_engine = "docling"
+        docling_url = "http://fake-docling-url"
+        docling_api_key = "fake-key"
+        docling_model = "FakeDocling"
+        request_timeout = 120.0
+        max_image_megapixels = 1.0
+        image_compression_quality = 80
+        image_storage_dir = str(tmp_path)
+
+    class MockProv:
+        def __init__(self, page_no):
+            self.page_no = page_no
+
+    class MockItem:
+        def __init__(self, label, page_no):
+            self.label = label
+            self.prov = [MockProv(page_no)]
+
+    class MockDoclingDocument:
+        @classmethod
+        def load_from_doctags(cls, *args, **kwargs):
+            return cls()
+        
+        def export_to_markdown(self):
+            return "Page 1: text\n\nPage 2: chart\n\nPage 3: formula\n"
+        
+        def iterate_items(self):
+            yield MockItem("text", 1), None
+            yield MockItem("chart", 2), None
+            yield MockItem("formula", 3), None
+
+    class MockDocTagsDocument:
+        @classmethod
+        def from_doctags_and_image_pairs(cls, *args, **kwargs):
+            return cls()
+
+    monkeypatch.setattr(pdf_mod, "DoclingDocument", MockDoclingDocument, raising=False)
+    monkeypatch.setattr(pdf_mod, "DocTagsDocument", MockDocTagsDocument, raising=False)
+
+    pdf_path = tmp_path / "docling_embed_test.pdf"
+    doc = pymupdf.open()
+    doc.new_page() # Page 1
+    doc.new_page() # Page 2
+    doc.new_page() # Page 3
+    doc.save(str(pdf_path))
+    doc.close()
+
+    def mock_call_docling_model(img, api_url, api_key, model_name, timeout=120.0):
+        return "Fake docling extraction"
+    monkeypatch.setattr(pdf_mod, "_call_docling_model", mock_call_docling_model)
+
+    mock_hash = "d" * 64
+    def mock_process_images(image_inputs, config, errors_out=None):
+        return [f'<img src="qmd-img://{mock_hash}_{i}" alt="qmd-image" />' for i in range(len(image_inputs))]
+    monkeypatch.setattr(pdf_mod, "_process_images_concurrently", mock_process_images)
+
+    def mock_get_converter_fn(name, fallback):
+        if name == "_process_images_concurrently":
+            return mock_process_images
+        if name == "_is_image_processing_enabled":
+            return lambda c: getattr(c, "embed_pages", False)
+        return fallback
+    monkeypatch.setattr(pdf_mod, "_get_converter_fn", mock_get_converter_fn)
+
+    md = convert_to_markdown(pdf_path, config=MockConfig())
+    
+    # Since efficient_pages is True, and only pages 2 and 3 have visual items ("chart", "formula"),
+    # only two images should be processed and added.
+    assert f"<!-- qmd-page-img:{mock_hash}_0 -->" in md
+    assert f"<!-- qmd-page-img:{mock_hash}_1 -->" in md
+    assert f"<!-- qmd-page-img:{mock_hash}_2 -->" not in md
 
 
 def test_binary_file_rejection(tmp_path):

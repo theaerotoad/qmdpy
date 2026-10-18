@@ -47,6 +47,7 @@ def test_config_load_defaults(tmp_path):
     cfg = load_config(tmp_path / "missing.yml")
     assert isinstance(cfg, Config)
     assert cfg.collections == {}
+    assert cfg.efficient_pages is True
 
 def test_config_load_file(tmp_path):
     config_file = tmp_path / "config.yml"
@@ -62,6 +63,16 @@ collections:
     assert "my_notes" in cfg.collections
     assert cfg.collections["my_notes"].path == "/tmp/notes"
     assert cfg.collections["my_notes"].glob == "*.txt"
+
+def test_config_load_efficient_pages(tmp_path, monkeypatch):
+    config_file = tmp_path / "config.yml"
+    config_file.write_text("efficient_pages: false\n")
+    cfg = load_config(config_file)
+    assert cfg.efficient_pages is False
+
+    monkeypatch.setenv("QMD_EFFICIENT_PAGES", "0")
+    cfg2 = load_config(config_file)
+    assert cfg2.efficient_pages is False
 
 # --- DB Tests ---
 
