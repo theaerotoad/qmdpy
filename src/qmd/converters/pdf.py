@@ -616,7 +616,7 @@ def _convert_pdf(path: Path, config=None, errors_out: Optional[List[dict]] = Non
                         match = re.search(r'qmd-img://([a-f0-9]{64}(?:_[0-9]+)?)', img_tag)
                         if match:
                             h = match.group(1)
-                            md_pages[page_idx] = f"<!-- qmd-page-img:{h} -->\n\n" + md_pages[page_idx]
+                            md_pages[page_idx] = md_pages[page_idx].strip() + f"\n\n<!-- qmd-page-img:{h} -->"
         except Exception as e:
             if verbose:
                 print(f"[Verbose PDF] Page embedding failed: {e}", flush=True)
