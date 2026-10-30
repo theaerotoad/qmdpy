@@ -21,6 +21,20 @@ class InspectionMixin:
         cursor = self.conn.cursor()
         coll_sql, coll_params = _build_collection_sql_filter("collection", collection)
 
+        # Robust fallback for collection name mismatch (renaming or case differences)
+        if collection and coll_sql:
+            cursor.execute(f"SELECT COUNT(*) FROM documents WHERE 1=1 {coll_sql}", tuple(coll_params))
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("SELECT DISTINCT collection FROM documents")
+                db_colls = [r[0] for r in cursor.fetchall() if r[0]]
+                if len(db_colls) == 1:
+                    coll_sql, coll_params = _build_collection_sql_filter("collection", db_colls[0])
+                elif isinstance(collection, str):
+                    for c in db_colls:
+                        if c.lower() == collection.lower():
+                            coll_sql, coll_params = _build_collection_sql_filter("collection", c)
+                            break
+
         if collection and coll_sql:
             cursor.execute(f"SELECT COUNT(*), COUNT(DISTINCT collection) FROM documents WHERE 1=1 {coll_sql}", tuple(coll_params))
             row = cursor.fetchone()

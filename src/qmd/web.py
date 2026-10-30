@@ -191,7 +191,20 @@ def index():
                 target_store = getattr(store, "collection_store_map", {}).get(k, store)
                 if target_store and target_store.conn:
                     cursor = target_store.conn.cursor()
-                    cursor.execute("SELECT path FROM documents WHERE collection = ?", (k,))
+                    
+                    cursor.execute("SELECT DISTINCT collection FROM documents")
+                    db_colls = [r[0] for r in cursor.fetchall() if r[0]]
+                    matched_coll = k
+                    if k not in db_colls:
+                        for c in db_colls:
+                            if c.lower() == k.lower():
+                                matched_coll = c
+                                break
+                        else:
+                            if len(db_colls) == 1:
+                                matched_coll = db_colls[0]
+
+                    cursor.execute("SELECT path FROM documents WHERE collection = ?", (matched_coll,))
                     rows = cursor.fetchall()
                     doc_count = len(rows)
                     
@@ -207,7 +220,7 @@ def index():
                     ext_list = [ext for ext, _ in counts.most_common(4) if ext]
                     
                     try:
-                        stats = target_store.get_stats(collection=k)
+                        stats = target_store.get_stats(collection=matched_coll)
                         if isinstance(stats, dict):
                             chunk_count = stats.get('total_chunks', stats.get('chunks', chunk_count))
                     except Exception:
@@ -215,7 +228,7 @@ def index():
                         
                     if chunk_count == 0:
                         try:
-                            cursor.execute("SELECT COUNT(*) FROM content WHERE hash IN (SELECT hash FROM documents WHERE collection = ?)", (k,))
+                            cursor.execute("SELECT COUNT(*) FROM content WHERE hash IN (SELECT hash FROM documents WHERE collection = ?)", (matched_coll,))
                             row = cursor.fetchone()
                             if row: chunk_count = row[0]
                         except Exception:
