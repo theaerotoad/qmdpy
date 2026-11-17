@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Optional
 import numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer
@@ -16,10 +17,11 @@ class EmbeddingGemmaONNX:
     def __init__(
         self,
         model_dir: str = "./model",
-        onnx_path: str = None,
+        onnx_path: Optional[str] = None,
         max_length: int = 2048,
         use_gpu: bool = False,
         normalize_embeddings: bool = True,
+        output_name: Optional[str] = None,
     ):
         self.model_dir = model_dir
         self.max_length = max_length
@@ -93,12 +95,24 @@ class EmbeddingGemmaONNX:
         self.input_names = [inp.name for inp in self.session.get_inputs()]
         self.output_names = [out.name for out in self.session.get_outputs()]
 
-        # Prefer pre-pooled/projected sentence_embedding output when exported by the graph
+        # Select explicit output tensor if requested; otherwise prefer sentence_embedding
         self.output_index = 0
-        for idx, out_name in enumerate(self.output_names):
-            if out_name.lower() in ("sentence_embedding", "sentence_embeddings", "pooler_output"):
-                self.output_index = idx
-                break
+        if output_name:
+            matched = False
+            for idx, out_name in enumerate(self.output_names):
+                if out_name.lower() == output_name.strip().lower():
+                    self.output_index = idx
+                    matched = True
+                    break
+            if not matched:
+                raise ValueError(
+                    f"Requested ONNX output '{output_name}' not found in model outputs: {self.output_names}"
+                )
+        else:
+            for idx, out_name in enumerate(self.output_names):
+                if out_name.lower() in ("sentence_embedding", "sentence_embeddings", "pooler_output"):
+                    self.output_index = idx
+                    break
         
         # Log actual selected provider
         active_providers = self.session.get_providers()
