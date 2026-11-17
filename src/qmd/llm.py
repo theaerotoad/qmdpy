@@ -2,6 +2,8 @@ import os
 import re
 import json
 import httpx
+import threading
+import math
 from typing import List, Dict, Optional
 from tqdm import tqdm
 
@@ -177,8 +179,35 @@ class LLMClient:
         multimodal_api_key: Optional[str] = None,
         multimodal_model: Optional[str] = None,
         multimodal_prompt: Optional[str] = None,
-        timeout: float = 600.0
+        timeout: float = 600.0,
+        embed_provider: str = "remote",
+        rerank_provider: str = "remote",
+        embed_model_dir: Optional[str] = None,
+        embed_onnx_path: Optional[str] = None,
+        embed_max_length: int = 2048,
+        rerank_model_dir: Optional[str] = None,
+        rerank_onnx_path: Optional[str] = None,
+        rerank_max_length: int = 8192,
+        rerank_batch_size: int = 32,
+        onnx_use_gpu: bool = False
     ):
+        # Local ONNX config
+        self.embed_provider = embed_provider
+        self.rerank_provider = rerank_provider
+        self.embed_model_dir = embed_model_dir
+        self.embed_onnx_path = embed_onnx_path
+        self.embed_max_length = embed_max_length
+        self.rerank_model_dir = rerank_model_dir
+        self.rerank_onnx_path = rerank_onnx_path
+        self.rerank_max_length = rerank_max_length
+        self.rerank_batch_size = rerank_batch_size
+        self.onnx_use_gpu = onnx_use_gpu
+        
+        self._local_embedder = None
+        self._local_reranker = None
+        self._local_embedder_lock = threading.Lock()
+        self._local_reranker_lock = threading.Lock()
+
         # Must be provided via config/env if used.
         self.base_url = base_url or os.environ.get("QMD_LLM_URL")
         self.api_key = api_key or os.environ.get("QMD_LLM_API_KEY", "sk-no-key-required")
@@ -236,6 +265,38 @@ class LLMClient:
                 headers={"Authorization": f"Bearer {self.multimodal_api_key}"},
                 timeout=httpx.Timeout(self.timeout, connect=10.0)
             )
+
+    def _get_local_embedder(self):
+        if self._local_embedder is None:
+            with self._local_embedder_lock:
+                if self._local_embedder is None:
+                    try:
+                        from qmd.onnx import EmbeddingGemmaONNX
+                    except ImportError as e:
+                        raise RuntimeError("ONNX packages are not installed. Please install qmdpy[onnx] or requirements_onnx.txt to use the 'onnx' provider.") from e
+                    self._local_embedder = EmbeddingGemmaONNX(
+                        model_dir=self.embed_model_dir,
+                        onnx_path=self.embed_onnx_path,
+                        max_length=self.embed_max_length,
+                        use_gpu=self.onnx_use_gpu
+                    )
+        return self._local_embedder
+
+    def _get_local_reranker(self):
+        if self._local_reranker is None:
+            with self._local_reranker_lock:
+                if self._local_reranker is None:
+                    try:
+                        from qmd.onnx import EttinONNXReranker
+                    except ImportError as e:
+                        raise RuntimeError("ONNX packages are not installed. Please install qmdpy[onnx] or requirements_onnx.txt to use the 'onnx' provider.") from e
+                    self._local_reranker = EttinONNXReranker(
+                        model_dir=self.rerank_model_dir,
+                        onnx_path=self.rerank_onnx_path,
+                        max_length=self.rerank_max_length,
+                        use_gpu=self.onnx_use_gpu
+                    )
+        return self._local_reranker
 
     def format_doc_for_embedding(self, title: str, text: str) -> str:
         """Formats document text according to Nomic/Gemma rules."""
@@ -301,10 +362,30 @@ class LLMClient:
         desc: str = "Embedding chunks"
     ) -> List[List[float]]:
         """
-        Calls /v1/embeddings in batches to prevent timeouts on slow hardware or large files.
+        Calls /v1/embeddings or local ONNX engine in batches.
         """
         if not texts:
             return []
+
+        if self.embed_provider == "onnx":
+            engine = self._get_local_embedder()
+            all_embeddings, _ = engine.embed(texts, batch_size=batch_size)
+            
+            if len(all_embeddings) != len(texts):
+                raise RuntimeError(f"Local embedder returned {len(all_embeddings)} vectors for {len(texts)} inputs.")
+            if not all_embeddings:
+                return []
+            if not all_embeddings[0]:
+                raise RuntimeError("Local embedder returned empty vector dimension.")
+                
+            dim = len(all_embeddings[0])
+            for v in all_embeddings:
+                if len(v) != dim:
+                    raise RuntimeError(f"Local embedder returned inconsistent vector dimensions ({len(v)} vs {dim}).")
+                for val in v:
+                    if not math.isfinite(val):
+                        raise RuntimeError("Local embedder returned non-finite numeric values.")
+            return all_embeddings
 
         batches = [texts[i:i + batch_size] for i in range(0, len(texts), batch_size)]
         all_embeddings = []
@@ -332,11 +413,23 @@ class LLMClient:
 
     def rerank(self, query: str, documents: List[str]) -> List[Dict]:
         """
-        Calls custom /v1/rerank endpoint.
-        Normalizes output to ensure 'score' key exists.
+        Calls custom /v1/rerank endpoint or local ONNX engine.
+        Normalizes output to ensure 'score' key exists and sorts descending.
         """
         if not documents:
             return []
+
+        if self.rerank_provider == "onnx":
+            engine = self._get_local_reranker()
+            pairs = [(query, doc) for doc in documents]
+            scores, _ = engine.predict(pairs, batch_size=self.rerank_batch_size)
+            
+            if len(scores) != len(documents):
+                raise RuntimeError(f"Local reranker returned {len(scores)} scores for {len(documents)} docs.")
+            
+            results = [{"index": i, "score": float(score)} for i, score in enumerate(scores)]
+            results.sort(key=lambda x: x["score"], reverse=True)
+            return results
 
         try:
             response = self.rerank_client.post("/v1/rerank", json={

@@ -944,6 +944,51 @@ def test_recompute_embeddings(db_conn, temp_db_path, tmp_path, mock_llm_client):
     assert initial_vectors[0][1] != new_vectors[0][1]
 
 
+def test_local_indexing_flow(db_conn, temp_db_path, tmp_path):
+    """Test full document indexing pipeline with a local ONNX embedder fake to guarantee no HTTP."""
+    notes_dir = tmp_path / "onnx_notes"
+    notes_dir.mkdir()
+    config = Config(
+        collections={"test": CollectionConfig(path=str(notes_dir))},
+        db_path=str(temp_db_path),
+        embed_provider="onnx",
+        embed_model_dir="dummy"
+    )
+    
+    store = Store(config, connection=db_conn)
+    
+    # Inject deterministic fake local engine
+    class FakeEngine:
+        def embed(self, texts, batch_size):
+            return [[0.5] * 768 for _ in texts], 10
+            
+    store.llm._local_embedder = FakeEngine()
+    
+    # Assert NO httpx calls happen
+    with patch("qmd.llm.httpx.Client.post") as mock_post:
+        file1 = notes_dir / "onnx_doc.md"
+        file1.write_text("ONNX embedding test content.")
+        store.index_collection("test", config.collections["test"])
+        
+        mock_post.assert_not_called()
+        
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT count(*) FROM vectors")
+    assert cursor.fetchone()[0] == 1
+
+    # Test recomputation through local path
+    store.llm._local_embedder.embed = lambda t, b: ([[0.9] * 768 for _ in t], 10)
+    with patch("qmd.llm.httpx.Client.post") as mock_post:
+        store.recompute_embeddings(collection="test")
+        mock_post.assert_not_called()
+
+    cursor.execute("SELECT embedding FROM vectors")
+    import struct
+    blob = cursor.fetchone()[0]
+    unpacked = struct.unpack(f"{768}f", blob)
+    assert abs(unpacked[0] - 0.9) < 1e-5
+
+
 def test_indexing_dirsummary_virtual_files(db_conn, temp_db_path, tmp_path, mock_llm_client):
     """Test that virtual .dirsummary files are generated when dirlists=True and ignored when False."""
     notes_dir = tmp_path / "dir_notes"

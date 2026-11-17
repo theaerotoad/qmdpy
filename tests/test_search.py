@@ -649,6 +649,66 @@ def test_image_relevance_boosting(db_conn, monkeypatch):
     assert res_img.score > res_no.score
 
 
+def test_local_search_flow(db_conn, monkeypatch):
+    """Test full search pipeline with local ONNX embedder and reranker fakes to guarantee no HTTP."""
+    config = Config(db_path=":memory:", embed_provider="onnx", rerank_provider="onnx")
+    store = Store(config, connection=db_conn)
+    
+    class FakeEmbedEngine:
+        def embed(self, texts, batch_size):
+            # Return vector query
+            return [[0.2] * 768 for _ in texts], 10
+            
+    class FakeRerankEngine:
+        def predict(self, pairs, batch_size):
+            # Give higher score to doc 2 (index 1) which has "better" text
+            scores = []
+            for q, d in pairs:
+                if "better" in d:
+                    scores.append(0.9)
+                else:
+                    scores.append(0.1)
+            return scores, 10
+            
+    store.llm._local_embedder = FakeEmbedEngine()
+    store.llm._local_reranker = FakeRerankEngine()
+    
+    # Setup DB with two items
+    cursor = db_conn.cursor()
+    from qmd.db import ensure_vector_table
+    ensure_vector_table(db_conn, dim=768, quant_type="none")
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'ordinary text', 'now')")
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'better text', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'doc1.md', 'D1', 'h1', 'now')")
+    cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'doc2.md', 'D2', 'h2', 'now')")
+    
+    from qmd.utils import compress_text
+    from qmd.store import encode_vector
+    dummy_vec = encode_vector([0.2] * 768)
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (1, ?)", (dummy_vec,))
+    cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (2, ?)", (dummy_vec,))
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (1, 'h1', 0, ?)", (compress_text("ordinary text"),))
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (2, 'h2', 0, ?)", (compress_text("better text"),))
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (1, 'c', 'doc1.md', 'D1', 'ordinary text')")
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (2, 'c', 'doc2.md', 'D2', 'better text')")
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (1, 'c', 'doc1.md', 'D1', 'ordinary text', '')")
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (2, 'c', 'doc2.md', 'D2', 'better text', '')")
+    db_conn.commit()
+    
+    store.build_usearch_index()
+    
+    from unittest.mock import patch
+    with patch("qmd.llm.httpx.Client.post") as mock_post:
+        # hybrid_search calls embed_batch for query, then rerank
+        results = store.hybrid_search("text", rerank=True)
+        mock_post.assert_not_called()
+        
+        assert len(results) == 2
+        # D2 should be reranked to top
+        assert results[0].path == "doc2.md"
+        assert results[1].path == "doc1.md"
+
+
 def test_search_dirlist_exclusion(db_conn, monkeypatch):
     """Verify that .dirsummary files are excluded from FTS and VEC searches unless dirlist=True."""
     from qmd.utils import compress_text

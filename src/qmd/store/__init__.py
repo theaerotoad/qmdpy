@@ -104,7 +104,17 @@ class Store(ImageIndexMixin, VectorIndexMixin, InspectionMixin, IndexingMixin, R
             embed_model=config.embed_model,
             rerank_model=config.rerank_model,
             generate_model=config.generate_model,
-            timeout=getattr(config, "request_timeout", 120.0)
+            timeout=getattr(config, "request_timeout", 120.0),
+            embed_provider=getattr(config, "embed_provider", "remote"),
+            rerank_provider=getattr(config, "rerank_provider", "remote"),
+            embed_model_dir=getattr(config, "embed_model_dir", None),
+            embed_onnx_path=getattr(config, "embed_onnx_path", None),
+            embed_max_length=getattr(config, "embed_max_length", 2048),
+            rerank_model_dir=getattr(config, "rerank_model_dir", None),
+            rerank_onnx_path=getattr(config, "rerank_onnx_path", None),
+            rerank_max_length=getattr(config, "rerank_max_length", 8192),
+            rerank_batch_size=getattr(config, "rerank_batch_size", 32),
+            onnx_use_gpu=getattr(config, "onnx_use_gpu", False)
         )
 
         if getattr(config, "included_configs", None):

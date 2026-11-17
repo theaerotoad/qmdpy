@@ -99,3 +99,69 @@ def test_multimodal_process_image_payload_and_strict_prompt(mock_httpx):
     assert user_content[0]["type"] == "text"
     assert user_content[1]["type"] == "image_url"
     assert user_content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+def test_local_embedder_logic():
+    client = LLMClient(embed_provider="onnx", embed_model_dir="dummy")
+    
+    # Mock engine
+    class FakeEngine:
+        def embed(self, texts, batch_size):
+            # return dim=3 vectors
+            return [[0.1, 0.2, 0.3] for _ in texts], 10
+            
+    fake_engine = FakeEngine()
+    client._local_embedder = fake_engine
+    
+    res = client.embed_batch(["A", "B"])
+    assert len(res) == 2
+    assert len(res[0]) == 3
+    
+    # Validation checks
+    fake_engine.embed = lambda t, b: ([[0.1, 0.2, 0.3]], 10) # Wrong count
+    with pytest.raises(RuntimeError, match="returned 1 vectors for 2 inputs"):
+        client.embed_batch(["A", "B"])
+        
+    fake_engine.embed = lambda t, b: ([[], []], 10) # Empty dim
+    with pytest.raises(RuntimeError, match="empty vector dimension"):
+        client.embed_batch(["A", "B"])
+        
+    fake_engine.embed = lambda t, b: ([[0.1, 0.2], [0.1, 0.2, 0.3]], 10) # Inconsistent
+    with pytest.raises(RuntimeError, match="inconsistent vector dimensions"):
+        client.embed_batch(["A", "B"])
+        
+    import math
+    fake_engine.embed = lambda t, b: ([[0.1, math.inf, 0.3], [0.1, 0.2, 0.3]], 10) # Inf
+    with pytest.raises(RuntimeError, match="non-finite"):
+        client.embed_batch(["A", "B"])
+
+def test_local_reranker_logic():
+    client = LLMClient(rerank_provider="onnx", rerank_model_dir="dummy")
+    
+    class FakeRerankEngine:
+        def predict(self, pairs, batch_size):
+            # Make the second doc score higher to test sorting
+            return [0.1, 0.9], 10
+            
+    fake_engine = FakeRerankEngine()
+    client._local_reranker = fake_engine
+    
+    res = client.rerank("q", ["d1", "d2"])
+    assert len(res) == 2
+    assert res[0]["index"] == 1
+    assert res[0]["score"] == 0.9
+    assert res[1]["index"] == 0
+    assert res[1]["score"] == 0.1
+
+    fake_engine.predict = lambda p, b: ([0.1], 10)
+    with pytest.raises(RuntimeError, match="returned 1 scores for 2 docs"):
+        client.rerank("q", ["d1", "d2"])
+
+def test_lazy_initialization(monkeypatch):
+    client = LLMClient(embed_provider="onnx", rerank_provider="onnx")
+    
+    # Test no onnx raises error safely
+    with monkeypatch.context() as m:
+        import sys
+        m.setitem(sys.modules, "qmd.onnx", None)
+        with pytest.raises(RuntimeError, match="ONNX packages are not installed"):
+            client._get_local_embedder()
