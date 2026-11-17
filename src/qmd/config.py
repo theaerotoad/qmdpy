@@ -36,6 +36,22 @@ class Config:
     request_timeout: float = 120.0
     embed_batch_size: int = 16
     
+    # Provider Selection
+    embed_provider: str = "remote"  # "remote" or "onnx"
+    rerank_provider: str = "remote" # "remote" or "onnx"
+
+    # Local ONNX Settings
+    embed_model_dir: Optional[str] = None
+    embed_onnx_path: Optional[str] = None
+    embed_max_length: int = 2048
+
+    rerank_model_dir: Optional[str] = None
+    rerank_onnx_path: Optional[str] = None
+    rerank_max_length: int = 8192
+    rerank_batch_size: int = 32
+
+    onnx_use_gpu: bool = False
+    
     # Vision & Multimodal Settings
     vision_url: Optional[str] = None
     vision_api_key: Optional[str] = None
@@ -225,6 +241,42 @@ class Config:
         batch_size_env = os.environ.get("QMD_EMBED_BATCH_SIZE")
         embed_batch_size = int(batch_size_env) if batch_size_env else int(data.get("embed_batch_size", 16))
 
+        def _parse_provider(val: Optional[str]) -> str:
+            if not val:
+                return "remote"
+            val = val.strip().lower()
+            if val in ("http", "remote"):
+                return "remote"
+            if val == "onnx":
+                return "onnx"
+            raise ValueError(f"Unknown provider '{val}'. Valid options are 'remote' and 'onnx'.")
+
+        embed_provider = _parse_provider(os.environ.get("QMD_EMBED_PROVIDER") or data.get("embed_provider"))
+        rerank_provider = _parse_provider(os.environ.get("QMD_RERANK_PROVIDER") or data.get("rerank_provider"))
+        
+        def _resolve_path(raw_path: Optional[str]) -> Optional[str]:
+            if not raw_path:
+                return None
+            p = Path(raw_path).expanduser()
+            if not p.is_absolute() and config_path:
+                return str((config_path.parent / p).resolve())
+            return str(p.resolve())
+
+        embed_model_dir = _resolve_path(os.environ.get("QMD_EMBED_MODEL_DIR") or data.get("embed_model_dir"))
+        embed_onnx_path = _resolve_path(os.environ.get("QMD_EMBED_ONNX_PATH") or data.get("embed_onnx_path"))
+        rerank_model_dir = _resolve_path(os.environ.get("QMD_RERANK_MODEL_DIR") or data.get("rerank_model_dir"))
+        rerank_onnx_path = _resolve_path(os.environ.get("QMD_RERANK_ONNX_PATH") or data.get("rerank_onnx_path"))
+
+        embed_max_length = int(os.environ.get("QMD_EMBED_MAX_LENGTH") or data.get("embed_max_length", 2048))
+        rerank_max_length = int(os.environ.get("QMD_RERANK_MAX_LENGTH") or data.get("rerank_max_length", 8192))
+        rerank_batch_size = int(os.environ.get("QMD_RERANK_BATCH_SIZE") or data.get("rerank_batch_size", 32))
+        
+        onnx_use_gpu_raw = os.environ.get("QMD_ONNX_USE_GPU") or data.get("onnx_use_gpu", False)
+        if isinstance(onnx_use_gpu_raw, str):
+            onnx_use_gpu = onnx_use_gpu_raw.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            onnx_use_gpu = bool(onnx_use_gpu_raw)
+
         allow_open_env = os.environ.get("QMD_ALLOW_OPEN_FILE") or os.environ.get("QMD_ALLOW_OPEN")
         if allow_open_env is not None:
             allow_open_file = allow_open_env.strip().lower() in ("1", "true", "yes", "on")
@@ -346,6 +398,17 @@ class Config:
             child_cfg.generate_model = generate_model
             child_cfg.allow_open_file = allow_open_file
 
+            child_cfg.embed_provider = embed_provider
+            child_cfg.rerank_provider = rerank_provider
+            child_cfg.embed_model_dir = embed_model_dir
+            child_cfg.embed_onnx_path = embed_onnx_path
+            child_cfg.embed_max_length = embed_max_length
+            child_cfg.rerank_model_dir = rerank_model_dir
+            child_cfg.rerank_onnx_path = rerank_onnx_path
+            child_cfg.rerank_max_length = rerank_max_length
+            child_cfg.rerank_batch_size = rerank_batch_size
+            child_cfg.onnx_use_gpu = onnx_use_gpu
+
             included_configs.append(child_cfg)
 
         # Merge included collections into overall collections view
@@ -391,6 +454,16 @@ class Config:
             rerank_model=rerank_model,
             generate_model=generate_model,
             vector_quantization=vector_quantization,
+            embed_provider=embed_provider,
+            rerank_provider=rerank_provider,
+            embed_model_dir=embed_model_dir,
+            embed_onnx_path=embed_onnx_path,
+            embed_max_length=embed_max_length,
+            rerank_model_dir=rerank_model_dir,
+            rerank_onnx_path=rerank_onnx_path,
+            rerank_max_length=rerank_max_length,
+            rerank_batch_size=rerank_batch_size,
+            onnx_use_gpu=onnx_use_gpu,
             target_chunk_size=data.get('target_chunk_size', 1024),
             max_chunk_size=data.get('max_chunk_size', 2048),
             strip_links=data.get('strip_links', True),

@@ -74,6 +74,82 @@ def test_config_load_efficient_pages(tmp_path, monkeypatch):
     cfg2 = load_config(config_file)
     assert cfg2.efficient_pages is False
 
+def test_config_onnx_providers_defaults(tmp_path):
+    cfg = load_config(tmp_path / "missing.yml")
+    assert cfg.embed_provider == "remote"
+    assert cfg.rerank_provider == "remote"
+    assert cfg.onnx_use_gpu is False
+
+def test_config_onnx_providers_mixed(tmp_path):
+    config_file = tmp_path / "config.yml"
+    config_file.write_text("""
+embed_provider: onnx
+rerank_provider: http
+embed_model_dir: models/embed
+embed_onnx_path: models/embed/model.onnx
+onnx_use_gpu: true
+""")
+    cfg = load_config(config_file)
+    assert cfg.embed_provider == "onnx"
+    assert cfg.rerank_provider == "remote"  # http normalized to remote
+    assert cfg.onnx_use_gpu is True
+    # Test path resolution relative to config
+    assert cfg.embed_model_dir == str((tmp_path / "models/embed").resolve())
+    assert cfg.embed_onnx_path == str((tmp_path / "models/embed/model.onnx").resolve())
+
+def test_config_onnx_providers_env_override(tmp_path, monkeypatch):
+    config_file = tmp_path / "config.yml"
+    config_file.write_text("""
+embed_provider: remote
+rerank_provider: remote
+onnx_use_gpu: false
+""")
+    monkeypatch.setenv("QMD_EMBED_PROVIDER", "onnx")
+    monkeypatch.setenv("QMD_RERANK_PROVIDER", "onnx")
+    monkeypatch.setenv("QMD_EMBED_MODEL_DIR", "~/qmd_models/embed")
+    monkeypatch.setenv("QMD_ONNX_USE_GPU", "1")
+    
+    cfg = load_config(config_file)
+    assert cfg.embed_provider == "onnx"
+    assert cfg.rerank_provider == "onnx"
+    assert cfg.onnx_use_gpu is True
+    assert cfg.embed_model_dir == str(Path("~/qmd_models/embed").expanduser().resolve())
+
+def test_config_invalid_provider(tmp_path):
+    config_file = tmp_path / "config.yml"
+    config_file.write_text("embed_provider: unknown\n")
+    with pytest.raises(ValueError, match="Unknown provider 'unknown'"):
+        load_config(config_file)
+        
+def test_config_load_onnx_without_imports(tmp_path, monkeypatch):
+    import sys
+    monkeypatch.setitem(sys.modules, 'onnxruntime', None)
+    monkeypatch.setitem(sys.modules, 'tokenizers', None)
+    monkeypatch.setitem(sys.modules, 'safetensors', None)
+    
+    config_file = tmp_path / "config.yml"
+    config_file.write_text("embed_provider: onnx\nrerank_provider: onnx\n")
+    cfg = load_config(config_file)
+    assert cfg.embed_provider == "onnx"
+    assert cfg.rerank_provider == "onnx"
+
+def test_config_onnx_propagate_includes(tmp_path):
+    child_yaml = tmp_path / "child.yml"
+    child_yaml.write_text("db_path: ./child.db\nembed_model: 'EmbeddingGemma 300m'\n")
+    master_yaml = tmp_path / "master.yml"
+    master_yaml.write_text(f"""
+embed_model: 'EmbeddingGemma 300m'
+include: ["{child_yaml.name}"]
+embed_provider: onnx
+embed_model_dir: ./master_models
+""")
+    cfg = load_config(master_yaml)
+    assert cfg.is_federated is True
+    assert len(cfg.included_configs) == 1
+    child_cfg = cfg.included_configs[0]
+    assert child_cfg.embed_provider == "onnx"
+    assert child_cfg.embed_model_dir == str((tmp_path / "master_models").resolve())
+
 # --- DB Tests ---
 
 def test_db_init(db_conn):

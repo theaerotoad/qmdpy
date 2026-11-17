@@ -11,6 +11,19 @@ llm_url: "http://127.0.0.1:9888" # Default: http://127.0.0.1:8888
 # rerank_url: "http://127.0.0.1:8890"    # Separate URL for reranking
 # rerank_api_key: "sk-..."               # API key for reranker endpoint
 
+# --- Optional Local ONNX Inference ---
+# embed_provider: onnx       # remote (default) or onnx
+# rerank_provider: onnx      # remote (default) or onnx
+# embed_model_dir: "~/.local/share/qmd/models/embeddinggemma-300m"
+# embed_onnx_path: null      # optional explicit file; otherwise auto-discover
+# embed_max_length: 2048
+# embed_batch_size: 16
+# rerank_model_dir: "~/.local/share/qmd/models/ettin-reranker-150m-v1"
+# rerank_onnx_path: null     # optional explicit file; otherwise auto-discover
+# rerank_max_length: 8192
+# rerank_batch_size: 32
+# onnx_use_gpu: false        # use CUDAExecutionProvider when installed/available
+
 # --- PDF Processing Engine ---
 # pdf_engine: "pymupdf"                  # "pymupdf" (default) or "docling" (vision/layout fallback)
 # docling_url: "http://127.0.0.1:9888"   # Uses llm_url if not specified
