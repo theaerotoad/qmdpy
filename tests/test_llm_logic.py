@@ -157,11 +157,89 @@ def test_local_reranker_logic():
         client.rerank("q", ["d1", "d2"])
 
 def test_lazy_initialization(monkeypatch):
-    client = LLMClient(embed_provider="onnx", rerank_provider="onnx")
-    
-    # Test no onnx raises error safely
+    import sys
+    import types
+
+    client = LLMClient(
+        embed_provider="onnx",
+        rerank_provider="onnx",
+        embed_model_dir="/tmp/embed",
+        rerank_model_dir="/tmp/rerank",
+    )
+
+    # Empty inputs should not trigger model loading
+    assert client.embed_batch([]) == []
+    assert client.rerank("query", []) == []
+    assert client._local_embedder is None
+    assert client._local_reranker is None
+
+    # Missing optional ONNX packages should raise an actionable error
     with monkeypatch.context() as m:
-        import sys
         m.setitem(sys.modules, "qmd.onnx", None)
         with pytest.raises(RuntimeError, match="ONNX packages are not installed"):
             client._get_local_embedder()
+
+    # Valid qmd.onnx module constructs each engine lazily once across multiple calls
+    embed_inits = []
+    rerank_inits = []
+
+    class StubEmbedder:
+        def __init__(self, **kwargs):
+            embed_inits.append(kwargs)
+
+        def embed(self, texts, batch_size):
+            return [[0.5, 0.5] for _ in texts], len(texts)
+
+    class StubReranker:
+        def __init__(self, **kwargs):
+            rerank_inits.append(kwargs)
+
+        def predict(self, pairs, batch_size):
+            return [0.2 + 0.1 * i for i in range(len(pairs))], len(pairs)
+
+    fake_onnx_mod = types.ModuleType("qmd.onnx")
+    fake_onnx_mod.EmbeddingGemmaONNX = StubEmbedder
+    fake_onnx_mod.EttinONNXReranker = StubReranker
+
+    with monkeypatch.context() as m:
+        m.setitem(sys.modules, "qmd.onnx", fake_onnx_mod)
+        assert client.embed_batch(["hello"], batch_size=4) == [[0.5, 0.5]]
+        assert client.embed_batch(["world"], batch_size=4) == [[0.5, 0.5]]
+        assert len(embed_inits) == 1
+
+        ranked_1 = client.rerank("q", ["a", "b"])
+        ranked_2 = client.rerank("q", ["c", "d"])
+        assert [r["index"] for r in ranked_1] == [1, 0]
+        assert [r["index"] for r in ranked_2] == [1, 0]
+        assert len(rerank_inits) == 1
+
+
+def test_mixed_provider_modes_no_http_for_local():
+    """Verify local embedding never triggers HTTP while remote reranking uses HTTP."""
+    client = LLMClient(
+        embed_provider="onnx",
+        rerank_provider="remote",
+        rerank_url="http://127.0.0.1:9999",
+    )
+
+    class FakeEmbedEngine:
+        def embed(self, texts, batch_size):
+            return [[1.0, 0.0] for _ in texts], 5
+
+    client._local_embedder = FakeEmbedEngine()
+
+    mock_rerank_resp = MagicMock()
+    mock_rerank_resp.json.return_value = {
+        "results": [{"index": 1, "relevance_score": 0.88}, {"index": 0, "relevance_score": 0.12}]
+    }
+
+    with patch.object(client.embed_client, "post") as mock_embed_post, \
+         patch.object(client.rerank_client, "post", return_value=mock_rerank_resp) as mock_rerank_post:
+        vecs = client.embed_batch(["doc one"])
+        assert vecs == [[1.0, 0.0]]
+        mock_embed_post.assert_not_called()
+
+        reranked = client.rerank("query", ["doc one", "doc two"])
+        mock_rerank_post.assert_called_once()
+        assert reranked[0]["index"] == 1
+        assert reranked[0]["score"] == 0.88
