@@ -977,7 +977,7 @@ def test_local_indexing_flow(db_conn, temp_db_path, tmp_path):
     assert cursor.fetchone()[0] == 1
 
     # Test recomputation through local path
-    store.llm._local_embedder.embed = lambda t, b: ([[0.9] * 768 for _ in t], 10)
+    store.llm._local_embedder.embed = lambda t, batch_size=16: ([[0.9] * 768 for _ in t], 10)
     with patch("qmd.llm.httpx.Client.post") as mock_post:
         store.recompute_embeddings(collection="test")
         mock_post.assert_not_called()

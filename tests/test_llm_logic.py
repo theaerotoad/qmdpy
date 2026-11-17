@@ -117,20 +117,20 @@ def test_local_embedder_logic():
     assert len(res[0]) == 3
     
     # Validation checks
-    fake_engine.embed = lambda t, b: ([[0.1, 0.2, 0.3]], 10) # Wrong count
+    fake_engine.embed = lambda t, batch_size=16: ([[0.1, 0.2, 0.3]], 10) # Wrong count
     with pytest.raises(RuntimeError, match="returned 1 vectors for 2 inputs"):
         client.embed_batch(["A", "B"])
         
-    fake_engine.embed = lambda t, b: ([[], []], 10) # Empty dim
+    fake_engine.embed = lambda t, batch_size=16: ([[], []], 10) # Empty dim
     with pytest.raises(RuntimeError, match="empty vector dimension"):
         client.embed_batch(["A", "B"])
         
-    fake_engine.embed = lambda t, b: ([[0.1, 0.2], [0.1, 0.2, 0.3]], 10) # Inconsistent
+    fake_engine.embed = lambda t, batch_size=16: ([[0.1, 0.2], [0.1, 0.2, 0.3]], 10) # Inconsistent
     with pytest.raises(RuntimeError, match="inconsistent vector dimensions"):
         client.embed_batch(["A", "B"])
         
     import math
-    fake_engine.embed = lambda t, b: ([[0.1, math.inf, 0.3], [0.1, 0.2, 0.3]], 10) # Inf
+    fake_engine.embed = lambda t, batch_size=16: ([[0.1, math.inf, 0.3], [0.1, 0.2, 0.3]], 10) # Inf
     with pytest.raises(RuntimeError, match="non-finite"):
         client.embed_batch(["A", "B"])
 
@@ -152,7 +152,7 @@ def test_local_reranker_logic():
     assert res[1]["index"] == 0
     assert res[1]["score"] == 0.1
 
-    fake_engine.predict = lambda p, b: ([0.1], 10)
+    fake_engine.predict = lambda p, batch_size=32: ([0.1], 10)
     with pytest.raises(RuntimeError, match="returned 1 scores for 2 docs"):
         client.rerank("q", ["d1", "d2"])
 
