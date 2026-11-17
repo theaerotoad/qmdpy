@@ -679,14 +679,14 @@ def test_local_search_flow(db_conn, monkeypatch):
     store.llm._local_embedder = FakeEmbedEngine()
     store.llm._local_reranker = FakeRerankEngine()
     
-    # Setup DB with two items:
-    # - doc1 matches FTS ("ordinary text") with an orthogonal/opposite vector so it comes from FTS
-    # - doc2 has no FTS keyword overlap ("better candidate") and is retrieved via local vector search
+    # Setup DB with two dual-source items so RRF ties (FTS rank 0 + VEC rank 1 vs FTS rank 1 + VEC rank 0):
+    # - doc1 ranks #1 in FTS ("ordinary text") and #2 in VEC ([-0.2]*768), so stable sort keeps doc1 first unranked
+    # - doc2 ranks #2 in FTS ("better text") and #1 in VEC ([0.2]*768), and reranker promotes doc2 to top
     cursor = db_conn.cursor()
     from qmd.db import ensure_vector_table
     ensure_vector_table(db_conn, dim=768, quant_type="none")
     cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'ordinary text', 'now')")
-    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'better candidate', 'now')")
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'better text', 'now')")
     cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'doc1.md', 'D1', 'h1', 'now')")
     cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'doc2.md', 'D2', 'h2', 'now')")
     
@@ -697,11 +697,11 @@ def test_local_search_flow(db_conn, monkeypatch):
     cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (1, ?)", (vec_doc1,))
     cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (2, ?)", (vec_doc2,))
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (1, 'h1', 0, ?)", (compress_text("ordinary text"),))
-    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (2, 'h2', 0, ?)", (compress_text("better candidate"),))
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (2, 'h2', 0, ?)", (compress_text("better text"),))
     cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (1, 'c', 'doc1.md', 'D1', 'ordinary text')")
-    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (2, 'c', 'doc2.md', 'D2', 'better candidate')")
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (2, 'c', 'doc2.md', 'D2', 'better text')")
     cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (1, 'c', 'doc1.md', 'D1', 'ordinary text', '')")
-    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (2, 'c', 'doc2.md', 'D2', 'better candidate', '')")
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (2, 'c', 'doc2.md', 'D2', 'better text', '')")
     db_conn.commit()
     
     store.build_usearch_index()
@@ -748,7 +748,7 @@ def test_mixed_provider_search_flow(db_conn):
     from qmd.db import ensure_vector_table
     ensure_vector_table(db_conn, dim=768, quant_type="none")
     cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h1', 'ordinary text', 'now')")
-    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'better candidate', 'now')")
+    cursor.execute("INSERT INTO content (hash, body, created_at) VALUES ('h2', 'better text', 'now')")
     cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'doc1.md', 'D1', 'h1', 'now')")
     cursor.execute("INSERT INTO documents (collection, path, title, hash, modified_at) VALUES ('c', 'doc2.md', 'D2', 'h2', 'now')")
 
@@ -757,11 +757,11 @@ def test_mixed_provider_search_flow(db_conn):
     cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (1, ?)", (encode_vector([-0.2] * 768),))
     cursor.execute("INSERT INTO vectors (rowid, embedding) VALUES (2, ?)", (encode_vector([0.2] * 768),))
     cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (1, 'h1', 0, ?)", (compress_text("ordinary text"),))
-    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (2, 'h2', 0, ?)", (compress_text("better candidate"),))
+    cursor.execute("INSERT INTO chunk_metadata (rowid, doc_hash, seq_id, chunk_text) VALUES (2, 'h2', 0, ?)", (compress_text("better text"),))
     cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (1, 'c', 'doc1.md', 'D1', 'ordinary text')")
-    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (2, 'c', 'doc2.md', 'D2', 'better candidate')")
+    cursor.execute("INSERT INTO documents_fts (rowid, collection, filepath, title, body) VALUES (2, 'c', 'doc2.md', 'D2', 'better text')")
     cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (1, 'c', 'doc1.md', 'D1', 'ordinary text', '')")
-    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (2, 'c', 'doc2.md', 'D2', 'better candidate', '')")
+    cursor.execute("INSERT INTO chunks_fts (rowid, collection, filepath, title, body, headers) VALUES (2, 'c', 'doc2.md', 'D2', 'better text', '')")
     db_conn.commit()
 
     store.build_usearch_index()
