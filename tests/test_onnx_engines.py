@@ -77,11 +77,13 @@ def mock_tokenizer_and_files(monkeypatch, tmp_path):
 
 def test_embedder_empty_input(mock_tokenizer_and_files, monkeypatch):
     tmp_path, fake_onnx = mock_tokenizer_and_files
-    
-    def fake_init(*args, **kwargs): return None
+
+    def fake_init(*args, **kwargs):
+        return FakeSession([[0.0]])
+
     monkeypatch.setattr(ort, "InferenceSession", fake_init)
     monkeypatch.setattr(ort, "get_available_providers", lambda: ["CPUExecutionProvider"])
-    
+
     # Stub constructor to set up minimal state for empty test
     embedder = EmbeddingGemmaONNX(model_dir=str(tmp_path), onnx_path=str(fake_onnx))
     embedder.session = FakeSession(np.zeros((1, 10))) 
@@ -129,11 +131,12 @@ def test_embedder_3d_mean_pooling(mock_tokenizer_and_files, monkeypatch):
     # mean of [1,2,0] is 1
     assert pytest.approx(vectors[0]) == [1.0, 1.0, 1.0, 1.0]
 
-def test_embedder_missing_files_error(tmp_path):
+def test_embedder_missing_files_error(tmp_path, monkeypatch):
     with pytest.raises(FileNotFoundError, match="Tokenizer file not found"):
         EmbeddingGemmaONNX(model_dir=str(tmp_path))
 
     (tmp_path / "tokenizer.json").write_text("{}")
+    monkeypatch.setattr("qmd.onnx.embedding.Tokenizer.from_file", lambda path: FakeTokenizer())
     with pytest.raises(FileNotFoundError, match="No valid ONNX embedding model found"):
         EmbeddingGemmaONNX(model_dir=str(tmp_path))
 
