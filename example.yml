@@ -11,18 +11,20 @@ llm_url: "http://127.0.0.1:9888" # Default: http://127.0.0.1:8888
 # rerank_url: "http://127.0.0.1:8890"    # Separate URL for reranking
 # rerank_api_key: "sk-..."               # API key for reranker endpoint
 
-# --- Optional Local ONNX Inference ---
-# embed_provider: onnx       # remote (default) or onnx
-# rerank_provider: onnx      # remote (default) or onnx
-# embed_model_dir: "~/.local/share/qmd/models/embeddinggemma-300m"
-# embed_onnx_path: null      # optional explicit file; otherwise auto-discover
+# --- Optional Local ONNX Inference (In-Process, No Separate Server Required) ---
+# Install optional runtime first: pip install -r requirements_onnx.txt (or pip install -e '.[onnx]')
+# Download weights with: python3 setup_onnx.py --models-dir ./models --reranker-size 150m
+# embed_provider: onnx       # remote (default, alias: http) or onnx
+# rerank_provider: onnx      # remote (default, alias: http) or onnx
+# embed_model_dir: "./models/embeddinggemma-300m"
+# embed_onnx_path: null      # optional explicit .onnx file; otherwise auto-discover in embed_model_dir
 # embed_max_length: 2048
 # embed_batch_size: 16
-# rerank_model_dir: "~/.local/share/qmd/models/ettin-reranker-150m-v1"
-# rerank_onnx_path: null     # optional explicit file; otherwise auto-discover
+# rerank_model_dir: "./models/ettin-reranker-150m-v1"
+# rerank_onnx_path: null     # optional explicit .onnx file; otherwise auto-discover in rerank_model_dir
 # rerank_max_length: 8192
 # rerank_batch_size: 32
-# onnx_use_gpu: false        # use CUDAExecutionProvider when installed/available
+# onnx_use_gpu: false        # use CUDAExecutionProvider when installed/available (falls back to CPU)
 
 # --- PDF Processing Engine ---
 # pdf_engine: "pymupdf"                  # "pymupdf" (default) or "docling" (vision/layout fallback)
@@ -34,6 +36,8 @@ llm_url: "http://127.0.0.1:9888" # Default: http://127.0.0.1:8888
 # Option A: Native Image Storage & Vector Indexing (Recommended for Multimodal RAG)
 # Extracts, downscales, compresses (WebP), deduplicates (SHA-256), and saves images to disk, 
 # then computes embeddings so image-text matching boosts document search relevance.
+# Note: Image/page embeddings always require a remote /v1/embeddings multimodal endpoint
+# even when text embed_provider is set to "onnx".
 # embed_images: false                  # Set to true to enable native image embedding
 # embed_pages: false                   # Set to true to capture full page images from PDFs
 # max_image_megapixels: 1.0            # Downscale images larger than this (Default: 1.0)
