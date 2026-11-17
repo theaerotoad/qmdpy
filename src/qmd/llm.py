@@ -500,7 +500,7 @@ Final Output:
         response = self.client.post("/v1/chat/completions", json={
             "model": self.generate_model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 512
+            "max_completion_tokens": 512
         })
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
@@ -568,8 +568,8 @@ Document Content:
             response = self.client.post("/v1/chat/completions", json={
                 "model": self.generate_model,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 16000,
-                "thinking_budget_tokens": 4096,
+                "max_completion_tokens": 16000,
+                # "thinking_budget_tokens": 4096,
             }, timeout=None)
             response.raise_for_status()
             message = response.json()["choices"][0]["message"]
@@ -655,7 +655,7 @@ Document Content:
             response = self.multimodal_client.post("/v1/chat/completions", json={
                 "model": self.multimodal_model,
                 "messages": messages,
-                "max_tokens": 4096
+                "max_completion_tokens": 4096
             })
             response.raise_for_status()
             data = response.json()

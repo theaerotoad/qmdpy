@@ -120,7 +120,7 @@ def generate_quick_answer_stream(
                 "content": f"User Query: {query}\n\nSearch Results XML:\n{xml_context}",
             },
         ],
-        "max_tokens": 8192,
+        "max_completion_tokens": 8192,
         "stream": True,
     }
 
