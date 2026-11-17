@@ -25,7 +25,7 @@ BOLD = "\033[1m"
 DIM = "\033[2m"
 RESET = "\033[0m"
 
-DEFAULT_MODELS_DIR = "~/.local/share/qmd/models"
+DEFAULT_MODELS_DIR = str(Path(__file__).resolve().parent / "models")
 EMBEDDING_REPO_ID = "onnx-community/embeddinggemma-300m-ONNX"
 EMBEDDING_MODEL_NAME = "google/embeddinggemma-300m"
 EMBEDDING_DEFAULT_SUBDIR = "embeddinggemma-300m"
@@ -882,8 +882,16 @@ def render_qmd_yaml(
     embed_provider = "onnx" if embed_dir else "remote"
     rerank_provider = "onnx" if rerank_dir else "remote"
 
-    abs_embed_dir = str(Path(embed_dir).expanduser().resolve()) if embed_dir else None
-    abs_rerank_dir = str(Path(rerank_dir).expanduser().resolve()) if rerank_dir else None
+    abs_embed_dir = (
+        Path(embed_dir).expanduser().resolve().as_posix().replace("\\", "/")
+        if embed_dir
+        else None
+    )
+    abs_rerank_dir = (
+        Path(rerank_dir).expanduser().resolve().as_posix().replace("\\", "/")
+        if rerank_dir
+        else None
+    )
 
     lines = [
         "# qmd local ONNX embedding & reranking configuration",
