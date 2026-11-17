@@ -22,7 +22,7 @@ See below for the web-based interface.  You'll see this was clearly a [directed-
 
 ![Results of said output, passed into llama.cpp, with a small model's interpretation.](images/qmd_3.png)
 
-I highly recommend running your own local embedding (turns chunks of text into meaning-vectors, allows for natural language matching) and reranking (orders which chunks of text best match a result all at once) instance locally.  For QMD, I currently use [EmbeddingGemma](https://huggingface.co/google/embeddinggemma-300m) and [Ettin 150M](https://huggingface.co/jhu-clsp/ettin-encoder-150m).  You can find a super-lightweight OpenAI API compatible driver for both at [good_ettin_here](https://github.com/theaerotoad/good_ettin_here), which works drop-in with this application.
+I highly recommend running your own local embedding (turns chunks of text into meaning-vectors, allows for natural language matching) and reranking (orders which chunks of text best match a result all at once) locally. For QMD, I currently use [EmbeddingGemma](https://huggingface.co/google/embeddinggemma-300m) and [Ettin](https://huggingface.co/cross-encoder/ettin-reranker-150m-v1). You can now run both models **directly in-process via ONNX Runtime** (no separate Flask server required) or connect to an external OpenAI-compatible HTTP endpoint such as [good_ettin_here](https://github.com/theaerotoad/good_ettin_here).
 
 ## Limitations
 
@@ -39,13 +39,41 @@ But for now, know that QMD(py) is a great way to find information that's primari
 ## Installation & Quick Start
 
 ### 1. Installation
-You can install `qmd` as an editable local package. This allows you to modify the source code and have changes take effect immediately.
+
+**Base / Remote-API Install (Default):**
+Installs `qmd` without native ONNX Runtime or tokenizer dependencies. All existing external HTTP workflows work out of the box.
 
 ```bash
 # From the project root
 pip install -e .
 
 ```
+
+**Optional In-Process ONNX Install:**
+To run EmbeddingGemma text embeddings and Ettin cross-encoder reranking directly inside `qmd` without launching a separate Flask server, install the optional ONNX dependencies:
+
+```bash
+pip install -r requirements_onnx.txt
+# Or via package extra:
+pip install -e '.[onnx]'
+
+```
+
+> **Note on CUDA / GPU Acceleration:** By default, `onnxruntime` runs on CPU (`onnx_use_gpu: false`). To use `CUDAExecutionProvider` (`onnx_use_gpu: true`), install `onnxruntime-gpu` matching your CUDA/cuDNN environment in place of CPU `onnxruntime`.
+
+**Provisioning ONNX Model Weights:**
+Model weights are downloaded separately and are not bundled inside the `qmdpy` package. Use `setup_onnx.py` to download and validate EmbeddingGemma (`300M`) and your chosen Ettin cross-encoder size (`17m`, `32m`, `68m`, `150m`, `400m`, `1b`):
+
+```bash
+# Download EmbeddingGemma-300M + Ettin-150M into ./models (omit --models-dir for ~/.local/share/qmd/models)
+python3 setup_onnx.py --models-dir ./models --reranker-size 150m
+
+# Optional: also generate a dynamic INT8 quantized reranker graph for faster CPU inference
+python3 setup_onnx.py --models-dir ./models --reranker-size 150m --quantize-reranker
+
+```
+
+*Approximate resource footprint:* EmbeddingGemma-300M (`model_quantized.onnx` + external data) uses ~315 MB on disk; Ettin rerankers range from ~70 MB (`17m`) and ~260 MB (`68m`) to ~600 MB (`150m`) and ~1.5 GB (`400m`), requiring roughly 0.5–2 GB of RAM during inference.
 
 **Alternative (No Install):**
 You can run the module directly without installing by setting the python path:
@@ -57,18 +85,45 @@ PYTHONPATH=src python3 -m qmd.main [command]
 
 ### 2. Configuration
 
-Create a configuration file at `~/.config/qmd/index.yml`. You can now define global settings (LLM URL, chunking preferences) alongside your collections.
+Create a configuration file at `~/.config/qmd/index.yml` (or pass `-c /path/to/config.yml`). You can configure `embed_provider` and `rerank_provider` independently as `remote` (default, alias `http`) or `onnx`.
 
 **Priority Order:** Environment Variables > YAML Config > Defaults.
 
+**Option A: Full Local ONNX Mode (No External Server Needed)**
+
 ```yaml
-# Global Settings (Optional)
+embed_provider: onnx
+rerank_provider: onnx
+
+embed_model: "google/embeddinggemma-300m"
+embed_model_dir: "./models/embeddinggemma-300m"
+embed_onnx_path: null
+embed_max_length: 2048
+embed_batch_size: 16
+
+rerank_model: "cross-encoder/ettin-reranker-150m-v1"
+rerank_model_dir: "./models/ettin-reranker-150m-v1"
+rerank_onnx_path: null
+rerank_max_length: 8192
+rerank_batch_size: 32
+
+onnx_use_gpu: false
+
+collections:
+  my_notes:
+    path: "/home/user/obsidian_vault"
+    glob: "**/*.md"
+
+```
+
+**Option B: Full Remote HTTP Mode (Default)**
+
+```yaml
 llm_url: "http://localhost:8080" # Default: [http://127.0.0.1:8888](http://127.0.0.1:8888)
 strip_links: true                # Simplify [text](url) to just "text"
 target_chunk_size: 1024          # Optimal character count per chunk
 max_chunk_size: 2048             # Hard limit before forcing a split
 
-# Collections
 collections:
   my_notes:
     path: "/home/user/obsidian_vault"
@@ -76,6 +131,61 @@ collections:
   work:
     path: "/home/user/work_notes"
     glob: "*.md"
+
+```
+
+**Option C: Mixed Mode (Local ONNX Embeddings + Remote HTTP Reranker)**
+
+```yaml
+embed_provider: onnx
+embed_model: "google/embeddinggemma-300m"
+embed_model_dir: "./models/embeddinggemma-300m"
+
+rerank_provider: remote
+rerank_url: "[http://127.0.0.1:8890](http://127.0.0.1:8890)"
+rerank_model: "Ettin Reranker"
+
+collections:
+  my_notes:
+    path: "/home/user/obsidian_vault"
+    glob: "**/*.md"
+
+```
+
+#### Operational Caveats & Troubleshooting
+
+* **Text-only ONNX scope:** In-process ONNX mode supports text embedding and text cross-encoder reranking only. If you enable `embed_images: true` or `embed_pages: true`, you must still configure a compatible remote multimodal `/v1/embeddings` endpoint (`embed_url` or `llm_url`).
+* **Switching embedding models or dimensions:** Stored document vectors and cached query embeddings are tied to `embed_model` and its output vector dimension. If you switch embedding models or change vector dimensions, re-compute embeddings (`qmd update --re-embed` or `qmd update --force`) or start a fresh database.
+* **Missing ONNX packages (`RuntimeError: ONNX packages are not installed`):** Install the optional dependencies with `pip install -r requirements_onnx.txt` or `pip install -e '.[onnx]'`.
+* **Missing model files, external tensor data, or reranker head (`FileNotFoundError`):** Verify `embed_model_dir` / `rerank_model_dir` point to a complete model directory containing `tokenizer.json`, the `.onnx` graph (and companion `.onnx_data` if externalized), and—for backbone-only Ettin graphs—`2_Dense/`, `3_LayerNorm/`, and `4_Dense/` safetensors. Re-run `python3 setup_onnx.py` to repair incomplete downloads.
+* **Invalid provider (`ValueError: Unknown provider`):** `embed_provider` and `rerank_provider` only accept `remote` (or alias `http`) and `onnx`.
+
+### 3. Environment Variables
+
+QMD supports optional environment variables to streamline CLI, agent, and server workflows:
+
+```bash
+export QMD_LLM_URL="http://localhost:8080"  # Overrides YAML llm_url
+export EMBED_MODEL="nomic-embed-text"       # Must match your server's model alias
+export RERANK_MODEL="mxbai-rerank-xsmall"   # Optional
+export GENERATE_MODEL="llama-3.2-3b"        # Optional
+
+# Optional Local ONNX Overrides
+export QMD_EMBED_PROVIDER="onnx"            # "remote" (default) or "onnx"
+export QMD_RERANK_PROVIDER="onnx"           # "remote" (default) or "onnx"
+export QMD_EMBED_MODEL_DIR="./models/embeddinggemma-300m"
+export QMD_RERANK_MODEL_DIR="./models/ettin-reranker-150m-v1"
+export QMD_EMBED_ONNX_PATH=""               # Optional explicit .onnx file path
+export QMD_RERANK_ONNX_PATH=""              # Optional explicit .onnx file path
+export QMD_EMBED_MAX_LENGTH="2048"
+export QMD_RERANK_MAX_LENGTH="8192"
+export QMD_RERANK_BATCH_SIZE="32"
+export QMD_ONNX_USE_GPU="false"
+
+# Configuration & Output Defaults
+export QMD_CONFIG="/path/to/custom_config.yml" # Default config file (overrides ~/.config/qmd/index.yml)
+export QMD_XML="1"                            # Default all command outputs to XML (for LLM agent contexts)
+export QMD_DEEP="1"                           # Default all searches to --deep mode (doc-grouped + reranked)
 
 ```
 
