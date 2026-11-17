@@ -92,6 +92,13 @@ class EmbeddingGemmaONNX:
         self.session = ort.InferenceSession(actual_onnx_path, sess_options, providers=providers)
         self.input_names = [inp.name for inp in self.session.get_inputs()]
         self.output_names = [out.name for out in self.session.get_outputs()]
+
+        # Prefer pre-pooled/projected sentence_embedding output when exported by the graph
+        self.output_index = 0
+        for idx, out_name in enumerate(self.output_names):
+            if out_name.lower() in ("sentence_embedding", "sentence_embeddings", "pooler_output"):
+                self.output_index = idx
+                break
         
         # Log actual selected provider
         active_providers = self.session.get_providers()
@@ -149,7 +156,7 @@ class EmbeddingGemmaONNX:
                 onnx_inputs["token_type_ids"] = token_type_ids
 
             outputs = self.session.run(None, onnx_inputs)
-            raw_output = outputs[0]
+            raw_output = outputs[self.output_index]
             arr = np.asarray(raw_output, dtype=np.float32)
 
             # If 3D (batch_size, seq_len, hidden_dim): mean pool using attention mask
