@@ -1,2 +1,12 @@
 .picks
 .venv
+
+# Local ONNX model weights and partial downloads
+models/
+embeddinggemma-300m/
+ettin-reranker-*/
+*.onnx
+*.onnx_data
+*.onnx.data
+*.safetensors
+*.tmp
