@@ -399,7 +399,7 @@ def validate_reranker_layout(dest_dir: str) -> Tuple[bool, str]:
 
     usable_graphs: List[Tuple[str, Optional[Dict[str, Any]]]] = []
     for cand in candidates:
-        if not is_valid_file(cand, min_bytes=1):
+        if not is_valid_file(cand, min_size_kb=1):
             continue
         graph_info = _inspect_onnx_graph(cand)
         if graph_info is not None:

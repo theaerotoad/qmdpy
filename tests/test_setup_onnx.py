@@ -43,19 +43,23 @@ class FakeHTTPResponse:
 
 
 def _make_onnx_bytes(output_name: str = "last_hidden_state", external_data_file: str | None = None) -> bytes:
-    """Creates a minimal valid ONNX graph serialized to bytes."""
+    """Creates a minimal valid ONNX graph (>1 KB) serialized to bytes."""
     inp = helper.make_tensor_value_info("input_ids", TensorProto.INT64, [1, 4])
     out = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [1, 4])
 
-    initializers = []
+    pad_tensor = helper.make_tensor(
+        name="pad_weight",
+        data_type=TensorProto.FLOAT,
+        dims=[256],
+        vals=[0.0] * 256,
+    )
+    initializers = [pad_tensor]
+
     if external_data_file:
-        ext_tensor = helper.make_tensor(
-            name="ext_weight",
-            data_type=TensorProto.FLOAT,
-            dims=[4],
-            vals=b"",
-            raw=True,
-        )
+        ext_tensor = TensorProto()
+        ext_tensor.name = "ext_weight"
+        ext_tensor.data_type = TensorProto.FLOAT
+        ext_tensor.dims.extend([4])
         ext_tensor.data_location = TensorProto.EXTERNAL
         entry = ext_tensor.external_data.add()
         entry.key = "location"
